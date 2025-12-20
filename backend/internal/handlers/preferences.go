@@ -11,8 +11,11 @@ import (
 
 func GetPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userIDAny, _ := c.Get("userID")
-		userID := userIDAny.(int64)
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
 		prefs, err := models.GetUserPreferences(db, userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
@@ -28,8 +31,11 @@ type putPreferencesRequest struct {
 
 func PutPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userIDAny, _ := c.Get("userID")
-		userID := userIDAny.(int64)
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
 
 		var req putPreferencesRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -40,7 +46,11 @@ func PutPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		prefs, _ := models.GetUserPreferences(db, userID)
+		prefs, err := models.GetUserPreferences(db, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
 		c.JSON(http.StatusOK, prefs)
 	}
 }

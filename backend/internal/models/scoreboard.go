@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -70,6 +71,9 @@ func GetUserStats(db *sql.DB, userID int64) (*UserStats, error) {
 	var s UserStats
 	s.UserID = userID
 	if err := db.QueryRow(`SELECT games_played, games_won FROM users WHERE id = ?`, userID).Scan(&s.GamesPlayed, &s.GamesWon); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return &s, nil

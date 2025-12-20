@@ -2,6 +2,8 @@ package models
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 )
 
 type GamePlayer struct {
@@ -21,6 +23,39 @@ func AddGamePlayer(db *sql.DB, gameID, userID int64, position int64, isBot bool,
 		gameID, userID, position, boolToInt(isBot), botDifficulty,
 	)
 	return err
+}
+
+func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, botDifficulty *string) (int64, error) {
+	// Retry on unique position collision (due to concurrent joins).
+	for attempt := 0; attempt < 3; attempt++ {
+		res, err := db.Exec(
+			`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty)
+			 SELECT ?, ?, COALESCE(MAX(position), -1) + 1, ?, ?
+			 FROM game_players WHERE game_id = ?`,
+			gameID, userID, boolToInt(isBot), botDifficulty, gameID,
+		)
+		if err != nil {
+			// For now, treat any error as retryable only if it looks like a constraint collision.
+			if IsUniqueConstraint(err) && attempt < 2 {
+				continue
+			}
+			return 0, err
+		}
+		_ = res
+
+		var pos int64
+		if err := db.QueryRow(`SELECT position FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&pos); err != nil {
+			return 0, err
+		}
+		if pos < 0 {
+			return 0, errors.New("invalid assigned position")
+		}
+		if pos > 3 {
+			return 0, fmt.Errorf("assigned position out of range: %d", pos)
+		}
+		return pos, nil
+	}
+	return 0, errors.New("could not allocate position")
 }
 
 func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {

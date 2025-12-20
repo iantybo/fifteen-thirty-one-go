@@ -28,6 +28,12 @@ func (m *GameManager) Set(gameID int64, st *cribbage.State) {
 	m.games[gameID] = st
 }
 
+func (m *GameManager) Delete(gameID int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.games, gameID)
+}
+
 var defaultGameManager = NewGameManager()
 
 

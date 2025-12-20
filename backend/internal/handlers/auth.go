@@ -31,11 +31,11 @@ func RegisterHandler(db *sql.DB, cfg Config) gin.HandlerFunc {
 		}
 
 		req.Username = strings.TrimSpace(req.Username)
-		req.Password = strings.TrimSpace(req.Password)
 		if len(req.Username) < 3 || len(req.Username) > 32 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "username must be 3-32 characters"})
 			return
 		}
+		// Do not TrimSpace passwords: leading/trailing spaces are valid characters.
 		if len(req.Password) < 8 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "password must be at least 8 characters"})
 			return
@@ -86,7 +86,6 @@ func LoginHandler(db *sql.DB, cfg Config) gin.HandlerFunc {
 		}
 
 		req.Username = strings.TrimSpace(req.Username)
-		req.Password = strings.TrimSpace(req.Password)
 		if req.Username == "" || req.Password == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "username and password required"})
 			return

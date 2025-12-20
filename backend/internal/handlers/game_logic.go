@@ -43,7 +43,9 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 	for _, gp := range players {
 		if gp.UserID == userID {
 			var yourHand []common.Card
-			_ = json.Unmarshal([]byte(gp.Hand), &yourHand)
+			if err := json.Unmarshal([]byte(gp.Hand), &yourHand); err != nil {
+				return nil, err
+			}
 			if int(gp.Position) < len(view.Hands) {
 				view.Hands[gp.Position] = yourHand
 			}
@@ -109,7 +111,9 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 	var hand []common.Card
 	for _, gp := range players {
 		if gp.UserID == userID {
-			_ = json.Unmarshal([]byte(gp.Hand), &hand)
+			if err := json.Unmarshal([]byte(gp.Hand), &hand); err != nil {
+				return nil, err
+			}
 			break
 		}
 	}
@@ -130,10 +134,16 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		if err := st.Discard(int(pos), discards); err != nil {
 			return nil, err
 		}
-		if b, err := json.Marshal(st.Hands[pos]); err == nil {
-			_ = models.UpdatePlayerHand(db, gameID, userID, string(b))
+		b, err := json.Marshal(st.Hands[pos])
+		if err != nil {
+			return nil, err
 		}
-		_, _ = models.InsertMove(db, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "discard"})
+		if err := models.UpdatePlayerHand(db, gameID, userID, string(b)); err != nil {
+			return nil, err
+		}
+		if _, err := models.InsertMove(db, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "discard"}); err != nil {
+			return nil, err
+		}
 		return map[string]any{"ok": true}, nil
 	case "play_card":
 		card, err := common.ParseCard(req.Card)
@@ -144,12 +154,18 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		if err != nil {
 			return nil, err
 		}
-		if b, err := json.Marshal(st.Hands[pos]); err == nil {
-			_ = models.UpdatePlayerHand(db, gameID, userID, string(b))
+		b, err := json.Marshal(st.Hands[pos])
+		if err != nil {
+			return nil, err
+		}
+		if err := models.UpdatePlayerHand(db, gameID, userID, string(b)); err != nil {
+			return nil, err
 		}
 		cardStr := card.String()
 		verified := int64(points)
-		_, _ = models.InsertMove(db, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "play_card", CardPlayed: &cardStr, ScoreVerified: &verified})
+		if _, err := models.InsertMove(db, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "play_card", CardPlayed: &cardStr, ScoreVerified: &verified}); err != nil {
+			return nil, err
+		}
 		return map[string]any{"points": points, "reasons": reasons, "total": st.PeggingTotal}, nil
 	case "go":
 		awarded, err := st.Go(int(pos))
@@ -157,7 +173,9 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 			return nil, err
 		}
 		verified := int64(awarded)
-		_, _ = models.InsertMove(db, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "go", ScoreVerified: &verified})
+		if _, err := models.InsertMove(db, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "go", ScoreVerified: &verified}); err != nil {
+			return nil, err
+		}
 		return map[string]any{"awarded": awarded}, nil
 	default:
 		return nil, errors.New("unknown move type")

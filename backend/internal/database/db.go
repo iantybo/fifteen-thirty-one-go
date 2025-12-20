@@ -153,20 +153,12 @@ type sqlExecer interface {
 
 func execSQLScript(exec sqlExecer, script string) error {
 	// Very small migration runner:
-	// - strips line comments
+	// - strips line comments (only when not inside quotes)
 	// - splits on ';'
 	// This is sufficient for our simple schema files.
-	lines := strings.Split(script, "\n")
-	var b strings.Builder
-	for _, ln := range lines {
-		if idx := strings.Index(ln, "--"); idx >= 0 {
-			ln = ln[:idx]
-		}
-		b.WriteString(ln)
-		b.WriteString("\n")
-	}
+	cleaned := stripLineCommentsOutsideQuotes(script)
 
-	parts := strings.Split(b.String(), ";")
+	parts := strings.Split(cleaned, ";")
 	for _, p := range parts {
 		stmt := strings.TrimSpace(p)
 		if stmt == "" {
@@ -177,6 +169,58 @@ func execSQLScript(exec sqlExecer, script string) error {
 		}
 	}
 	return nil
+}
+
+func stripLineCommentsOutsideQuotes(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	inSingle := false
+	inDouble := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+
+		// Handle quote toggles + escaped quote by doubling.
+		if ch == '\'' && !inDouble {
+			// SQL escapes single quote as ''.
+			if inSingle && i+1 < len(s) && s[i+1] == '\'' {
+				b.WriteByte(ch)
+				b.WriteByte(ch)
+				i++
+				continue
+			}
+			inSingle = !inSingle
+			b.WriteByte(ch)
+			continue
+		}
+		if ch == '"' && !inSingle {
+			if inDouble && i+1 < len(s) && s[i+1] == '"' {
+				b.WriteByte(ch)
+				b.WriteByte(ch)
+				i++
+				continue
+			}
+			inDouble = !inDouble
+			b.WriteByte(ch)
+			continue
+		}
+
+		// Line comment start: "--" when not inside quotes.
+		if !inSingle && !inDouble && ch == '-' && i+1 < len(s) && s[i+1] == '-' {
+			// Skip until newline (but keep the newline).
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+			if i < len(s) && s[i] == '\n' {
+				b.WriteByte('\n')
+			}
+			continue
+		}
+
+		b.WriteByte(ch)
+	}
+
+	return b.String()
 }
 
 

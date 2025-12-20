@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -30,7 +31,11 @@ func UserStatsHandler(db *sql.DB) gin.HandlerFunc {
 		}
 		stats, err := models.GetUserStats(db, userID)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			if errors.Is(err, models.ErrNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
 		c.JSON(http.StatusOK, stats)

@@ -3,6 +3,7 @@ package cribbage
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"fifteen-thirty-one-go/backend/internal/game/common"
 )
@@ -59,7 +60,11 @@ func (s *State) Deal() error {
 	}
 	for round := 0; round < handSize; round++ {
 		for p := 0; p < s.Rules.MaxPlayers; p++ {
-			s.Hands[p] = append(s.Hands[p], s.pop())
+			c, err := s.pop()
+			if err != nil {
+				return err
+			}
+			s.Hands[p] = append(s.Hands[p], c)
 		}
 	}
 	s.Crib = s.Crib[:0]
@@ -106,10 +111,17 @@ func (s *State) Discard(player int, cards []common.Card) error {
 	if len(s.Crib) == neededDiscards {
 		// 3-player cribbage: add one random card from deck to the crib to make 4.
 		if s.Rules.MaxPlayers == 3 && len(s.Crib) < s.Rules.CribSize() {
-			s.Crib = append(s.Crib, s.pop())
+			c, err := s.pop()
+			if err != nil {
+				return err
+			}
+			s.Crib = append(s.Crib, c)
 		}
 		// When crib is complete, cut and start pegging.
-		cut := s.pop()
+		cut, err := s.pop()
+		if err != nil {
+			return err
+		}
 		s.Cut = &cut
 		s.Stage = "pegging"
 		s.PeggingTotal = 0
@@ -197,6 +209,8 @@ func (s *State) Go(player int) (awarded int, err error) {
 		if awardLast && s.LastPlayIndex >= 0 {
 			s.Scores[s.LastPlayIndex] += 1
 			awarded = 1
+			// Prevent a second award when the round finishes.
+			s.LastPlayIndex = -1
 		}
 		nextLead := (s.LastPlayIndex + 1) % s.Rules.MaxPlayers
 		if s.LastPlayIndex < 0 {
@@ -263,6 +277,7 @@ func (s *State) maybeFinishRound() {
 	// Award last card point if the last sequence didn't end on 31.
 	if s.PeggingTotal != 31 && s.LastPlayIndex >= 0 {
 		s.Scores[s.LastPlayIndex] += 1
+		s.LastPlayIndex = -1
 	}
 
 	s.Stage = "counting"
@@ -289,7 +304,11 @@ func (s *State) maybeFinishRound() {
 
 	// New round.
 	s.DealerIndex = (s.DealerIndex + 1) % s.Rules.MaxPlayers
-	_ = s.Deal()
+	if err := s.Deal(); err != nil {
+		// revert dealer increment on failure
+		s.DealerIndex = (s.DealerIndex - 1 + s.Rules.MaxPlayers) % s.Rules.MaxPlayers
+		s.Stage = "finished"
+	}
 }
 
 func (s *State) MarshalJSON() ([]byte, error) {
@@ -298,10 +317,13 @@ func (s *State) MarshalJSON() ([]byte, error) {
 	return json.Marshal((*Alias)(s))
 }
 
-func (s *State) pop() common.Card {
+func (s *State) pop() (common.Card, error) {
+	if len(s.Deck) == 0 {
+		return common.Card{}, fmt.Errorf("empty deck")
+	}
 	c := s.Deck[0]
 	s.Deck = s.Deck[1:]
-	return c
+	return c, nil
 }
 
 

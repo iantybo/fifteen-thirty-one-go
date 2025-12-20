@@ -76,9 +76,16 @@ func JoinLobby(db *sql.DB, lobbyID int64) (*Lobby, error) {
 	if l.CurrentPlayers >= l.MaxPlayers {
 		return nil, errors.New("lobby full")
 	}
-	_, err = db.Exec(`UPDATE lobbies SET current_players = current_players + 1 WHERE id = ? AND status = 'waiting' AND current_players < max_players`, lobbyID)
+	res, err := db.Exec(`UPDATE lobbies SET current_players = current_players + 1 WHERE id = ? AND status = 'waiting' AND current_players < max_players`, lobbyID)
 	if err != nil {
 		return nil, err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if ra == 0 {
+		return nil, errors.New("lobby full")
 	}
 	return GetLobbyByID(db, lobbyID)
 }

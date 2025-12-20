@@ -13,7 +13,10 @@ import (
 )
 
 func main() {
-	cfg := handlers.LoadConfigFromEnv()
+	cfg, err := handlers.LoadConfigFromEnv()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
 
 	db, err := database.OpenAndMigrate(cfg.DatabasePath)
 	if err != nil {
@@ -23,6 +26,8 @@ func main() {
 
 	hub := websocket.NewHub()
 	go hub.Run()
+
+	handlers.SetWebSocketOriginPolicy(cfg.AppEnv == "development", cfg.WSAllowedOrigins)
 
 	r := gin.Default()
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })

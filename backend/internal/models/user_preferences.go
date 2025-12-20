@@ -17,7 +17,7 @@ func GetUserPreferences(db *sql.DB, userID int64) (*UserPreferences, error) {
 	err := db.QueryRow(`SELECT user_id, auto_count_mode, updated_at FROM user_preferences WHERE user_id = ?`, userID).
 		Scan(&p.UserID, &p.AutoCountMode, &p.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return &UserPreferences{UserID: userID, AutoCountMode: "suggest"}, nil
+		return &UserPreferences{UserID: userID, AutoCountMode: "suggest", UpdatedAt: time.Now().UTC()}, nil
 	}
 	if err != nil {
 		return nil, err

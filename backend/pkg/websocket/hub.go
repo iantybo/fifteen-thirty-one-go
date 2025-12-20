@@ -78,7 +78,7 @@ func (h *Hub) removeClient(c *Client) {
 			delete(h.rooms, c.Room)
 		}
 	}
-	close(c.Send)
+	c.CloseOnce.Do(func() { close(c.Send) })
 }
 
 func (h *Hub) moveClientToRoom(c *Client, room string) {

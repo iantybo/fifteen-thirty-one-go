@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -22,6 +23,7 @@ type Client struct {
 	Room string
 	UserID int64
 
+	CloseOnce sync.Once
 	Send chan []byte
 }
 

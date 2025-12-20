@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -18,10 +19,35 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		// For local dev we allow all origins. In production, restrict this.
-		return true
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		// Allow non-browser clients (no Origin) only in dev.
+		if cfgIsDev() {
+			return true
+		}
+		if origin == "" {
+			return false
+		}
+		return isAllowedOrigin(origin)
 	},
 }
+
+// set by config at startup
+var allowedOrigins = map[string]bool{}
+var devMode = false
+
+func SetWebSocketOriginPolicy(isDev bool, origins []string) {
+	devMode = isDev
+	allowedOrigins = map[string]bool{}
+	for _, o := range origins {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			allowedOrigins[o] = true
+		}
+	}
+}
+
+func cfgIsDev() bool { return devMode }
+func isAllowedOrigin(origin string) bool { return allowedOrigins[origin] }
 
 // WebSocketHandler upgrades the connection and registers the client.
 // Full message routing is implemented in Phase 4.
@@ -126,6 +152,7 @@ func sendDirect(c *ws.Client, typ string, payload any) error {
 	select {
 	case c.Send <- b:
 	default:
+		log.Printf("ws send drop: user_id=%d room=%s type=%s", c.UserID, c.Room, typ)
 	}
 	return nil
 }

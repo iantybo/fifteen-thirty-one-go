@@ -31,8 +31,11 @@ func GetGameHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
 			return
 		}
-		userIDAny, _ := c.Get("userID")
-		userID := userIDAny.(int64)
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
 		snap, err := BuildGameSnapshotForUser(db, gameID, userID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
@@ -49,8 +52,11 @@ func MoveHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
 			return
 		}
-		userIDAny, _ := c.Get("userID")
-		userID := userIDAny.(int64)
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
 
 		var req moveRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -79,8 +85,11 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
 			return
 		}
-		userIDAny, _ := c.Get("userID")
-		userID := userIDAny.(int64)
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
 
 		var req countRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -158,8 +167,11 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
 			return
 		}
-		userIDAny, _ := c.Get("userID")
-		userID := userIDAny.(int64)
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
 
 		var req correctRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -175,7 +187,10 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 		}
 		isHost := false
 		var hostID int64
-		_ = db.QueryRow(`SELECT l.host_id FROM games g JOIN lobbies l ON l.id = g.lobby_id WHERE g.id = ?`, gameID).Scan(&hostID)
+		if err := db.QueryRow(`SELECT l.host_id FROM games g JOIN lobbies l ON l.id = g.lobby_id WHERE g.id = ?`, gameID).Scan(&hostID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
 		if hostID == userID {
 			isHost = true
 		}

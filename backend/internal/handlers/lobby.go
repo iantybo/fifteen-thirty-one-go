@@ -48,12 +48,11 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			req.Name = "Lobby"
 		}
 
-		userIDAny, ok := c.Get("userID")
+		hostID, ok := userIDFromContext(c)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
-		hostID := userIDAny.(int64)
 
 		l, err := models.CreateLobby(db, req.Name, hostID, int64(req.MaxPlayers))
 		if err != nil {
@@ -66,11 +65,17 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
-		_ = models.AddGamePlayer(db, g.ID, hostID, 0, false, nil)
+		if err := models.AddGamePlayer(db, g.ID, hostID, 0, false, nil); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
 
 		// Initialize in-memory engine state.
 		st := cribbage.NewState(req.MaxPlayers)
-		_ = st.Deal()
+		if err := st.Deal(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "game init error"})
+			return
+		}
 		// Persist the host's initial hand for UI convenience.
 		if b, err := json.Marshal(st.Hands[0]); err == nil {
 			_ = models.UpdatePlayerHand(db, g.ID, hostID, string(b))
@@ -88,12 +93,11 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lobby id"})
 			return
 		}
-		userIDAny, ok := c.Get("userID")
+		userID, ok := userIDFromContext(c)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
-		userID := userIDAny.(int64)
 
 		l, err := models.JoinLobby(db, lobbyID)
 		if err != nil {
@@ -113,13 +117,18 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		if !ok {
 			// Recreate minimal state if missing.
 			st = cribbage.NewState(int(l.MaxPlayers))
-			_ = st.Deal()
+			if err := st.Deal(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "game init error"})
+				return
+			}
 			defaultGameManager.Set(gameID, st)
 		}
 
-		players, _ := models.ListGamePlayersByGame(db, gameID)
-		nextPos := int64(len(players))
-		_ = models.AddGamePlayer(db, gameID, userID, nextPos, false, nil)
+		nextPos, err := models.AddGamePlayerAutoPosition(db, gameID, userID, false, nil)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 
 		// Persist joining player's hand (best-effort).
 		if int(nextPos) < len(st.Hands) {
