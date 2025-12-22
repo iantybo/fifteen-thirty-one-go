@@ -41,8 +41,7 @@ func ParseAndValidateToken(tokenString string, cfg config.Config) (*Claims, erro
 		return nil, fmt.Errorf("JWT_SECRET is required")
 	}
 
-	claims := &Claims{}
-	_, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
+	tok, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
@@ -53,6 +52,10 @@ func ParseAndValidateToken(tokenString string, cfg config.Config) (*Claims, erro
 	)
 	if err != nil {
 		return nil, err
+	}
+	claims, ok := tok.Claims.(*Claims)
+	if !ok || !tok.Valid {
+		return nil, fmt.Errorf("invalid token")
 	}
 	return claims, nil
 }

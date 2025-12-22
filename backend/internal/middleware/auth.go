@@ -39,10 +39,6 @@ func tokenFromRequest(c *gin.Context) string {
 			return strings.TrimSpace(parts[1])
 		}
 	}
-	// ?token=<token> (useful for websocket)
-	if t := c.Query("token"); t != "" {
-		return t
-	}
 	return ""
 }
 

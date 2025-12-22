@@ -95,6 +95,24 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Initialize in-memory engine state BEFORE commit so we don't create DB rows
+		// without a corresponding in-memory state if dealing fails.
+		st := cribbage.NewState(req.MaxPlayers)
+		if err := st.Deal(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "game init error"})
+			return
+		}
+		// Persist the host's initial hand for UI convenience (idempotent; should be empty here).
+		if b, err := json.Marshal(st.Hands[0]); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		} else {
+			if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, hostID, string(b)); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+		}
+
 		if err := tx.Commit(); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
@@ -111,18 +129,6 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Initialize in-memory engine state.
-		st := cribbage.NewState(req.MaxPlayers)
-		if err := st.Deal(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "game init error"})
-			return
-		}
-		// Persist the host's initial hand for UI convenience.
-		if b, err := json.Marshal(st.Hands[0]); err == nil {
-			if err := models.UpdatePlayerHand(db, g.ID, hostID, string(b)); err != nil {
-				log.Printf("UpdatePlayerHand failed: game_id=%d user_id=%d err=%v", g.ID, hostID, err)
-			}
-		}
 		defaultGameManager.Set(g.ID, st)
 
 		c.JSON(http.StatusCreated, createLobbyResponse{Lobby: l, Game: g})
@@ -176,15 +182,15 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Ensure in-memory game state exists before committing the join.
-		// (We don't create/re-deal here; if it's missing, we rollback the tx and ask to recreate.)
-		_, unlockCheck, ok := defaultGameManager.GetLocked(gameID)
+		// Ensure in-memory game state exists before committing the join and keep it locked
+		// until after we persist the joining player's hand, so state cannot change between
+		// position assignment and hand persistence.
+		st, unlock, ok := defaultGameManager.GetLocked(gameID)
 		if !ok {
-			// Avoid re-dealing a different game state (would desync hands).
 			c.JSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
 			return
 		}
-		unlockCheck()
+		defer unlock()
 
 		nextPos, err := models.AddGamePlayerAutoPositionTx(tx, gameID, userID, false, nil)
 		if err != nil {
@@ -193,27 +199,23 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Persist joining player's hand under the same transaction to keep DB consistent.
+		if int(nextPos) < len(st.Hands) {
+			if b, err := json.Marshal(st.Hands[nextPos]); err == nil {
+				if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, userID, string(b)); err != nil {
+					log.Printf("UpdatePlayerHandIfEmptyTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+					return
+				}
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+		}
+
 		if err := tx.Commit(); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
-		}
-
-		// Now acquire in-memory state to persist the joining player's initial hand.
-		st, unlock, ok := defaultGameManager.GetLocked(gameID)
-		if !ok {
-			c.JSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
-			return
-		}
-		defer unlock()
-
-		// Persist joining player's hand (best-effort).
-		if int(nextPos) < len(st.Hands) {
-			if b, err := json.Marshal(st.Hands[nextPos]); err == nil {
-				// Only set if empty to be idempotent.
-				if _, err := models.UpdatePlayerHandIfEmpty(db, gameID, userID, string(b)); err != nil {
-					log.Printf("UpdatePlayerHand failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
-				}
-			}
 		}
 
 		c.JSON(http.StatusOK, gin.H{"lobby": l, "game_id": gameID})

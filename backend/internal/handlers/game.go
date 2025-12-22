@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -204,7 +205,16 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 
 		// Minimal correction: append a correction move referencing the prior one.
 		prev, err := models.GetMoveByID(db, req.MoveID)
-		if err != nil || prev.GameID != gameID {
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid move"})
+				return
+			}
+			log.Printf("GetMoveByID failed: move_id=%d err=%v", req.MoveID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if prev.GameID != gameID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid move"})
 			return
 		}

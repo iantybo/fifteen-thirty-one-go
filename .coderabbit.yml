@@ -1,0 +1,191 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit Configuration - All Defaults
+# This file contains every configuration option with its default value
+# Use this as a reference or starting point for your configuration
+#
+
+# General settings
+language: "en-US"
+tone_instructions: ""
+early_access: false
+enable_free_tier: true
+
+reviews:
+  # Review profile and behavior
+  profile: "chill"
+  request_changes_workflow: false
+
+  # High-level summary settings
+  high_level_summary: true
+  high_level_summary_instructions: ""
+  high_level_summary_placeholder: "@coderabbitai summary"
+  high_level_summary_in_walkthrough: false
+
+  # Auto title settings
+  auto_title_placeholder: "@coderabbitai"
+  auto_title_instructions: ""
+
+  # Review status and commit status
+  review_status: true
+  commit_status: true
+  fail_commit_status: false
+
+  # Walkthrough settings
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+
+  # Issue and PR related settings
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+
+  # Labeling settings
+  suggested_labels: true
+  labeling_instructions: []
+  auto_apply_labels: false
+
+  # Path filtering and instructions
+  path_filters: []
+  path_instructions: []
+
+  # Auto review settings
+  auto_review:
+    enabled: true
+    ignore_title_keywords: []
+    drafts: false
+    base_branches: []
+
+  # Static analysis tools
+  tools:
+    # JavaScript/TypeScript
+    eslint:
+      enabled: true
+    biome:
+      enabled: true
+
+    # Go
+    golangci-lint:
+      enabled: true
+
+    # Python
+    ruff:
+      enabled: true
+    pylint:
+      enabled: true
+    mypy:
+      enabled: true
+
+    # Ruby
+    rubocop:
+      enabled: true
+
+    # PHP
+    phpstan:
+      enabled: true
+      level: default
+
+    # Java/Kotlin
+    pmd:
+      enabled: true
+    detekt:
+      enabled: true
+    checkstyle:
+      enabled: true
+
+    # C/C++
+    cppcheck:
+      enabled: true
+
+    # Rust
+    clippy:
+      enabled: true
+
+    # C#
+    dotnet-format:
+      enabled: true
+
+    # Infrastructure
+    hadolint:
+      enabled: true
+    yamllint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    actionlint:
+      enabled: true
+    terraform-fmt:
+      enabled: true
+    tflint:
+      enabled: true
+
+    # Security
+    gitleaks:
+      enabled: true
+    checkov:
+      enabled: true
+    semgrep:
+      enabled: true
+    trivy:
+      enabled: true
+    osv-scanner:
+      enabled: true
+
+    # Documentation
+    markdownlint:
+      enabled: true
+    languagetool:
+      enabled: true
+      level: default
+      disabled_categories: []
+
+    # Protocol Buffers
+    buf:
+      enabled: true
+
+    # GitHub specific
+    github-checks:
+      enabled: true
+      timeout_ms: 90000
+
+chat:
+  art: true
+  auto_reply: true
+  integrations:
+    jira:
+      usage: "auto"
+    linear:
+      usage: "auto"
+
+knowledge_base:
+  opt_out: false
+  web_search:
+    enabled: true
+  code_guidelines:
+    enabled: true
+    filePatterns: []
+  learnings:
+    scope: "auto"
+  issues:
+    scope: "auto"
+  jira:
+    usage: "auto"
+    project_keys: []
+  linear:
+    usage: "auto"
+    team_keys: []
+  pull_requests:
+    scope: "auto"
+  mcp:
+    usage: "auto"
+    disabled_servers: []
+
+code_generation:
+  docstrings:
+    language: "en-US"
+    path_instructions: []
+  unit_tests:
+    path_instructions: []
+

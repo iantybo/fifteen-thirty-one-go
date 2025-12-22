@@ -23,12 +23,15 @@ func NewGameManager() *GameManager {
 func (m *GameManager) GetLocked(gameID int64) (*cribbage.State, func(), bool) {
 	m.mu.RLock()
 	e, ok := m.games[gameID]
-	if !ok || e == nil || e.state == nil {
-		m.mu.RUnlock()
+	m.mu.RUnlock()
+	if !ok || e == nil {
 		return nil, nil, false
 	}
 	e.mu.Lock()
-	m.mu.RUnlock()
+	if e.state == nil {
+		e.mu.Unlock()
+		return nil, nil, false
+	}
 	return e.state, func() { e.mu.Unlock() }, true
 }
 

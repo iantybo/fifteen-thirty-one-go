@@ -1,6 +1,9 @@
 package game
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // Registry allows registering game engine factories by type.
 type Registry struct {
@@ -12,10 +15,17 @@ func NewRegistry() *Registry {
 	return &Registry{factories: map[string]func() Game{}}
 }
 
-func (r *Registry) Register(gameType string, factory func() Game) {
+func (r *Registry) Register(gameType string, factory func() Game) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if factory == nil {
+		return fmt.Errorf("nil factory for gameType %q", gameType)
+	}
+	if _, exists := r.factories[gameType]; exists {
+		return fmt.Errorf("duplicate registration for gameType %q", gameType)
+	}
 	r.factories[gameType] = factory
+	return nil
 }
 
 func (r *Registry) New(gameType string) (Game, bool) {

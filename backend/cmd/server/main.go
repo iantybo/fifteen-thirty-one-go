@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"fifteen-thirty-one-go/backend/internal/config"
 	"fifteen-thirty-one-go/backend/internal/database"
@@ -23,7 +29,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("db open/migrate: %v", err)
 	}
-	defer db.Close()
 
 	hub := websocket.NewHub()
 	go hub.Run()
@@ -54,9 +59,41 @@ func main() {
 		}
 	}
 
-	log.Printf("listening on %s", addr)
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("server: %v", err)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		log.Printf("listening on %s", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-sigCh:
+		log.Printf("shutdown signal received: %v", sig)
+	case err := <-errCh:
+		log.Printf("server error: %v", err)
+	}
+
+	hub.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("server shutdown error: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		log.Printf("db close error: %v", err)
 	}
 }
 

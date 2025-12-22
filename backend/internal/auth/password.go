@@ -41,12 +41,6 @@ func ComparePasswordHash(hash string, plain string) error {
 	if plain == "" {
 		return fmt.Errorf("password required")
 	}
-	if utf8.RuneCountInString(plain) < minPasswordChars {
-		return fmt.Errorf("password must be at least %d characters", minPasswordChars)
-	}
-	if len([]byte(plain)) > bcryptMaxPasswordBytes {
-		return fmt.Errorf("password too long: bcrypt only supports up to %d bytes (UTF-8); shorten the password", bcryptMaxPasswordBytes)
-	}
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plain))
 }
 

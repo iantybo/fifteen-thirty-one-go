@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,9 @@ type Hub struct {
 	broadcast  chan Broadcast
 
 	rooms map[string]map[*Client]bool
+
+	stopOnce sync.Once
+	stop     chan struct{}
 }
 
 type joinReq struct {
@@ -34,12 +38,15 @@ func NewHub() *Hub {
 		join:       make(chan joinReq),
 		broadcast:  make(chan Broadcast, 256),
 		rooms:      map[string]map[*Client]bool{},
+		stop:       make(chan struct{}),
 	}
 }
 
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.stop:
+			return
 		case c := <-h.register:
 			if c.Room == "" {
 				c.Room = "lobby:global"
@@ -60,6 +67,7 @@ func (h *Hub) Run() {
 
 func (h *Hub) Register(c *Client)  { h.register <- c }
 func (h *Hub) Unregister(c *Client) { h.unregister <- c }
+func (h *Hub) Stop() { h.stopOnce.Do(func() { close(h.stop) }) }
 
 func (h *Hub) Join(c *Client, room string) {
 	h.join <- joinReq{Client: c, Room: room}

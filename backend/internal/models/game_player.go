@@ -3,7 +3,6 @@ package models
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 )
 
 type GamePlayer struct {
@@ -31,7 +30,8 @@ func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, bot
 		res, err := db.Exec(
 			`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty)
 			 SELECT ?, ?, COALESCE(MAX(position), -1) + 1, ?, ?
-			 FROM game_players WHERE game_id = ?`,
+			 FROM game_players WHERE game_id = ?
+			 HAVING COALESCE(MAX(position), -1) + 1 <= 3`,
 			gameID, userID, boolToInt(isBot), botDifficulty, gameID,
 		)
 		if err != nil {
@@ -41,7 +41,13 @@ func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, bot
 			}
 			return 0, err
 		}
-		_ = res
+		ra, err := res.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
+		if ra == 0 {
+			return 0, errors.New("could not allocate position")
+		}
 
 		var pos int64
 		if err := db.QueryRow(`SELECT position FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&pos); err != nil {
@@ -49,9 +55,6 @@ func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, bot
 		}
 		if pos < 0 {
 			return 0, errors.New("invalid assigned position")
-		}
-		if pos > 3 {
-			return 0, fmt.Errorf("assigned position out of range: %d", pos)
 		}
 		return pos, nil
 	}
@@ -61,10 +64,11 @@ func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, bot
 func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID int64, isBot bool, botDifficulty *string) (int64, error) {
 	// Retry on unique position collision (due to concurrent joins).
 	for attempt := 0; attempt < 3; attempt++ {
-		_, err := tx.Exec(
+		res, err := tx.Exec(
 			`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty)
 			 SELECT ?, ?, COALESCE(MAX(position), -1) + 1, ?, ?
-			 FROM game_players WHERE game_id = ?`,
+			 FROM game_players WHERE game_id = ?
+			 HAVING COALESCE(MAX(position), -1) + 1 <= 3`,
 			gameID, userID, boolToInt(isBot), botDifficulty, gameID,
 		)
 		if err != nil {
@@ -73,6 +77,13 @@ func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID int64, isBot bool, b
 			}
 			return 0, err
 		}
+		ra, err := res.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
+		if ra == 0 {
+			return 0, errors.New("could not allocate position")
+		}
 
 		var pos int64
 		if err := tx.QueryRow(`SELECT position FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&pos); err != nil {
@@ -80,9 +91,6 @@ func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID int64, isBot bool, b
 		}
 		if pos < 0 {
 			return 0, errors.New("invalid assigned position")
-		}
-		if pos > 3 {
-			return 0, fmt.Errorf("assigned position out of range: %d", pos)
 		}
 		return pos, nil
 	}
@@ -136,6 +144,18 @@ func UpdatePlayerHandTx(tx *sql.Tx, gameID, userID int64, handJSON string) error
 // This makes initial dealing persistence idempotent.
 func UpdatePlayerHandIfEmpty(db *sql.DB, gameID, userID int64, handJSON string) (bool, error) {
 	res, err := db.Exec(`UPDATE game_players SET hand = ? WHERE game_id = ? AND user_id = ? AND hand = '[]'`, handJSON, gameID, userID)
+	if err != nil {
+		return false, err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return ra > 0, nil
+}
+
+func UpdatePlayerHandIfEmptyTx(tx *sql.Tx, gameID, userID int64, handJSON string) (bool, error) {
+	res, err := tx.Exec(`UPDATE game_players SET hand = ? WHERE game_id = ? AND user_id = ? AND hand = '[]'`, handJSON, gameID, userID)
 	if err != nil {
 		return false, err
 	}

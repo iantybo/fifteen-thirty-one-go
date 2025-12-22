@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"fifteen-thirty-one-go/backend/internal/game/common"
+	"fifteen-thirty-one-go/backend/internal/models"
 )
 
 // A minimal server-authoritative cribbage state model.
@@ -34,15 +35,16 @@ type State struct {
 }
 
 func NewState(players int) *State {
+	r := DefaultRules(players)
 	st := &State{
-		Rules:        DefaultRules(players),
+		Rules:        r,
 		DealerIndex:  0,
 		CurrentIndex: 0,
 		LastPlayIndex: -1,
-		Hands:        make([][]common.Card, players),
-		KeptHands:    make([][]common.Card, players),
+		Hands:        make([][]common.Card, r.MaxPlayers),
+		KeptHands:    make([][]common.Card, r.MaxPlayers),
 		Crib:         []common.Card{},
-		Scores:       make([]int, players),
+		Scores:       make([]int, r.MaxPlayers),
 		Stage:        "dealing",
 	}
 	st.DiscardCompleted = make([]bool, st.Rules.MaxPlayers)
@@ -86,16 +88,16 @@ func (s *State) Deal() error {
 
 func (s *State) Discard(player int, cards []common.Card) error {
 	if s.Stage != "discard" {
-		return errors.New("not in discard stage")
+		return models.ErrNotInDiscardStage
 	}
 	if player < 0 || player >= s.Rules.MaxPlayers {
-		return errors.New("invalid player")
+		return models.ErrInvalidPlayer
 	}
 	if len(s.DiscardCompleted) == s.Rules.MaxPlayers && s.DiscardCompleted[player] {
-		return errors.New("discard already completed")
+		return models.ErrDiscardAlreadyCompleted
 	}
 	if len(cards) != s.Rules.DiscardCount() {
-		return errors.New("invalid discard count")
+		return models.ErrInvalidDiscardCount
 	}
 	// remove cards from hand
 	for _, dc := range cards {
@@ -107,7 +109,7 @@ func (s *State) Discard(player int, cards []common.Card) error {
 			}
 		}
 		if found < 0 {
-			return errors.New("discard card not in hand")
+			return models.ErrDiscardCardNotInHand
 		}
 		s.Hands[player] = append(s.Hands[player][:found], s.Hands[player][found+1:]...)
 		s.Crib = append(s.Crib, dc)
@@ -159,10 +161,10 @@ func (s *State) Discard(player int, cards []common.Card) error {
 
 func (s *State) PlayPeggingCard(player int, card common.Card) (score int, reasons []string, err error) {
 	if s.Stage != "pegging" {
-		return 0, nil, errors.New("not in pegging stage")
+		return 0, nil, models.ErrNotInPeggingStage
 	}
 	if player != s.CurrentIndex {
-		return 0, nil, errors.New("not your turn")
+		return 0, nil, models.ErrNotYourTurn
 	}
 	// validate card is in hand
 	found := -1
@@ -173,10 +175,10 @@ func (s *State) PlayPeggingCard(player int, card common.Card) (score int, reason
 		}
 	}
 	if found < 0 {
-		return 0, nil, errors.New("card not in hand")
+		return 0, nil, models.ErrCardNotInHand
 	}
 	if s.PeggingTotal+card.Value15() > 31 {
-		return 0, nil, errors.New("would exceed 31")
+		return 0, nil, models.ErrWouldExceed31
 	}
 
 	points, newTotal, reasons := PeggingScore(s.PeggingSeq, card, s.PeggingTotal)
@@ -207,13 +209,13 @@ func (s *State) PlayPeggingCard(player int, card common.Card) (score int, reason
 
 func (s *State) Go(player int) (awarded int, err error) {
 	if s.Stage != "pegging" {
-		return 0, errors.New("not in pegging stage")
+		return 0, models.ErrNotInPeggingStage
 	}
 	if player != s.CurrentIndex {
-		return 0, errors.New("not your turn")
+		return 0, models.ErrNotYourTurn
 	}
 	if s.canPlay(player) {
-		return 0, errors.New("you have a legal play")
+		return 0, models.ErrHasLegalPlay
 	}
 	s.PeggingPassed[player] = true
 	s.CurrentIndex = (s.CurrentIndex + 1) % s.Rules.MaxPlayers

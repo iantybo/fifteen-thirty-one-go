@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strings"
 
 	"fifteen-thirty-one-go/backend/internal/models"
 
@@ -24,34 +23,52 @@ func writeAPIError(c *gin.Context, err error) {
 		return
 	}
 
-	// Safe string-mapped validation / permission / conflict errors (do NOT echo raw errors).
+	// Safe typed validation / permission / conflict errors (do NOT echo raw errors).
 	switch {
-	case strings.Contains(err.Error(), "invalid json"):
+	case errors.Is(err, models.ErrInvalidJSON):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
 		return
-	case strings.Contains(err.Error(), "invalid card"):
+	case errors.Is(err, models.ErrInvalidCard):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid card"})
 		return
-	case strings.Contains(err.Error(), "not a player"):
+	case errors.Is(err, models.ErrNotAPlayer):
 		c.JSON(http.StatusForbidden, gin.H{"error": "not a player"})
 		return
-	case strings.Contains(err.Error(), "not your turn"):
+	case errors.Is(err, models.ErrNotYourTurn):
 		c.JSON(http.StatusConflict, gin.H{"error": "not your turn"})
 		return
-	case strings.Contains(err.Error(), "not in pegging stage"):
+	case errors.Is(err, models.ErrNotInPeggingStage):
 		c.JSON(http.StatusConflict, gin.H{"error": "not in pegging stage"})
 		return
-	case strings.Contains(err.Error(), "would exceed 31"):
+	case errors.Is(err, models.ErrWouldExceed31):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "move would exceed 31"})
 		return
-	case strings.Contains(err.Error(), "card not in hand"):
+	case errors.Is(err, models.ErrCardNotInHand):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "card not in hand"})
 		return
-	case strings.Contains(err.Error(), "not in discard stage"):
+	case errors.Is(err, models.ErrNotInDiscardStage):
 		c.JSON(http.StatusConflict, gin.H{"error": "not in discard stage"})
 		return
-	case strings.Contains(err.Error(), "discard card not in hand"):
+	case errors.Is(err, models.ErrDiscardCardNotInHand):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "discard card not in hand"})
+		return
+	case errors.Is(err, models.ErrDiscardAlreadyCompleted):
+		c.JSON(http.StatusConflict, gin.H{"error": "discard already completed"})
+		return
+	case errors.Is(err, models.ErrInvalidDiscardCount):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid discard count"})
+		return
+	case errors.Is(err, models.ErrInvalidPlayer):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid player"})
+		return
+	case errors.Is(err, models.ErrInvalidPlayerPosition):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid player position"})
+		return
+	case errors.Is(err, models.ErrUnknownMoveType):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown move type"})
+		return
+	case errors.Is(err, models.ErrHasLegalPlay):
+		c.JSON(http.StatusConflict, gin.H{"error": "you have a legal play"})
 		return
 	}
 
