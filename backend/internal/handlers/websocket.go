@@ -1,0 +1,208 @@
+package handlers
+
+import (
+	"database/sql"
+	"encoding/json"
+	"log"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"fifteen-thirty-one-go/backend/internal/auth"
+	"fifteen-thirty-one-go/backend/internal/config"
+	ws "fifteen-thirty-one-go/backend/pkg/websocket"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
+)
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin == "" {
+			// Non-browser clients (no Origin) are allowed.
+			return true
+		}
+		if cfgDevAllowAll() {
+			return true
+		}
+		if cfgIsDev() {
+			return isLocalhostOrigin(origin) || isAllowedOrigin(origin)
+		}
+		return isAllowedOrigin(origin)
+	},
+}
+
+// set by config at startup
+var originMu sync.RWMutex
+var allowedOrigins = map[string]bool{}
+var devMode = false
+var devAllowAll = false
+
+func SetWebSocketOriginPolicy(isDev bool, allowAllDev bool, origins []string) {
+	originMu.Lock()
+	defer originMu.Unlock()
+	devMode = isDev
+	devAllowAll = allowAllDev
+	allowedOrigins = map[string]bool{}
+	for _, o := range origins {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			allowedOrigins[o] = true
+		}
+	}
+}
+
+func cfgIsDev() bool {
+	originMu.RLock()
+	defer originMu.RUnlock()
+	return devMode
+}
+func cfgDevAllowAll() bool {
+	originMu.RLock()
+	defer originMu.RUnlock()
+	return devMode && devAllowAll
+}
+func isAllowedOrigin(origin string) bool {
+	originMu.RLock()
+	defer originMu.RUnlock()
+	return allowedOrigins[origin]
+}
+
+func isLocalhostOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
+// WebSocketHandler upgrades the connection and registers the client.
+// Full message routing is implemented in Phase 4.
+func WebSocketHandler(hub *ws.Hub, db *sql.DB, cfg config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := tokenFromHeaderOrQuery(c, cfg)
+		if token == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			return
+		}
+		claims, err := auth.ParseAndValidateToken(token, cfg)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
+
+		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			return
+		}
+
+		room := strings.TrimSpace(c.Query("room"))
+		if room == "" {
+			room = "lobby:global"
+		}
+		client := ws.NewClient(conn, hub, room, claims.UserID)
+		hub.Register(client)
+
+		go client.WritePump()
+		go client.ReadPump(func(msg []byte) {
+			handleWSMessage(hub, client, db, msg)
+		})
+
+		// Send a direct "connected" ack.
+		_ = sendDirect(client, "connected", map[string]any{
+			"user_id": client.UserID,
+			"room":    room,
+		})
+	}
+}
+
+type inboundMessage struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
+	var in inboundMessage
+	if err := json.Unmarshal(msg, &in); err != nil {
+		_ = sendDirect(client, "error", map[string]any{"error": "invalid json"})
+		return
+	}
+
+	switch in.Type {
+	case "join_room":
+		var p struct {
+			Room string `json:"room"`
+		}
+		if err := json.Unmarshal(in.Payload, &p); err != nil || strings.TrimSpace(p.Room) == "" {
+			_ = sendDirect(client, "error", map[string]any{"error": "invalid room"})
+			return
+		}
+		hub.Join(client, strings.TrimSpace(p.Room))
+		_ = sendDirect(client, "joined_room", map[string]any{"room": p.Room})
+	case "move":
+		var p struct {
+			GameID int64      `json:"game_id"`
+			Move   moveRequest `json:"move"`
+		}
+		if err := json.Unmarshal(in.Payload, &p); err != nil || p.GameID <= 0 {
+			_ = sendDirect(client, "error", map[string]any{"error": "invalid move payload"})
+			return
+		}
+		resp, err := ApplyMove(db, p.GameID, client.UserID, p.Move)
+		if err != nil {
+			// Avoid leaking internal details; ApplyMove errors are mapped in HTTP handlers only.
+			_ = sendDirect(client, "error", map[string]any{"error": "invalid move"})
+			return
+		}
+		_ = sendDirect(client, "move_ok", resp)
+
+		// Broadcast updated snapshot to the game room.
+		snap, err := BuildGameSnapshotPublic(db, p.GameID)
+		if err == nil {
+			hub.Broadcast("game:"+strconv.FormatInt(p.GameID, 10), "game_update", snap)
+		}
+	default:
+		_ = sendDirect(client, "error", map[string]any{"error": "unknown message type"})
+	}
+}
+
+func sendDirect(c *ws.Client, typ string, payload any) error {
+	msg := map[string]any{
+		"type":      typ,
+		"payload":   payload,
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	select {
+	case c.Send <- b:
+	default:
+		log.Printf("ws send drop: user_id=%d room=%s type=%s", c.UserID, c.Room, typ)
+	}
+	return nil
+}
+
+func tokenFromHeaderOrQuery(c *gin.Context, cfg config.Config) string {
+	authz := c.GetHeader("Authorization")
+	if authz != "" {
+		parts := strings.SplitN(authz, " ", 2)
+		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+			return strings.TrimSpace(parts[1])
+		}
+	}
+	if cfg.WSAllowQueryTokens {
+		return strings.TrimSpace(c.Query("token"))
+	}
+	return ""
+}
+
+
