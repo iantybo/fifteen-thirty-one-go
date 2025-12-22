@@ -90,4 +90,16 @@ func JoinLobby(db *sql.DB, lobbyID int64) (*Lobby, error) {
 	return GetLobbyByID(db, lobbyID)
 }
 
+// DecrementLobbyCurrentPlayers decrements current_players by 1, but never below 0.
+// Used as a compensating action when a join flow fails after incrementing.
+func DecrementLobbyCurrentPlayers(db *sql.DB, lobbyID int64) error {
+	_, err := db.Exec(
+		`UPDATE lobbies
+		 SET current_players = CASE WHEN current_players > 0 THEN current_players - 1 ELSE 0 END
+		 WHERE id = ?`,
+		lobbyID,
+	)
+	return err
+}
+
 

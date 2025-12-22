@@ -29,7 +29,7 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 		return nil, errors.New("no players")
 	}
 
-	st, unlock, err := ensureGameStateLocked(gameID, len(players))
+	st, unlock, err := ensureGameStateLocked(db, gameID, players)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func BuildGameSnapshotPublic(db *sql.DB, gameID int64) (*GameSnapshot, error) {
 	if len(players) == 0 {
 		return nil, errors.New("no players")
 	}
-	st, unlock, err := ensureGameStateLocked(gameID, len(players))
+	st, unlock, err := ensureGameStateLocked(db, gameID, players)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		return nil, errors.New("not a player in this game")
 	}
 
-	st, unlock, err := ensureGameStateLocked(gameID, len(players))
+	st, unlock, err := ensureGameStateLocked(db, gameID, players)
 	if err != nil {
 		return nil, err
 	}
@@ -183,12 +183,30 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 	}
 }
 
-func ensureGameStateLocked(gameID int64, playerCount int) (*cribbage.State, func(), error) {
+func ensureGameStateLocked(db *sql.DB, gameID int64, players []models.GamePlayer) (*cribbage.State, func(), error) {
+	playerCount := len(players)
 	return defaultGameManager.GetOrCreateLocked(gameID, func() (*cribbage.State, error) {
 		tmp := cribbage.NewState(playerCount)
 		if err := tmp.Deal(); err != nil {
 			return nil, err
 		}
+
+		// Persist initial dealt hands immediately so a restart doesn't lose the deal.
+		// This is idempotent: it only updates rows whose hand is still the default '[]'.
+		for _, p := range players {
+			pos := int(p.Position)
+			if pos < 0 || pos >= len(tmp.Hands) {
+				return nil, errors.New("invalid player position")
+			}
+			b, err := json.Marshal(tmp.Hands[pos])
+			if err != nil {
+				return nil, err
+			}
+			if _, err := models.UpdatePlayerHandIfEmpty(db, gameID, p.UserID, string(b)); err != nil {
+				return nil, err
+			}
+		}
+
 		return tmp, nil
 	})
 }

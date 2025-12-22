@@ -131,7 +131,12 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 		var breakdown any
 		switch req.Kind {
 		case "hand":
-			bd := cribbage.ScoreHand(st.KeptHands[pos], *st.Cut, false)
+			posIdx := int(pos)
+			if posIdx < 0 || posIdx >= len(st.KeptHands) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid player position"})
+				return
+			}
+			bd := cribbage.ScoreHand(st.KeptHands[posIdx], *st.Cut, false)
 			verified = int64(bd.Total)
 			breakdown = bd
 		case "crib":
@@ -241,12 +246,4 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"verified": verified})
 	}
 }
-
-func ensurePlayerCount(players []models.GamePlayer) error {
-	if len(players) < 2 || len(players) > 4 {
-		return errors.New("invalid player count")
-	}
-	return nil
-}
-
 

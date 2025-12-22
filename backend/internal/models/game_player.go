@@ -96,6 +96,20 @@ func UpdatePlayerHand(db *sql.DB, gameID, userID int64, handJSON string) error {
 	return err
 }
 
+// UpdatePlayerHandIfEmpty sets the hand only when it is still the default '[]'.
+// This makes initial dealing persistence idempotent.
+func UpdatePlayerHandIfEmpty(db *sql.DB, gameID, userID int64, handJSON string) (bool, error) {
+	res, err := db.Exec(`UPDATE game_players SET hand = ? WHERE game_id = ? AND user_id = ? AND hand = '[]'`, handJSON, gameID, userID)
+	if err != nil {
+		return false, err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return ra > 0, nil
+}
+
 func UpdatePlayerScore(db *sql.DB, gameID, userID int64, score int64) error {
 	_, err := db.Exec(`UPDATE game_players SET score = ? WHERE game_id = ? AND user_id = ?`, score, gameID, userID)
 	return err

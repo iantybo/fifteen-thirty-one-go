@@ -53,10 +53,11 @@ func (m *GameManager) Delete(gameID int64) {
 		return
 	}
 	e.mu.Lock()
-	delete(m.games, gameID)
-	m.mu.Unlock()
+	// While holding both locks, make the entry inert and remove it from the map.
 	e.state = nil
+	delete(m.games, gameID)
 	e.mu.Unlock()
+	m.mu.Unlock()
 }
 
 func (m *GameManager) GetOrCreateLocked(gameID int64, createFn func() (*cribbage.State, error)) (*cribbage.State, func(), error) {

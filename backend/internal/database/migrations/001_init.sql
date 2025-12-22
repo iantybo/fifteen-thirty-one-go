@@ -24,8 +24,10 @@ CREATE TABLE IF NOT EXISTS lobbies (
   current_players INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'waiting',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(host_id) REFERENCES users(id)
+  FOREIGN KEY(host_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_lobbies_host_id ON lobbies(host_id);
 
 -- games
 CREATE TABLE IF NOT EXISTS games (
@@ -36,10 +38,12 @@ CREATE TABLE IF NOT EXISTS games (
   dealer_id INTEGER,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   finished_at TIMESTAMP,
-  FOREIGN KEY(lobby_id) REFERENCES lobbies(id),
-  FOREIGN KEY(current_player_id) REFERENCES users(id),
-  FOREIGN KEY(dealer_id) REFERENCES users(id)
+  FOREIGN KEY(lobby_id) REFERENCES lobbies(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY(current_player_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+  FOREIGN KEY(dealer_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_games_lobby_id ON games(lobby_id);
 
 -- game_players
 CREATE TABLE IF NOT EXISTS game_players (
@@ -52,9 +56,11 @@ CREATE TABLE IF NOT EXISTS game_players (
   is_bot BOOLEAN NOT NULL DEFAULT 0,
   bot_difficulty TEXT,
   PRIMARY KEY (game_id, user_id),
-  FOREIGN KEY(game_id) REFERENCES games(id),
-  FOREIGN KEY(user_id) REFERENCES users(id)
+  FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_game_players_user_id ON game_players(user_id);
 
 -- game_moves
 CREATE TABLE IF NOT EXISTS game_moves (
@@ -67,11 +73,12 @@ CREATE TABLE IF NOT EXISTS game_moves (
   score_verified INTEGER,
   is_corrected BOOLEAN NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(game_id) REFERENCES games(id),
-  FOREIGN KEY(player_id) REFERENCES users(id)
+  FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY(player_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_game_moves_game_id_created_at ON game_moves(game_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_game_moves_player_id ON game_moves(player_id);
 
 -- scoreboard
 CREATE TABLE IF NOT EXISTS scoreboard (
@@ -81,8 +88,8 @@ CREATE TABLE IF NOT EXISTS scoreboard (
   final_score INTEGER NOT NULL,
   position INTEGER NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(user_id) REFERENCES users(id),
-  FOREIGN KEY(game_id) REFERENCES games(id)
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_scoreboard_user_id_created_at ON scoreboard(user_id, created_at);

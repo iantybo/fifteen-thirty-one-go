@@ -120,13 +120,17 @@ func (h *Hub) broadcastToRoom(room, typ string, payload any) {
 		return
 	}
 
+	var deadClients []*Client
 	for c := range clients {
 		select {
 		case c.Send <- data:
 		default:
 			// Backpressure / dead client.
-			h.removeClient(c)
+			deadClients = append(deadClients, c)
 		}
+	}
+	for _, c := range deadClients {
+		h.removeClient(c)
 	}
 }
 

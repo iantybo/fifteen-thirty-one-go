@@ -182,6 +182,9 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		nextPos, err := models.AddGamePlayerAutoPosition(db, gameID, userID, false, nil)
 		if err != nil {
 			log.Printf("AddGamePlayerAutoPosition failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
+			if derr := models.DecrementLobbyCurrentPlayers(db, lobbyID); derr != nil {
+				log.Printf("JoinLobby rollback decrement failed: lobby_id=%d user_id=%d err=%v", lobbyID, userID, derr)
+			}
 			c.JSON(http.StatusBadRequest, gin.H{"error": "unable to join game"})
 			return
 		}
