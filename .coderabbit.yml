@@ -23,7 +23,8 @@ reviews:
   high_level_summary_in_walkthrough: false
 
   # Auto title settings
-  auto_title_placeholder: "@coderabbitai"
+  # auto_title_placeholder: "@coderabbitai"
+  auto_title_placeholder: "[cr]"
   auto_title_instructions: ""
 
   # Review status and commit status
