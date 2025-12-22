@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"fifteen-thirty-one-go/backend/internal/game/common"
 	"fifteen-thirty-one-go/backend/internal/game/cribbage"
 	"fifteen-thirty-one-go/backend/internal/models"
 
@@ -112,6 +114,16 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 				return
 			}
 		}
+		// Persist full engine state for restart recovery.
+		if sb, err := json.Marshal(st); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		} else {
+			if err := models.UpdateGameStateTx(tx, gameID, string(sb)); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+		}
 
 		if err := tx.Commit(); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
@@ -164,9 +176,9 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 				c.JSON(http.StatusNotFound, gin.H{"error": "lobby not found"})
 				return
 			}
-			if err.Error() == "lobby full" {
+			if errors.Is(err, models.ErrLobbyFull) {
 				msg = "lobby full"
-			} else if err.Error() == "lobby not joinable" {
+			} else if errors.Is(err, models.ErrLobbyNotJoinable) {
 				msg = "lobby not joinable"
 			}
 			log.Printf("JoinLobbyTx failed: lobby_id=%d user_id=%d err=%v", lobbyID, userID, err)
@@ -182,16 +194,6 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Ensure in-memory game state exists before committing the join and keep it locked
-		// until after we persist the joining player's hand, so state cannot change between
-		// position assignment and hand persistence.
-		st, unlock, ok := defaultGameManager.GetLocked(gameID)
-		if !ok {
-			c.JSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
-			return
-		}
-		defer unlock()
-
 		nextPos, err := models.AddGamePlayerAutoPositionTx(tx, gameID, userID, false, nil)
 		if err != nil {
 			log.Printf("AddGamePlayerAutoPositionTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
@@ -199,23 +201,66 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Persist joining player's hand under the same transaction to keep DB consistent.
-		if int(nextPos) < len(st.Hands) {
-			if b, err := json.Marshal(st.Hands[nextPos]); err == nil {
-				if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, userID, string(b)); err != nil {
-					log.Printf("UpdatePlayerHandIfEmptyTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-					return
+		// Persist joining player's initial hand WITHOUT taking the in-memory state lock.
+		// Use the persisted engine state in DB (if present) to keep lock ordering DB -> memory.
+		var handJSON string
+		var handJSONOk bool
+		var stateJSON string
+		var stateJSONOk bool
+		var s sql.NullString
+		if err := tx.QueryRow(`SELECT state_json FROM games WHERE id = ?`, gameID).Scan(&s); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if s.Valid && strings.TrimSpace(s.String) != "" {
+			stateJSON = s.String
+			stateJSONOk = true
+
+			var restored cribbage.State
+			if err := json.Unmarshal([]byte(stateJSON), &restored); err == nil {
+				if int(nextPos) >= 0 && int(nextPos) < len(restored.Hands) {
+					if b, err := json.Marshal(restored.Hands[nextPos]); err == nil {
+						handJSON = string(b)
+						handJSONOk = true
+						if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, userID, handJSON); err != nil {
+							log.Printf("UpdatePlayerHandIfEmptyTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
+							c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+							return
+						}
+					} else {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+						return
+					}
 				}
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-				return
 			}
 		}
 
 		if err := tx.Commit(); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
+		}
+
+		// After commit, briefly acquire the in-memory lock to keep runtime state aligned with DB.
+		// No DB operations while holding this lock.
+		if stateJSONOk {
+			st, unlock, ok := defaultGameManager.GetLocked(gameID)
+			if ok {
+				if handJSONOk {
+					var h []common.Card
+					if err := json.Unmarshal([]byte(handJSON), &h); err == nil {
+						if int(nextPos) >= 0 && int(nextPos) < len(st.Hands) {
+							st.Hands[nextPos] = h
+						}
+					}
+				}
+				unlock()
+			} else {
+				// Restore full state from DB snapshot if runtime state is missing (e.g., restart).
+				var restored cribbage.State
+				if err := json.Unmarshal([]byte(stateJSON), &restored); err == nil {
+					defaultGameManager.Set(gameID, &restored)
+				}
+			}
 		}
 
 		c.JSON(http.StatusOK, gin.H{"lobby": l, "game_id": gameID})

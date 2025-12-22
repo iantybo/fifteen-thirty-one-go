@@ -18,7 +18,9 @@ type State struct {
 	CurrentIndex int `json:"current_index"`
 	LastPlayIndex int `json:"last_play_index"`
 
-	Deck []common.Card `json:"-"`
+	// Deck is persisted for crash/restart recovery but never exposed to clients
+	// (handlers intentionally omit it from public snapshots).
+	Deck []common.Card `json:"deck,omitempty"`
 	Cut  *common.Card  `json:"cut,omitempty"`
 
 	Hands [][]common.Card `json:"hands"` // per player
@@ -313,16 +315,37 @@ func (s *State) maybeFinishRound() error {
 		return fmt.Errorf("missing cut card")
 	}
 
-	// Count each hand (non-crib), then dealer counts crib.
-	for i := 0; i < s.Rules.MaxPlayers; i++ {
+	// Count hands in official order:
+	// 1) Players left of dealer (clockwise) up to dealer
+	// 2) Dealer's hand
+	// 3) Dealer's crib
+	//
+	// We must check for a winner immediately after each hand/crib is counted so
+	// the first player to reach 121 wins (no "overcount" by later hands).
+	for off := 1; off < s.Rules.MaxPlayers; off++ {
+		i := (s.DealerIndex + off) % s.Rules.MaxPlayers
 		b := ScoreHand(s.KeptHands[i], *s.Cut, false)
 		s.Scores[i] += b.Total
-	}
-	crib := ScoreHand(s.Crib, *s.Cut, true)
-	s.Scores[s.DealerIndex] += crib.Total
-
-	for i := 0; i < s.Rules.MaxPlayers; i++ {
 		if s.Scores[i] >= 121 {
+			s.Stage = "finished"
+			return nil
+		}
+	}
+	// Dealer hand
+	{
+		i := s.DealerIndex
+		b := ScoreHand(s.KeptHands[i], *s.Cut, false)
+		s.Scores[i] += b.Total
+		if s.Scores[i] >= 121 {
+			s.Stage = "finished"
+			return nil
+		}
+	}
+	// Crib (dealer)
+	{
+		crib := ScoreHand(s.Crib, *s.Cut, true)
+		s.Scores[s.DealerIndex] += crib.Total
+		if s.Scores[s.DealerIndex] >= 121 {
 			s.Stage = "finished"
 			return nil
 		}

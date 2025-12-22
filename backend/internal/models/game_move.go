@@ -115,4 +115,34 @@ func ListMovesByGame(db *sql.DB, gameID int64, limit int64) ([]GameMove, error) 
 	return out, rows.Err()
 }
 
+func MarkMoveAsCorrected(db *sql.DB, moveID int64) error {
+	res, err := db.Exec(`UPDATE game_moves SET is_corrected = 1 WHERE id = ?`, moveID)
+	if err != nil {
+		return err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func MarkMoveAsCorrectedTx(tx *sql.Tx, moveID int64) error {
+	res, err := tx.Exec(`UPDATE game_moves SET is_corrected = 1 WHERE id = ?`, moveID)
+	if err != nil {
+		return err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 

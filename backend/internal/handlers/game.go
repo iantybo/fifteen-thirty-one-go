@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"fifteen-thirty-one-go/backend/internal/game/common"
 	"fifteen-thirty-one-go/backend/internal/game/cribbage"
 	"fifteen-thirty-one-go/backend/internal/models"
 
@@ -39,6 +40,10 @@ func GetGameHandler(db *sql.DB) gin.HandlerFunc {
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+				return
+			}
+			if errors.Is(err, models.ErrGameStateMissing) {
+				c.JSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
@@ -105,11 +110,20 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "game not ready"})
 			return
 		}
-		defer unlock()
 		if st.Cut == nil {
+			unlock()
 			c.JSON(http.StatusBadRequest, gin.H{"error": "game not ready"})
 			return
 		}
+		// Copy the minimal read-only fields we need, then release the lock before DB work.
+		cut := *st.Cut
+		dealerIndex := st.DealerIndex
+		keptHands := make([][]common.Card, len(st.KeptHands))
+		for i := range st.KeptHands {
+			keptHands[i] = append([]common.Card(nil), st.KeptHands[i]...)
+		}
+		crib := append([]common.Card(nil), st.Crib...)
+		unlock()
 
 		players, err := models.ListGamePlayersByGame(db, gameID)
 		if err != nil {
@@ -133,19 +147,19 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 		switch req.Kind {
 		case "hand":
 			posIdx := int(pos)
-			if posIdx < 0 || posIdx >= len(st.KeptHands) {
+			if posIdx < 0 || posIdx >= len(keptHands) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid player position"})
 				return
 			}
-			bd := cribbage.ScoreHand(st.KeptHands[posIdx], *st.Cut, false)
+			bd := cribbage.ScoreHand(keptHands[posIdx], cut, false)
 			verified = int64(bd.Total)
 			breakdown = bd
 		case "crib":
-			if int(pos) != st.DealerIndex {
+			if int(pos) != dealerIndex {
 				c.JSON(http.StatusForbidden, gin.H{"error": "only dealer counts crib"})
 				return
 			}
-			bd := cribbage.ScoreHand(st.Crib, *st.Cut, true)
+			bd := cribbage.ScoreHand(crib, cut, true)
 			verified = int64(bd.Total)
 			breakdown = bd
 		default:
@@ -240,9 +254,24 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Mark original move as corrected before inserting the correction (atomic via tx).
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("CorrectHandler begin tx failed: move_id=%d err=%v", req.MoveID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		defer tx.Rollback()
+
+		if err := models.MarkMoveAsCorrectedTx(tx, req.MoveID); err != nil {
+			log.Printf("MarkMoveAsCorrected failed: move_id=%d err=%v", req.MoveID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
 		verified := *prev.ScoreVerified
 		newClaim := req.NewClaim
-		if _, err := models.InsertMove(db, models.GameMove{
+		if err := models.InsertMoveTx(tx, models.GameMove{
 			GameID:        gameID,
 			PlayerID:      userID,
 			MoveType:      prev.MoveType + "_correct",
@@ -250,6 +279,12 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 			ScoreVerified: &verified,
 			IsCorrected:   true,
 		}); err != nil {
+			log.Printf("InsertMoveTx (correction) failed: game_id=%d move_id=%d err=%v", gameID, req.MoveID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			log.Printf("CorrectHandler commit failed: move_id=%d err=%v", req.MoveID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}

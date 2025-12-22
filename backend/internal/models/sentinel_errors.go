@@ -18,6 +18,9 @@ var (
 	ErrHasLegalPlay              = errors.New("you have a legal play")
 	ErrInvalidDiscardCount       = errors.New("invalid discard count")
 	ErrInvalidPlayer             = errors.New("invalid player")
+	ErrLobbyFull                 = errors.New("lobby full")
+	ErrLobbyNotJoinable          = errors.New("lobby not joinable")
+	ErrGameStateMissing          = errors.New("persisted game state missing")
 )
 
 

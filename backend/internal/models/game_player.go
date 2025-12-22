@@ -31,7 +31,7 @@ func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, bot
 			`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty)
 			 SELECT ?, ?, COALESCE(MAX(position), -1) + 1, ?, ?
 			 FROM game_players WHERE game_id = ?
-			 HAVING COALESCE(MAX(position), -1) + 1 <= 3`,
+			 HAVING COALESCE(MAX(position), -1) + 1 <= 2`,
 			gameID, userID, boolToInt(isBot), botDifficulty, gameID,
 		)
 		if err != nil {
@@ -62,39 +62,37 @@ func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, bot
 }
 
 func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID int64, isBot bool, botDifficulty *string) (int64, error) {
-	// Retry on unique position collision (due to concurrent joins).
-	for attempt := 0; attempt < 3; attempt++ {
-		res, err := tx.Exec(
-			`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty)
-			 SELECT ?, ?, COALESCE(MAX(position), -1) + 1, ?, ?
-			 FROM game_players WHERE game_id = ?
-			 HAVING COALESCE(MAX(position), -1) + 1 <= 3`,
-			gameID, userID, boolToInt(isBot), botDifficulty, gameID,
-		)
-		if err != nil {
-			if IsUniqueConstraint(err) && attempt < 2 {
-				continue
-			}
-			return 0, err
-		}
-		ra, err := res.RowsAffected()
-		if err != nil {
-			return 0, err
-		}
-		if ra == 0 {
-			return 0, errors.New("could not allocate position")
-		}
-
-		var pos int64
-		if err := tx.QueryRow(`SELECT position FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&pos); err != nil {
-			return 0, err
-		}
-		if pos < 0 {
-			return 0, errors.New("invalid assigned position")
-		}
-		return pos, nil
+	// Do a single insert attempt.
+	//
+	// Important: do NOT retry inside this transaction on unique-constraint errors.
+	// In SQLite, a constraint violation can abort the transaction; callers that
+	// want retries must do so by starting a new transaction.
+	res, err := tx.Exec(
+		`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty)
+		 SELECT ?, ?, COALESCE(MAX(position), -1) + 1, ?, ?
+		 FROM game_players WHERE game_id = ?
+		 HAVING COALESCE(MAX(position), -1) + 1 <= 2`,
+		gameID, userID, boolToInt(isBot), botDifficulty, gameID,
+	)
+	if err != nil {
+		return 0, err
 	}
-	return 0, errors.New("could not allocate position")
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if ra == 0 {
+		return 0, errors.New("could not allocate position")
+	}
+
+	var pos int64
+	if err := tx.QueryRow(`SELECT position FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&pos); err != nil {
+		return 0, err
+	}
+	if pos < 0 {
+		return 0, errors.New("invalid assigned position")
+	}
+	return pos, nil
 }
 
 func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {

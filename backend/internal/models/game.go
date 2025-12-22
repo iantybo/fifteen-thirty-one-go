@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -77,6 +78,26 @@ func SetCurrentPlayer(db *sql.DB, gameID int64, userID int64) error {
 
 func SetDealer(db *sql.DB, gameID int64, dealerID int64) error {
 	_, err := db.Exec(`UPDATE games SET dealer_id = ? WHERE id = ?`, dealerID, gameID)
+	return err
+}
+
+// GetGameStateJSON returns the persisted cribbage state JSON for a game.
+// ok=false when no state is stored yet (backwards compatible).
+func GetGameStateJSON(db *sql.DB, gameID int64) (stateJSON string, ok bool, err error) {
+	var s sql.NullString
+	if err := db.QueryRow(`SELECT state_json FROM games WHERE id = ?`, gameID).Scan(&s); errors.Is(err, sql.ErrNoRows) {
+		return "", false, ErrNotFound
+	} else if err != nil {
+		return "", false, err
+	}
+	if !s.Valid || strings.TrimSpace(s.String) == "" {
+		return "", false, nil
+	}
+	return s.String, true, nil
+}
+
+func UpdateGameStateTx(tx *sql.Tx, gameID int64, stateJSON string) error {
+	_, err := tx.Exec(`UPDATE games SET state_json = ? WHERE id = ?`, stateJSON, gameID)
 	return err
 }
 

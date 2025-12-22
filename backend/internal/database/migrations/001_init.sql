@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS lobbies (
   host_id INTEGER NOT NULL,
   max_players INTEGER NOT NULL,
   current_players INTEGER NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'waiting',
+  status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'in_progress', 'finished')),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(host_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_lobbies_host_id ON lobbies(host_id);
 CREATE TABLE IF NOT EXISTS games (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   lobby_id INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'waiting',
+  status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'playing', 'finished')),
   current_player_id INTEGER,
   dealer_id INTEGER,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -58,7 +58,39 @@ CREATE TABLE IF NOT EXISTS game_players (
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+-- Ensure each position within a game is assigned to at most one user.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_game_players_game_id_position
+ON game_players(game_id, position);
+
 CREATE INDEX IF NOT EXISTS idx_game_players_user_id ON game_players(user_id);
+
+-- Keep lobbies.current_players consistent with game_players rows (via games.lobby_id).
+-- This defends against drift and makes the denormalized count reliable.
+CREATE TRIGGER IF NOT EXISTS trg_lobbies_current_players_after_game_players_insert
+AFTER INSERT ON game_players
+BEGIN
+  UPDATE lobbies
+    SET current_players = (
+      SELECT COUNT(*)
+      FROM game_players gp
+      JOIN games g ON g.id = gp.game_id
+      WHERE g.lobby_id = (SELECT lobby_id FROM games WHERE id = NEW.game_id)
+    )
+  WHERE id = (SELECT lobby_id FROM games WHERE id = NEW.game_id);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_lobbies_current_players_after_game_players_delete
+AFTER DELETE ON game_players
+BEGIN
+  UPDATE lobbies
+    SET current_players = (
+      SELECT COUNT(*)
+      FROM game_players gp
+      JOIN games g ON g.id = gp.game_id
+      WHERE g.lobby_id = (SELECT lobby_id FROM games WHERE id = OLD.game_id)
+    )
+  WHERE id = (SELECT lobby_id FROM games WHERE id = OLD.game_id);
+END;
 
 -- game_moves
 CREATE TABLE IF NOT EXISTS game_moves (
@@ -89,6 +121,10 @@ CREATE TABLE IF NOT EXISTS scoreboard (
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
   FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+-- Ensure each final standings position within a game is assigned to at most one user.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scoreboard_game_id_position
+ON scoreboard(game_id, position);
 
 CREATE INDEX IF NOT EXISTS idx_scoreboard_user_id_created_at ON scoreboard(user_id, created_at);
 

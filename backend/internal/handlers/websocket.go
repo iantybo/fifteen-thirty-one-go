@@ -144,8 +144,9 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 			_ = sendDirect(client, "error", map[string]any{"error": "invalid room"})
 			return
 		}
-		hub.Join(client, strings.TrimSpace(p.Room))
-		_ = sendDirect(client, "joined_room", map[string]any{"room": p.Room})
+		room := strings.TrimSpace(p.Room)
+		hub.Join(client, room)
+		_ = sendDirect(client, "joined_room", map[string]any{"room": room})
 	case "move":
 		var p struct {
 			GameID int64      `json:"game_id"`
@@ -167,6 +168,8 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 		snap, err := BuildGameSnapshotPublic(db, p.GameID)
 		if err == nil {
 			hub.Broadcast("game:"+strconv.FormatInt(p.GameID, 10), "game_update", snap)
+		} else {
+			log.Printf("BuildGameSnapshotPublic failed: game_id=%d err=%v", p.GameID, err)
 		}
 	default:
 		_ = sendDirect(client, "error", map[string]any{"error": "unknown message type"})

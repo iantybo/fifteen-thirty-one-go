@@ -84,10 +84,10 @@ func JoinLobby(db *sql.DB, lobbyID int64) (*Lobby, error) {
 		return nil, err
 	}
 	if l.Status != "waiting" {
-		return nil, errors.New("lobby not joinable")
+		return nil, ErrLobbyNotJoinable
 	}
 	if l.CurrentPlayers >= l.MaxPlayers {
-		return nil, errors.New("lobby full")
+		return nil, ErrLobbyFull
 	}
 	return nil, errors.New("unable to join lobby")
 }
@@ -116,10 +116,10 @@ func JoinLobbyTx(tx *sql.Tx, lobbyID int64) (*Lobby, error) {
 			return nil, err
 		}
 		if status != "waiting" {
-			return nil, errors.New("lobby not joinable")
+			return nil, ErrLobbyNotJoinable
 		}
 		if currentPlayers >= maxPlayers {
-			return nil, errors.New("lobby full")
+			return nil, ErrLobbyFull
 		}
 		return nil, errors.New("unable to join lobby")
 	}

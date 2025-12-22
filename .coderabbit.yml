@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 #
-# CodeRabbit Configuration - All Defaults
-# This file contains every configuration option with its default value
-# Use this as a reference or starting point for your configuration
+# CodeRabbit Configuration - Example defaults
+# This file is a partial example and may not include every valid configuration option.
+# See the schema (above) for the complete list of supported keys and tools.
 #
 
 # General settings
@@ -76,8 +76,6 @@ reviews:
       enabled: true
     pylint:
       enabled: true
-    mypy:
-      enabled: true
 
     # Ruby
     rubocop:
@@ -93,8 +91,6 @@ reviews:
       enabled: true
     detekt:
       enabled: true
-    checkstyle:
-      enabled: true
 
     # C/C++
     cppcheck:
@@ -102,10 +98,6 @@ reviews:
 
     # Rust
     clippy:
-      enabled: true
-
-    # C#
-    dotnet-format:
       enabled: true
 
     # Infrastructure
@@ -117,10 +109,6 @@ reviews:
       enabled: true
     actionlint:
       enabled: true
-    terraform-fmt:
-      enabled: true
-    tflint:
-      enabled: true
 
     # Security
     gitleaks:
@@ -129,9 +117,7 @@ reviews:
       enabled: true
     semgrep:
       enabled: true
-    trivy:
-      enabled: true
-    osv-scanner:
+    osvScanner:
       enabled: true
 
     # Documentation

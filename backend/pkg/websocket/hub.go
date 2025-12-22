@@ -65,12 +65,45 @@ func (h *Hub) Run() {
 	}
 }
 
-func (h *Hub) Register(c *Client)  { h.register <- c }
-func (h *Hub) Unregister(c *Client) { h.unregister <- c }
+// Register enqueues a client registration.
+//
+// Behavior when the hub is stopped: this is a no-op and returns immediately.
+// This avoids blocking forever after Stop() closes h.stop (since Run() will no
+// longer be receiving from h.register).
+func (h *Hub) Register(c *Client) {
+	select {
+	case <-h.stop:
+		return
+	case h.register <- c:
+	}
+}
+
+// Unregister enqueues a client unregister.
+//
+// Behavior when the hub is stopped: this is a no-op and returns immediately.
+// This avoids blocking forever after Stop() closes h.stop (since Run() will no
+// longer be receiving from h.unregister).
+func (h *Hub) Unregister(c *Client) {
+	select {
+	case <-h.stop:
+		return
+	case h.unregister <- c:
+	}
+}
+
 func (h *Hub) Stop() { h.stopOnce.Do(func() { close(h.stop) }) }
 
+// Join enqueues a room move for a client.
+//
+// Behavior when the hub is stopped: this is a no-op and returns immediately.
+// This avoids blocking forever after Stop() closes h.stop (since Run() will no
+// longer be receiving from h.join).
 func (h *Hub) Join(c *Client, room string) {
-	h.join <- joinReq{Client: c, Room: room}
+	select {
+	case <-h.stop:
+		return
+	case h.join <- joinReq{Client: c, Room: room}:
+	}
 }
 
 func (h *Hub) Broadcast(room, typ string, payload any) {

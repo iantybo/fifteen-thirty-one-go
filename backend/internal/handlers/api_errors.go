@@ -70,6 +70,9 @@ func writeAPIError(c *gin.Context, err error) {
 	case errors.Is(err, models.ErrHasLegalPlay):
 		c.JSON(http.StatusConflict, gin.H{"error": "you have a legal play"})
 		return
+	case errors.Is(err, models.ErrGameStateMissing):
+		c.JSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
+		return
 	}
 
 	// Unknown/internal errors: log details, return generic message.

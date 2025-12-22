@@ -109,23 +109,23 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 			break
 		}
 	}
-	if int(pos) < len(st.Hands) {
-		st.Hands[pos] = hand
+	working := cloneStateDeep(st)
+	if int(pos) < len(working.Hands) {
+		working.Hands[pos] = hand
 	}
 
 	// Turn validation (pegging). Discard stage currently doesn't track per-player discard completion.
 	if req.Type == "play_card" || req.Type == "go" {
-		if st.Stage != "pegging" {
+		if working.Stage != "pegging" {
 			return nil, models.ErrNotInPeggingStage
 		}
-		if st.CurrentIndex != int(pos) {
+		if working.CurrentIndex != int(pos) {
 			return nil, models.ErrNotYourTurn
 		}
 	}
 
 	switch req.Type {
 	case "discard":
-		snap := cloneStateDeep(st)
 		tx, err := db.Begin()
 		if err != nil {
 			return nil, err
@@ -140,30 +140,32 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 			}
 			discards = append(discards, card)
 		}
-		if err := st.Discard(int(pos), discards); err != nil {
-			*st = snap
+		if err := (&working).Discard(int(pos), discards); err != nil {
 			return nil, err
 		}
-		b, err := json.Marshal(st.Hands[pos])
+		b, err := json.Marshal(working.Hands[pos])
 		if err != nil {
-			*st = snap
 			return nil, err
 		}
 		if err := models.UpdatePlayerHandTx(tx, gameID, userID, string(b)); err != nil {
-			*st = snap
 			return nil, err
 		}
 		if err := models.InsertMoveTx(tx, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "discard"}); err != nil {
-			*st = snap
+			return nil, err
+		}
+		sb, err := json.Marshal(working)
+		if err != nil {
+			return nil, err
+		}
+		if err := models.UpdateGameStateTx(tx, gameID, string(sb)); err != nil {
 			return nil, err
 		}
 		if err := tx.Commit(); err != nil {
-			*st = snap
 			return nil, err
 		}
+		*st = working
 		return map[string]any{"ok": true}, nil
 	case "play_card":
-		snap := cloneStateDeep(st)
 		tx, err := db.Begin()
 		if err != nil {
 			return nil, err
@@ -174,53 +176,60 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		if err != nil {
 			return nil, models.ErrInvalidCard
 		}
-		points, reasons, err := st.PlayPeggingCard(int(pos), card)
+		points, reasons, err := (&working).PlayPeggingCard(int(pos), card)
 		if err != nil {
-			*st = snap
 			return nil, err
 		}
-		b, err := json.Marshal(st.Hands[pos])
+		b, err := json.Marshal(working.Hands[pos])
 		if err != nil {
-			*st = snap
 			return nil, err
 		}
 		if err := models.UpdatePlayerHandTx(tx, gameID, userID, string(b)); err != nil {
-			*st = snap
 			return nil, err
 		}
 		cardStr := card.String()
 		verified := int64(points)
 		if err := models.InsertMoveTx(tx, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "play_card", CardPlayed: &cardStr, ScoreVerified: &verified}); err != nil {
-			*st = snap
+			return nil, err
+		}
+		sb, err := json.Marshal(working)
+		if err != nil {
+			return nil, err
+		}
+		if err := models.UpdateGameStateTx(tx, gameID, string(sb)); err != nil {
 			return nil, err
 		}
 		if err := tx.Commit(); err != nil {
-			*st = snap
 			return nil, err
 		}
-		return map[string]any{"points": points, "reasons": reasons, "total": st.PeggingTotal}, nil
+		*st = working
+		return map[string]any{"points": points, "reasons": reasons, "total": working.PeggingTotal}, nil
 	case "go":
-		snap := cloneStateDeep(st)
 		tx, err := db.Begin()
 		if err != nil {
 			return nil, err
 		}
 		defer tx.Rollback()
 
-		awarded, err := st.Go(int(pos))
+		awarded, err := (&working).Go(int(pos))
 		if err != nil {
-			*st = snap
 			return nil, err
 		}
 		verified := int64(awarded)
 		if err := models.InsertMoveTx(tx, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "go", ScoreVerified: &verified}); err != nil {
-			*st = snap
+			return nil, err
+		}
+		sb, err := json.Marshal(working)
+		if err != nil {
+			return nil, err
+		}
+		if err := models.UpdateGameStateTx(tx, gameID, string(sb)); err != nil {
 			return nil, err
 		}
 		if err := tx.Commit(); err != nil {
-			*st = snap
 			return nil, err
 		}
+		*st = working
 		return map[string]any{"awarded": awarded}, nil
 	default:
 		return nil, models.ErrUnknownMoveType
@@ -230,10 +239,28 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 func ensureGameStateLocked(db *sql.DB, gameID int64, players []models.GamePlayer) (*cribbage.State, func(), error) {
 	playerCount := len(players)
 	return defaultGameManager.GetOrCreateLocked(gameID, func() (*cribbage.State, error) {
+		// Prefer restoring the full persisted engine state when available.
+		if raw, ok, err := models.GetGameStateJSON(db, gameID); err != nil {
+			return nil, err
+		} else if ok {
+			var restored cribbage.State
+			if err := json.Unmarshal([]byte(raw), &restored); err != nil {
+				// If we have persisted state but can't decode it, we cannot safely resume.
+				return nil, err
+			}
+			// Sanity: if this doesn't match the current lobby size, we cannot safely resume.
+			if restored.Rules.MaxPlayers != playerCount ||
+				len(restored.Hands) != playerCount ||
+				len(restored.KeptHands) != playerCount ||
+				len(restored.Scores) != playerCount {
+				return nil, models.ErrInvalidJSON
+			}
+			return &restored, nil
+		}
+
 		tmp := cribbage.NewState(playerCount)
-		// If hands already exist in DB (e.g., after restart), prefer using them to avoid
-		// in-memory hands diverging from persisted hands. This does NOT reconstruct full
-		// game state (scores/pegging sequence/etc.) which remain in-memory only.
+		// If hands already exist in DB (e.g., after restart) but full state is missing,
+		// do NOT attempt to resume: hands alone are insufficient to reconstruct the game.
 		hasHands := false
 		for _, p := range players {
 			if strings.TrimSpace(p.Hand) != "" && strings.TrimSpace(p.Hand) != "[]" {
@@ -242,33 +269,9 @@ func ensureGameStateLocked(db *sql.DB, gameID int64, players []models.GamePlayer
 			}
 		}
 		if hasHands {
-			maxLen := 0
-			for _, p := range players {
-				pos := int(p.Position)
-				if pos < 0 || pos >= len(tmp.Hands) {
-					return nil, models.ErrInvalidPlayerPosition
-				}
-				var h []common.Card
-				if err := json.Unmarshal([]byte(p.Hand), &h); err != nil {
-					return nil, err
-				}
-				tmp.Hands[pos] = h
-				if len(h) > maxLen {
-					maxLen = len(h)
-				}
-			}
-			handSize := tmp.Rules.HandSize()
-			keptSize := tmp.Rules.HandSize() - tmp.Rules.DiscardCount()
-			tmp.DiscardCompleted = make([]bool, tmp.Rules.MaxPlayers)
-			tmp.PeggingPassed = make([]bool, tmp.Rules.MaxPlayers)
-			tmp.LastPlayIndex = -1
-			tmp.CurrentIndex = (tmp.DealerIndex + 1) % tmp.Rules.MaxPlayers
-			if maxLen == handSize || maxLen > keptSize {
-				tmp.Stage = "discard"
-			} else {
-				tmp.Stage = "pegging"
-			}
-			return tmp, nil
+			// Without a full persisted engine state, we cannot safely resume an in-progress game.
+			// (Hands alone are insufficient to reconstruct deck/cut/crib/scores/pegging history/etc.)
+			return nil, models.ErrGameStateMissing
 		}
 
 		if err := tmp.Deal(); err != nil {
@@ -297,6 +300,14 @@ func ensureGameStateLocked(db *sql.DB, gameID int64, players []models.GamePlayer
 			if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, p.UserID, string(b)); err != nil {
 				return nil, err
 			}
+		}
+		// Persist the full engine state (including deck/cut/crib/scores) for restart recovery.
+		sb, err := json.Marshal(tmp)
+		if err != nil {
+			return nil, err
+		}
+		if err := models.UpdateGameStateTx(tx, gameID, string(sb)); err != nil {
+			return nil, err
 		}
 		if err := tx.Commit(); err != nil {
 			return nil, err

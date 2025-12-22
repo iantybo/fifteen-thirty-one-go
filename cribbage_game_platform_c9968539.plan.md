@@ -21,7 +21,7 @@ The application will consist of:
 ```javascript
 fifteen-thirty-one-go/
 ├── backend/
-│   ├─ ─ cmd/
+│   ├── cmd/
 │   │   └── server/
 │   │       └── main.go
 │   ├── internal/
