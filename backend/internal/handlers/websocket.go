@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,12 +24,15 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
-		// Allow non-browser clients (no Origin) only in dev.
-		if cfgIsDev() {
+		if origin == "" {
+			// Non-browser clients (no Origin) are allowed.
 			return true
 		}
-		if origin == "" {
-			return false
+		if cfgDevAllowAll() {
+			return true
+		}
+		if cfgIsDev() {
+			return isLocalhostOrigin(origin) || isAllowedOrigin(origin)
 		}
 		return isAllowedOrigin(origin)
 	},
@@ -37,11 +42,13 @@ var upgrader = websocket.Upgrader{
 var originMu sync.RWMutex
 var allowedOrigins = map[string]bool{}
 var devMode = false
+var devAllowAll = false
 
-func SetWebSocketOriginPolicy(isDev bool, origins []string) {
+func SetWebSocketOriginPolicy(isDev bool, allowAllDev bool, origins []string) {
 	originMu.Lock()
 	defer originMu.Unlock()
 	devMode = isDev
+	devAllowAll = allowAllDev
 	allowedOrigins = map[string]bool{}
 	for _, o := range origins {
 		o = strings.TrimSpace(o)
@@ -56,17 +63,31 @@ func cfgIsDev() bool {
 	defer originMu.RUnlock()
 	return devMode
 }
+func cfgDevAllowAll() bool {
+	originMu.RLock()
+	defer originMu.RUnlock()
+	return devMode && devAllowAll
+}
 func isAllowedOrigin(origin string) bool {
 	originMu.RLock()
 	defer originMu.RUnlock()
 	return allowedOrigins[origin]
 }
 
+func isLocalhostOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
 // WebSocketHandler upgrades the connection and registers the client.
 // Full message routing is implemented in Phase 4.
 func WebSocketHandler(hub *ws.Hub, db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := tokenFromHeaderOrQuery(c)
+		token := tokenFromHeaderOrQuery(c, cfg)
 		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
 			return
@@ -136,7 +157,8 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 		}
 		resp, err := ApplyMove(db, p.GameID, client.UserID, p.Move)
 		if err != nil {
-			_ = sendDirect(client, "error", map[string]any{"error": err.Error()})
+			// Avoid leaking internal details; ApplyMove errors are mapped in HTTP handlers only.
+			_ = sendDirect(client, "error", map[string]any{"error": "invalid move"})
 			return
 		}
 		_ = sendDirect(client, "move_ok", resp)
@@ -144,7 +166,7 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 		// Broadcast updated snapshot to the game room.
 		snap, err := BuildGameSnapshotPublic(db, p.GameID)
 		if err == nil {
-			hub.Broadcast("game:"+intToString(p.GameID), "game_update", snap)
+			hub.Broadcast("game:"+strconv.FormatInt(p.GameID, 10), "game_update", snap)
 		}
 	default:
 		_ = sendDirect(client, "error", map[string]any{"error": "unknown message type"})
@@ -169,32 +191,7 @@ func sendDirect(c *ws.Client, typ string, payload any) error {
 	return nil
 }
 
-func intToString(v int64) string {
-	// avoid fmt for hot path
-	if v == 0 {
-		return "0"
-	}
-	neg := v < 0
-	if neg {
-		v = -v
-	}
-	buf := make([]byte, 0, 20)
-	for v > 0 {
-		d := byte(v % 10)
-		buf = append(buf, '0'+d)
-		v /= 10
-	}
-	if neg {
-		buf = append(buf, '-')
-	}
-	// reverse
-	for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
-		buf[i], buf[j] = buf[j], buf[i]
-	}
-	return string(buf)
-}
-
-func tokenFromHeaderOrQuery(c *gin.Context) string {
+func tokenFromHeaderOrQuery(c *gin.Context, cfg config.Config) string {
 	authz := c.GetHeader("Authorization")
 	if authz != "" {
 		parts := strings.SplitN(authz, " ", 2)
@@ -202,7 +199,10 @@ func tokenFromHeaderOrQuery(c *gin.Context) string {
 			return strings.TrimSpace(parts[1])
 		}
 	}
-	return strings.TrimSpace(c.Query("token"))
+	if cfg.WSAllowQueryTokens {
+		return strings.TrimSpace(c.Query("token"))
+	}
+	return ""
 }
 
 

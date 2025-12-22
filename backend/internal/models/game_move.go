@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -32,6 +33,14 @@ func InsertMove(db *sql.DB, m GameMove) (*GameMove, error) {
 	return GetMoveByID(db, id)
 }
 
+func InsertMoveTx(tx *sql.Tx, m GameMove) error {
+	_, err := tx.Exec(
+		`INSERT INTO game_moves(game_id, player_id, move_type, card_played, score_claimed, score_verified, is_corrected) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		m.GameID, m.PlayerID, m.MoveType, m.CardPlayed, m.ScoreClaimed, m.ScoreVerified, boolToInt(m.IsCorrected),
+	)
+	return err
+}
+
 func GetMoveByID(db *sql.DB, id int64) (*GameMove, error) {
 	var m GameMove
 	var card sql.NullString
@@ -43,6 +52,9 @@ func GetMoveByID(db *sql.DB, id int64) (*GameMove, error) {
 		id,
 	).Scan(&m.ID, &m.GameID, &m.PlayerID, &m.MoveType, &card, &sc, &sv, &isCorrInt, &m.CreatedAt)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	if card.Valid {

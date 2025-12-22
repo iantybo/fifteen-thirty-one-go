@@ -1,5 +1,3 @@
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS user_preferences (
   user_id INTEGER PRIMARY KEY,
   auto_count_mode TEXT NOT NULL DEFAULT 'suggest' CHECK(auto_count_mode IN ('off', 'suggest', 'auto')), -- off|suggest|auto

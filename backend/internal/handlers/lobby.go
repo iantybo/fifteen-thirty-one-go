@@ -142,7 +142,15 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		l, err := models.JoinLobby(db, lobbyID)
+		// Transaction: increment lobby count + add game player together or not at all.
+		tx, err := db.Begin()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		defer tx.Rollback()
+
+		l, err := models.JoinLobbyTx(tx, lobbyID)
 		if err != nil {
 			// Don't leak internal details; map known messages to safe ones.
 			msg := "unable to join lobby"
@@ -155,7 +163,7 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			} else if err.Error() == "lobby not joinable" {
 				msg = "lobby not joinable"
 			}
-			log.Printf("JoinLobby failed: lobby_id=%d user_id=%d err=%v", lobbyID, userID, err)
+			log.Printf("JoinLobbyTx failed: lobby_id=%d user_id=%d err=%v", lobbyID, userID, err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 			return
 		}
@@ -163,36 +171,46 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		// Find game for lobby (assumes one game per lobby for now).
 		// This is a small shortcut until we add explicit lobby membership and game start.
 		var gameID int64
-		if err := db.QueryRow(`SELECT id FROM games WHERE lobby_id = ? ORDER BY id DESC LIMIT 1`, lobbyID).Scan(&gameID); err != nil {
+		if err := tx.QueryRow(`SELECT id FROM games WHERE lobby_id = ? ORDER BY id DESC LIMIT 1`, lobbyID).Scan(&gameID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
 
-		st, unlock, ok := defaultGameManager.GetLocked(gameID)
+		// Ensure in-memory game state exists before committing the join.
+		// (We don't create/re-deal here; if it's missing, we rollback the tx and ask to recreate.)
+		_, unlockCheck, ok := defaultGameManager.GetLocked(gameID)
 		if !ok {
 			// Avoid re-dealing a different game state (would desync hands).
-			if _, err := db.Exec(`UPDATE lobbies SET current_players = CASE WHEN current_players > 0 THEN current_players - 1 ELSE 0 END WHERE id = ?`, lobbyID); err != nil {
-				log.Printf("JoinLobby rollback decrement failed: lobby_id=%d user_id=%d err=%v", lobbyID, userID, err)
-			}
+			c.JSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
+			return
+		}
+		unlockCheck()
+
+		nextPos, err := models.AddGamePlayerAutoPositionTx(tx, gameID, userID, false, nil)
+		if err != nil {
+			log.Printf("AddGamePlayerAutoPositionTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unable to join game"})
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
+		// Now acquire in-memory state to persist the joining player's initial hand.
+		st, unlock, ok := defaultGameManager.GetLocked(gameID)
+		if !ok {
 			c.JSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
 			return
 		}
 		defer unlock()
 
-		nextPos, err := models.AddGamePlayerAutoPosition(db, gameID, userID, false, nil)
-		if err != nil {
-			log.Printf("AddGamePlayerAutoPosition failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
-			if derr := models.DecrementLobbyCurrentPlayers(db, lobbyID); derr != nil {
-				log.Printf("JoinLobby rollback decrement failed: lobby_id=%d user_id=%d err=%v", lobbyID, userID, derr)
-			}
-			c.JSON(http.StatusBadRequest, gin.H{"error": "unable to join game"})
-			return
-		}
-
 		// Persist joining player's hand (best-effort).
 		if int(nextPos) < len(st.Hands) {
 			if b, err := json.Marshal(st.Hands[nextPos]); err == nil {
-				if err := models.UpdatePlayerHand(db, gameID, userID, string(b)); err != nil {
+				// Only set if empty to be idempotent.
+				if _, err := models.UpdatePlayerHandIfEmpty(db, gameID, userID, string(b)); err != nil {
 					log.Printf("UpdatePlayerHand failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
 				}
 			}
@@ -201,5 +219,6 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"lobby": l, "game_id": gameID})
 	}
 }
+
 
 

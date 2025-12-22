@@ -23,6 +23,7 @@ type Client struct {
 	Room string
 	UserID int64
 
+	CloseOnce sync.Once
 	SendCloseOnce sync.Once
 	Send chan []byte
 }
@@ -39,12 +40,15 @@ func NewClient(conn *websocket.Conn, hub *Hub, room string, userID int64) *Clien
 
 func (c *Client) Close() {
 	// Best-effort: Unregister triggers hub-side removal/cleanup (including closing Send via SendCloseOnce).
-	if c.Hub != nil {
-		c.Hub.Unregister(c)
-	}
-	if c.Conn != nil {
-		_ = c.Conn.Close()
-	}
+	// IMPORTANT: do not close Send here; the hub closes it on its own goroutine to avoid send-on-closed panics.
+	c.CloseOnce.Do(func() {
+		if c.Hub != nil {
+			c.Hub.Unregister(c)
+		}
+		if c.Conn != nil {
+			_ = c.Conn.Close()
+		}
+	})
 }
 
 func (c *Client) ReadPump(onMessage func([]byte)) {

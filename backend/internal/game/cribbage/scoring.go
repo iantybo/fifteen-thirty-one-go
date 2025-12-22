@@ -234,7 +234,15 @@ func isRun(cards []common.Card) bool {
 			max = r
 		}
 	}
-	return (max - min + 1) == len(cards)
+	if (max - min + 1) != len(cards) {
+		return false
+	}
+	for r := min; r <= max; r++ {
+		if !seen[r] {
+			return false
+		}
+	}
+	return true
 }
 
 

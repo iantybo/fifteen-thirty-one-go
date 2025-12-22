@@ -12,7 +12,13 @@ func cloneStateForView(st *cribbage.State) cribbage.State {
 		return cribbage.State{}
 	}
 
-	view := *st
+	var view cribbage.State
+	view.Rules = st.Rules
+	view.DealerIndex = st.DealerIndex
+	view.CurrentIndex = st.CurrentIndex
+	view.LastPlayIndex = st.LastPlayIndex
+	view.PeggingTotal = st.PeggingTotal
+	view.Stage = st.Stage
 
 	// Copy pointers
 	if st.Cut != nil {
@@ -27,6 +33,9 @@ func cloneStateForView(st *cribbage.State) cribbage.State {
 	if st.PeggingPassed != nil {
 		view.PeggingPassed = append([]bool(nil), st.PeggingPassed...)
 	}
+	if st.DiscardCompleted != nil {
+		view.DiscardCompleted = append([]bool(nil), st.DiscardCompleted...)
+	}
 
 	// Deep copy hands slice headers (but leave cards empty; filled selectively by caller).
 	view.Hands = make([][]common.Card, len(st.Hands))
@@ -34,12 +43,10 @@ func cloneStateForView(st *cribbage.State) cribbage.State {
 		view.Hands[i] = []common.Card{}
 	}
 
-	// Do not copy hidden-card fields by default.
+	// Hidden-card fields omitted.
 	view.KeptHands = nil
 	view.Crib = nil
 	view.PeggingSeq = nil
-
-	// Do not copy Deck.
 	view.Deck = nil
 
 	return view

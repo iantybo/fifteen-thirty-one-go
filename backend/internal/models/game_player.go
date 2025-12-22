@@ -58,6 +58,37 @@ func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, bot
 	return 0, errors.New("could not allocate position")
 }
 
+func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID int64, isBot bool, botDifficulty *string) (int64, error) {
+	// Retry on unique position collision (due to concurrent joins).
+	for attempt := 0; attempt < 3; attempt++ {
+		_, err := tx.Exec(
+			`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty)
+			 SELECT ?, ?, COALESCE(MAX(position), -1) + 1, ?, ?
+			 FROM game_players WHERE game_id = ?`,
+			gameID, userID, boolToInt(isBot), botDifficulty, gameID,
+		)
+		if err != nil {
+			if IsUniqueConstraint(err) && attempt < 2 {
+				continue
+			}
+			return 0, err
+		}
+
+		var pos int64
+		if err := tx.QueryRow(`SELECT position FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&pos); err != nil {
+			return 0, err
+		}
+		if pos < 0 {
+			return 0, errors.New("invalid assigned position")
+		}
+		if pos > 3 {
+			return 0, fmt.Errorf("assigned position out of range: %d", pos)
+		}
+		return pos, nil
+	}
+	return 0, errors.New("could not allocate position")
+}
+
 func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 	rows, err := db.Query(
 		`SELECT game_id, user_id, position, score, hand, crib_cards, is_bot, bot_difficulty FROM game_players WHERE game_id = ? ORDER BY position ASC`,
@@ -93,6 +124,11 @@ func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 
 func UpdatePlayerHand(db *sql.DB, gameID, userID int64, handJSON string) error {
 	_, err := db.Exec(`UPDATE game_players SET hand = ? WHERE game_id = ? AND user_id = ?`, handJSON, gameID, userID)
+	return err
+}
+
+func UpdatePlayerHandTx(tx *sql.Tx, gameID, userID int64, handJSON string) error {
+	_, err := tx.Exec(`UPDATE game_players SET hand = ? WHERE game_id = ? AND user_id = ?`, handJSON, gameID, userID)
 	return err
 }
 

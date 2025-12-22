@@ -18,6 +18,8 @@ type Config struct {
 
 	AppEnv           string
 	WSAllowedOrigins []string
+	WSAllowQueryTokens bool
+	DevWebSocketsAllowAll bool
 }
 
 func LoadFromEnv() (Config, error) {
@@ -54,6 +56,17 @@ func LoadFromEnv() (Config, error) {
 			if p != "" {
 				cfg.WSAllowedOrigins = append(cfg.WSAllowedOrigins, p)
 			}
+		}
+	}
+
+	if v := strings.TrimSpace(os.Getenv("WS_ALLOW_QUERY_TOKENS")); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.WSAllowQueryTokens = b
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("DEV_WEBSOCKETS_ALLOW_ALL")); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.DevWebSocketsAllowAll = b
 		}
 	}
 

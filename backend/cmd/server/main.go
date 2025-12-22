@@ -28,7 +28,7 @@ func main() {
 	hub := websocket.NewHub()
 	go hub.Run()
 
-	handlers.SetWebSocketOriginPolicy(cfg.AppEnv == "development", cfg.WSAllowedOrigins)
+	handlers.SetWebSocketOriginPolicy(cfg.AppEnv == "development", cfg.DevWebSocketsAllowAll, cfg.WSAllowedOrigins)
 
 	r := gin.Default()
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })

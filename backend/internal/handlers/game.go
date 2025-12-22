@@ -67,7 +67,7 @@ func MoveHandler(db *sql.DB) gin.HandlerFunc {
 		}
 		resp, err := ApplyMove(db, gameID, userID, req)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			writeAPIError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, resp)

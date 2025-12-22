@@ -27,6 +27,7 @@ type State struct {
 	PeggingTotal int           `json:"pegging_total"`
 	PeggingSeq   []common.Card `json:"pegging_seq"`
 	PeggingPassed []bool       `json:"pegging_passed"`
+	DiscardCompleted []bool    `json:"discard_completed"`
 
 	Scores []int `json:"scores"`
 	Stage  string `json:"stage"` // dealing|discard|pegging|counting|finished
@@ -44,6 +45,7 @@ func NewState(players int) *State {
 		Scores:       make([]int, players),
 		Stage:        "dealing",
 	}
+	st.DiscardCompleted = make([]bool, st.Rules.MaxPlayers)
 	return st
 }
 
@@ -75,6 +77,7 @@ func (s *State) Deal() error {
 	s.PeggingSeq = nil
 	s.PeggingTotal = 0
 	s.LastPlayIndex = -1
+	s.DiscardCompleted = make([]bool, s.Rules.MaxPlayers)
 
 	// Next player after dealer starts discarding in UI flows; pegging starts left of dealer.
 	s.CurrentIndex = (s.DealerIndex + 1) % s.Rules.MaxPlayers
@@ -87,6 +90,9 @@ func (s *State) Discard(player int, cards []common.Card) error {
 	}
 	if player < 0 || player >= s.Rules.MaxPlayers {
 		return errors.New("invalid player")
+	}
+	if len(s.DiscardCompleted) == s.Rules.MaxPlayers && s.DiscardCompleted[player] {
+		return errors.New("discard already completed")
 	}
 	if len(cards) != s.Rules.DiscardCount() {
 		return errors.New("invalid discard count")
@@ -108,7 +114,20 @@ func (s *State) Discard(player int, cards []common.Card) error {
 	}
 
 	neededDiscards := s.Rules.MaxPlayers * s.Rules.DiscardCount()
-	if len(s.Crib) == neededDiscards {
+	if len(s.DiscardCompleted) == s.Rules.MaxPlayers {
+		s.DiscardCompleted[player] = true
+	}
+	allDone := len(s.Crib) == neededDiscards
+	if len(s.DiscardCompleted) == s.Rules.MaxPlayers {
+		for i := 0; i < s.Rules.MaxPlayers; i++ {
+			if !s.DiscardCompleted[i] {
+				allDone = false
+				break
+			}
+		}
+	}
+
+	if allDone && len(s.Crib) == neededDiscards {
 		// 3-player cribbage: add one random card from deck to the crib to make 4.
 		if s.Rules.MaxPlayers == 3 && len(s.Crib) < s.Rules.CribSize() {
 			c, err := s.pop()
@@ -128,6 +147,7 @@ func (s *State) Discard(player int, cards []common.Card) error {
 		s.PeggingSeq = nil
 		s.PeggingPassed = make([]bool, s.Rules.MaxPlayers)
 		s.LastPlayIndex = -1
+		s.DiscardCompleted = make([]bool, s.Rules.MaxPlayers)
 		// Snapshot kept hands for later counting; pegging will consume from Hands.
 		for i := 0; i < s.Rules.MaxPlayers; i++ {
 			s.KeptHands[i] = append([]common.Card(nil), s.Hands[i]...)
@@ -171,7 +191,8 @@ func (s *State) PlayPeggingCard(player int, card common.Card) (score int, reason
 
 	// Reset on 31: next player leads.
 	if s.PeggingTotal == 31 {
-		s.resetPeggingAfterSequenceEnd((player + 1) % s.Rules.MaxPlayers, false)
+		s.resetPeggingAfterSequenceEnd((player + 1) % s.Rules.MaxPlayers)
+		s.advanceToNextPlayableOrGo()
 	} else {
 		s.CurrentIndex = (s.CurrentIndex + 1) % s.Rules.MaxPlayers
 		s.advanceToNextPlayableOrGo()
@@ -219,7 +240,8 @@ func (s *State) Go(player int) (awarded int, err error) {
 		if lastPlay < 0 {
 			nextLead = (s.DealerIndex + 1) % s.Rules.MaxPlayers
 		}
-		s.resetPeggingAfterSequenceEnd(nextLead, false)
+		s.resetPeggingAfterSequenceEnd(nextLead)
+		s.advanceToNextPlayableOrGo()
 	} else {
 		s.advanceToNextPlayableOrGo()
 	}
@@ -230,14 +252,11 @@ func (s *State) Go(player int) (awarded int, err error) {
 	return awarded, nil
 }
 
-func (s *State) resetPeggingAfterSequenceEnd(nextLead int, keepLastPlay bool) {
+func (s *State) resetPeggingAfterSequenceEnd(nextLead int) {
 	s.PeggingTotal = 0
 	s.PeggingSeq = nil
 	for i := range s.PeggingPassed {
 		s.PeggingPassed[i] = false
-	}
-	if !keepLastPlay {
-		// Keep last play index for next lead calculation already done by caller.
 	}
 	s.CurrentIndex = nextLead
 }

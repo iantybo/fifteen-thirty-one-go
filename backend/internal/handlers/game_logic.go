@@ -124,6 +124,12 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 
 	switch req.Type {
 	case "discard":
+		tx, err := db.Begin()
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback()
+
 		var discards []common.Card
 		for _, s := range req.Cards {
 			card, err := common.ParseCard(s)
@@ -139,14 +145,23 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		if err != nil {
 			return nil, err
 		}
-		if err := models.UpdatePlayerHand(db, gameID, userID, string(b)); err != nil {
+		if err := models.UpdatePlayerHandTx(tx, gameID, userID, string(b)); err != nil {
 			return nil, err
 		}
-		if _, err := models.InsertMove(db, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "discard"}); err != nil {
+		if err := models.InsertMoveTx(tx, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "discard"}); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
 		return map[string]any{"ok": true}, nil
 	case "play_card":
+		tx, err := db.Begin()
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback()
+
 		card, err := common.ParseCard(req.Card)
 		if err != nil {
 			return nil, errors.New("invalid card")
@@ -159,22 +174,34 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		if err != nil {
 			return nil, err
 		}
-		if err := models.UpdatePlayerHand(db, gameID, userID, string(b)); err != nil {
+		if err := models.UpdatePlayerHandTx(tx, gameID, userID, string(b)); err != nil {
 			return nil, err
 		}
 		cardStr := card.String()
 		verified := int64(points)
-		if _, err := models.InsertMove(db, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "play_card", CardPlayed: &cardStr, ScoreVerified: &verified}); err != nil {
+		if err := models.InsertMoveTx(tx, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "play_card", CardPlayed: &cardStr, ScoreVerified: &verified}); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
 		return map[string]any{"points": points, "reasons": reasons, "total": st.PeggingTotal}, nil
 	case "go":
+		tx, err := db.Begin()
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback()
+
 		awarded, err := st.Go(int(pos))
 		if err != nil {
 			return nil, err
 		}
 		verified := int64(awarded)
-		if _, err := models.InsertMove(db, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "go", ScoreVerified: &verified}); err != nil {
+		if err := models.InsertMoveTx(tx, models.GameMove{GameID: gameID, PlayerID: userID, MoveType: "go", ScoreVerified: &verified}); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
 		return map[string]any{"awarded": awarded}, nil
