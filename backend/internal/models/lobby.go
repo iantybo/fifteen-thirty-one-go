@@ -46,8 +46,24 @@ func GetLobbyByID(db *sql.DB, id int64) (*Lobby, error) {
 	return &l, nil
 }
 
-func ListLobbies(db *sql.DB) ([]Lobby, error) {
-	rows, err := db.Query(`SELECT id, name, host_id, max_players, current_players, status, created_at FROM lobbies ORDER BY created_at DESC`)
+func ListLobbies(db *sql.DB, limit, offset int64) ([]Lobby, error) {
+	// Defensive defaults/caps to prevent unbounded reads.
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := db.Query(
+		`SELECT id, name, host_id, max_players, current_players, status, created_at
+		 FROM lobbies
+		 ORDER BY created_at DESC
+		 LIMIT ? OFFSET ?`,
+		limit, offset,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -33,7 +33,8 @@ func RegisterHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 		}
 
 		req.Username = strings.TrimSpace(req.Username)
-		if len(req.Username) < 3 || len(req.Username) > 32 {
+		uLen := utf8.RuneCountInString(req.Username)
+		if uLen < 3 || uLen > 32 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "username must be 3-32 characters"})
 			return
 		}

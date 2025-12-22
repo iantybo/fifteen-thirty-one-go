@@ -24,7 +24,7 @@ func AddGamePlayer(db *sql.DB, gameID, userID int64, position int64, isBot bool,
 	return err
 }
 
-func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, botDifficulty *string) (int64, error) {
+func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID, maxPlayers int64, isBot bool, botDifficulty *string) (int64, error) {
 	// Retry on unique position collision (due to concurrent joins).
 	//
 	// Important: retries must start a new transaction. In SQLite, constraint
@@ -35,14 +35,8 @@ func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, bot
 		if err != nil {
 			return 0, err
 		}
-		committed := false
-		defer func() {
-			if !committed {
-				_ = tx.Rollback()
-			}
-		}()
 
-		pos, err := AddGamePlayerAutoPositionTx(tx, gameID, userID, isBot, botDifficulty)
+		pos, err := AddGamePlayerAutoPositionTx(tx, gameID, userID, maxPlayers, isBot, botDifficulty)
 		if err != nil {
 			if IsUniqueConstraint(err) && attempt < 2 {
 				_ = tx.Rollback()
@@ -55,13 +49,17 @@ func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, bot
 			_ = tx.Rollback()
 			return 0, err
 		}
-		committed = true
 		return pos, nil
 	}
 	return 0, errors.New("could not allocate position")
 }
 
-func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID int64, isBot bool, botDifficulty *string) (int64, error) {
+func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID, maxPlayers int64, isBot bool, botDifficulty *string) (int64, error) {
+	if maxPlayers <= 0 {
+		return 0, errors.New("invalid max_players")
+	}
+	maxPos := maxPlayers - 1
+
 	// Do a single insert attempt.
 	//
 	// Important: do NOT retry inside this transaction on unique-constraint errors.
@@ -71,8 +69,8 @@ func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID int64, isBot bool, b
 		`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty)
 		 SELECT ?, ?, COALESCE(MAX(position), -1) + 1, ?, ?
 		 FROM game_players WHERE game_id = ?
-		 HAVING COALESCE(MAX(position), -1) + 1 <= 2`,
-		gameID, userID, boolToInt(isBot), botDifficulty, gameID,
+		 HAVING COALESCE(MAX(position), -1) + 1 <= ?`,
+		gameID, userID, boolToInt(isBot), botDifficulty, gameID, maxPos,
 	)
 	if err != nil {
 		return 0, err

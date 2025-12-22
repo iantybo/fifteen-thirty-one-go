@@ -20,7 +20,7 @@ type State struct {
 
 	// Deck is persisted for crash/restart recovery but never exposed to clients
 	// (handlers intentionally omit it from public snapshots).
-	Deck []common.Card `json:"deck,omitempty"`
+	Deck []common.Card `json:"deck"`
 	Cut  *common.Card  `json:"cut,omitempty"`
 
 	Hands [][]common.Card `json:"hands"` // per player

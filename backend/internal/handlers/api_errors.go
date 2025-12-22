@@ -18,7 +18,7 @@ func writeAPIError(c *gin.Context, err error) {
 	}
 
 	// Known sentinel errors
-	if errors.Is(err, models.ErrNotFound) || errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, models.ErrNotFound) || errors.Is(err, models.ErrGameNotFound) || errors.Is(err, sql.ErrNoRows) {
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}

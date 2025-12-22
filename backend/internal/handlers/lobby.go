@@ -28,7 +28,25 @@ type createLobbyResponse struct {
 
 func ListLobbiesHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		lobbies, err := models.ListLobbies(db)
+		limit := int64(0)
+		offset := int64(0)
+		if v := strings.TrimSpace(c.Query("limit")); v != "" {
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
+				return
+			}
+			limit = n
+		}
+		if v := strings.TrimSpace(c.Query("offset")); v != "" {
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid offset"})
+				return
+			}
+			offset = n
+		}
+		lobbies, err := models.ListLobbies(db, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
@@ -194,7 +212,7 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		nextPos, err := models.AddGamePlayerAutoPositionTx(tx, gameID, userID, false, nil)
+		nextPos, err := models.AddGamePlayerAutoPositionTx(tx, gameID, userID, l.MaxPlayers, false, nil)
 		if err != nil {
 			log.Printf("AddGamePlayerAutoPositionTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "unable to join game"})
@@ -246,25 +264,46 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		// After commit, briefly acquire the in-memory lock to keep runtime state aligned with DB.
 		// No DB operations while holding this lock.
 		if stateJSONOk {
+			var handCards []common.Card
+			handCardsOK := false
+			reloadFullState := false
+			var restored cribbage.State
+
+			if handJSONOk {
+				if err := json.Unmarshal([]byte(handJSON), &handCards); err != nil {
+					// Do not leave stale in-memory state when DB already has the joining player's hand.
+					// Reload from the persisted game state snapshot instead.
+					log.Printf("JoinLobbyHandler handJSON unmarshal failed; reloading runtime state from state_json: game_id=%d next_pos=%d err=%v hand_json_len=%d", gameID, nextPos, err, len(handJSON))
+					if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
+						log.Printf("JoinLobbyHandler reload runtime state_json unmarshal failed (aborting): game_id=%d err=%v state_json_len=%d", gameID, err, len(stateJSON))
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+						return
+					}
+					reloadFullState = true
+				} else {
+					handCardsOK = true
+				}
+			}
+
 			st, unlock, ok := defaultGameManager.GetLocked(gameID)
 			if ok {
-				if handJSONOk {
-					var h []common.Card
-					if err := json.Unmarshal([]byte(handJSON), &h); err != nil {
-						log.Printf("JoinLobbyHandler handJSON unmarshal failed: game_id=%d next_pos=%d err=%v hand_json_len=%d", gameID, nextPos, err, len(handJSON))
-					} else if int(nextPos) >= 0 && int(nextPos) < len(st.Hands) {
-						st.Hands[nextPos] = h
-					}
+				if reloadFullState {
+					*st = restored
+					log.Printf("JoinLobbyHandler runtime state reloaded from DB snapshot after hand decode failure: game_id=%d", gameID)
+				} else if handCardsOK && int(nextPos) >= 0 && int(nextPos) < len(st.Hands) {
+					st.Hands[nextPos] = handCards
 				}
 				unlock()
 			} else {
 				// Restore full state from DB snapshot if runtime state is missing (e.g., restart).
-				var restored cribbage.State
-				if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
-					log.Printf("JoinLobbyHandler restore runtime state_json unmarshal failed: game_id=%d err=%v state_json_len=%d", gameID, err, len(stateJSON))
-				} else {
-					defaultGameManager.Set(gameID, &restored)
+				if !reloadFullState {
+					if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
+						log.Printf("JoinLobbyHandler restore runtime state_json unmarshal failed (aborting): game_id=%d err=%v state_json_len=%d", gameID, err, len(stateJSON))
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+						return
+					}
 				}
+				defaultGameManager.Set(gameID, &restored)
 			}
 		}
 

@@ -39,11 +39,17 @@ func NewClient(conn *websocket.Conn, hub *Hub, room string, userID int64) *Clien
 }
 
 func (c *Client) Close() {
-	// Best-effort: Unregister triggers hub-side removal/cleanup (including closing Send via SendCloseOnce).
-	// IMPORTANT: do not close Send here; the hub closes it on its own goroutine to avoid send-on-closed panics.
 	c.CloseOnce.Do(func() {
+		// Best-effort: Unregister triggers hub-side removal/cleanup (including closing Send via SendCloseOnce).
+		// IMPORTANT: do not close Send here while the hub is active; the hub closes it on its own goroutine to
+		// avoid send-on-closed panics.
 		if c.Hub != nil {
 			c.Hub.Unregister(c)
+		} else {
+			// Fallback: when Hub is nil we must close Send ourselves, otherwise WritePump can leak forever.
+			if c.Send != nil {
+				c.SendCloseOnce.Do(func() { close(c.Send) })
+			}
 		}
 		if c.Conn != nil {
 			_ = c.Conn.Close()

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -36,7 +37,27 @@ func main() {
 	}()
 
 	hub := websocket.NewHub()
-	go hub.Run()
+	go func() {
+		for {
+			panicked := false
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						panicked = true
+						log.Printf("hub.Run panic: %v\n%s", r, debug.Stack())
+					}
+				}()
+				hub.Run()
+			}()
+
+			// If hub.Run returned normally (e.g., Stop() called), exit.
+			// Only restart on panic.
+			if !panicked {
+				return
+			}
+			time.Sleep(1 * time.Second)
+		}
+	}()
 
 	handlers.SetWebSocketOriginPolicy(cfg.AppEnv == "development", cfg.DevWebSocketsAllowAll, cfg.WSAllowedOrigins)
 
@@ -54,18 +75,8 @@ func main() {
 	// WebSocket endpoint is auth-gated via token query param or Authorization header.
 	r.GET("/ws", handlers.WebSocketHandler(hub, db, cfg))
 
+	// cfg.Addr is fully resolved by config.LoadFromEnv() (BACKEND_ADDR or PORT).
 	addr := cfg.Addr
-	if addr == "" {
-		if v := os.Getenv("PORT"); v != "" {
-			// Address resolution precedence:
-			// 1) BACKEND_ADDR (already loaded into cfg.Addr)
-			// 2) PORT (when BACKEND_ADDR is not set)
-			// 3) Default 127.0.0.1:8080
-			addr = "0.0.0.0:" + v
-		} else {
-			addr = "127.0.0.1:8080"
-		}
-	}
 
 	srv := &http.Server{
 		Addr:         addr,

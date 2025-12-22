@@ -64,26 +64,81 @@ func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 		return errors.New("invalid status")
 	}
 	if status == "finished" {
-		_, err := db.Exec(`UPDATE games SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, gameID)
+		res, err := db.Exec(`UPDATE games SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, gameID)
+		if err != nil {
+			return err
+		}
+		ra, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if ra == 0 {
+			return ErrNotFound
+		}
+		return nil
+	}
+	res, err := db.Exec(`UPDATE games SET status = ? WHERE id = ?`, status, gameID)
+	if err != nil {
 		return err
 	}
-	_, err := db.Exec(`UPDATE games SET status = ? WHERE id = ?`, status, gameID)
-	return err
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func SetCurrentPlayer(db *sql.DB, gameID int64, userID int64) error {
+	if err := ensureGameExists(db, gameID); err != nil {
+		return err
+	}
 	if err := ensurePlayerInGame(db, gameID, userID); err != nil {
 		return err
 	}
-	_, err := db.Exec(`UPDATE games SET current_player_id = ? WHERE id = ?`, userID, gameID)
-	return err
+	res, err := db.Exec(`UPDATE games SET current_player_id = ? WHERE id = ?`, userID, gameID)
+	if err != nil {
+		return err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		return ErrGameNotFound
+	}
+	return nil
 }
 
 func SetDealer(db *sql.DB, gameID int64, dealerID int64) error {
+	if err := ensureGameExists(db, gameID); err != nil {
+		return err
+	}
 	if err := ensurePlayerInGame(db, gameID, dealerID); err != nil {
 		return err
 	}
-	_, err := db.Exec(`UPDATE games SET dealer_id = ? WHERE id = ?`, dealerID, gameID)
+	res, err := db.Exec(`UPDATE games SET dealer_id = ? WHERE id = ?`, dealerID, gameID)
+	if err != nil {
+		return err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		return ErrGameNotFound
+	}
+	return nil
+}
+
+func ensureGameExists(db *sql.DB, gameID int64) error {
+	var id int64
+	err := db.QueryRow(`SELECT id FROM games WHERE id = ?`, gameID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrGameNotFound
+	}
 	return err
 }
 

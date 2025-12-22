@@ -76,10 +76,18 @@ func LoadFromEnv() (Config, error) {
 		}
 	}
 
-	var missing []string
-	if cfg.JWTSecret == "" {
-		missing = append(missing, "JWT_SECRET")
+	// JWT secret validation:
+	// - must be present (and not a placeholder)
+	// - must be at least 32 bytes for HS256
+	// NOTE: use raw byte length (len(secret)) as requested.
+	if strings.TrimSpace(cfg.JWTSecret) == "" || cfg.JWTSecret == "REPLACE_ME" || cfg.JWTSecret == "change-me" {
+		return Config{}, fmt.Errorf("JWT_SECRET is required; generate and set a strong secret (e.g., `openssl rand -hex 32`)")
 	}
+	if len(cfg.JWTSecret) < 32 {
+		return Config{}, fmt.Errorf("JWT_SECRET must be at least 32 bytes (got %d)", len(cfg.JWTSecret))
+	}
+
+	var missing []string
 	if cfg.DatabasePath == "" {
 		missing = append(missing, "DATABASE_PATH")
 	}

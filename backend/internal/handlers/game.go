@@ -277,7 +277,7 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 			MoveType:      prev.MoveType + "_correct",
 			ScoreClaimed:  &newClaim,
 			ScoreVerified: &verified,
-			IsCorrected:   true,
+			IsCorrected:   false,
 		}); err != nil {
 			log.Printf("InsertMoveTx (correction) failed: game_id=%d move_id=%d err=%v", gameID, req.MoveID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})

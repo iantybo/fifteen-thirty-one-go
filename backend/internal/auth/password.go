@@ -54,7 +54,7 @@ func HashPassword(plain string) (string, error) {
 
 func ComparePasswordHash(hash string, plain string) error {
 	if plain == "" {
-		return fmt.Errorf("password required")
+		return PasswordValidationError{msg: "password required"}
 	}
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plain))
 }
