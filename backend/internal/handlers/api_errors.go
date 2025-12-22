@@ -13,8 +13,10 @@ import (
 
 func writeAPIError(c *gin.Context, err error) {
 	if err == nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		return
+		// This is a programming error: callers should never pass nil here.
+		// Fail fast so we get a stack trace in logs (Gin recovery middleware).
+		log.Printf("BUG: writeAPIError called with nil error")
+		panic("writeAPIError called with nil error")
 	}
 
 	// Known sentinel errors

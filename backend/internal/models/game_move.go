@@ -115,6 +115,26 @@ func ListMovesByGame(db *sql.DB, gameID int64, limit int64) ([]GameMove, error) 
 	return out, rows.Err()
 }
 
+// HasUncorrectedMoveType returns true if there exists a move for the given game/player/type
+// that has not been marked corrected.
+func HasUncorrectedMoveType(db *sql.DB, gameID, playerID int64, moveType string) (bool, error) {
+	var one int
+	err := db.QueryRow(
+		`SELECT 1
+		 FROM game_moves
+		 WHERE game_id = ? AND player_id = ? AND move_type = ? AND is_corrected = 0
+		 LIMIT 1`,
+		gameID, playerID, moveType,
+	).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func MarkMoveAsCorrected(db *sql.DB, moveID int64) error {
 	res, err := db.Exec(`UPDATE game_moves SET is_corrected = 1 WHERE id = ?`, moveID)
 	if err != nil {

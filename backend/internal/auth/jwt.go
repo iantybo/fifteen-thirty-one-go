@@ -27,7 +27,7 @@ func GenerateToken(userID int64, username string, cfg config.Config) (string, er
 			Issuer:    cfg.JWTIssuer,
 			Subject:   fmt.Sprintf("%d", userID),
 			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now.Add(-30 * time.Second)),
+			NotBefore: jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(cfg.JWTTTL)),
 		},
 	}

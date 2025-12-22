@@ -236,9 +236,13 @@ func stripLineCommentsOutsideQuotes(s string) string {
 			for i < len(s) && s[i] != '\n' {
 				i++
 			}
+			// Explicitly handle and consume the newline (do not rely on outer loop increment).
 			if i < len(s) && s[i] == '\n' {
 				b.WriteByte('\n')
+				i++
 			}
+			// The outer for-loop will increment i once more; offset that so we don't skip a character.
+			i--
 			continue
 		}
 

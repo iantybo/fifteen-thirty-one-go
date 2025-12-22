@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -15,6 +16,95 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+func syncRuntimeStateFromDB(gameID int64, nextPos int, stateJSON, handJSON string) error {
+	// After commit, briefly acquire the in-memory lock to keep runtime state aligned with DB.
+	// No DB operations while holding this lock.
+	if strings.TrimSpace(stateJSON) == "" {
+		// Explicitly log that we skipped runtime alignment (operators should see this).
+		log.Printf(
+			"syncRuntimeStateFromDB: state_json missing/empty; no runtime sync attempted: game_id=%d next_pos=%d state_json_len=%d hand_json_len=%d",
+			gameID, nextPos, len(stateJSON), len(handJSON),
+		)
+		return nil
+	}
+
+	var handCards []common.Card
+	handCardsOK := false
+	reloadFullState := false
+	var restored cribbage.State
+	restoredOK := false
+
+	var returnedErr error
+
+	// Unmarshal hand; if it fails, fall back to full state unmarshal.
+	if strings.TrimSpace(handJSON) != "" {
+		if err := json.Unmarshal([]byte(handJSON), &handCards); err != nil {
+			// Do not leave stale in-memory state when DB already has the joining player's hand.
+			// Reload from the persisted game state snapshot instead.
+			log.Printf(
+				"syncRuntimeStateFromDB: hand_json unmarshal failed; attempting reload from state_json (best-effort): game_id=%d next_pos=%d err=%v hand_json_len=%d",
+				gameID, nextPos, err, len(handJSON),
+			)
+			returnedErr = fmt.Errorf("hand_json unmarshal failed: %w", err)
+
+			if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
+				// DB transaction already committed the join; don't return an HTTP error here.
+				// Log and continue without modifying runtime state; caller must proceed.
+				log.Printf(
+					"syncRuntimeStateFromDB: state_json unmarshal failed during runtime reload after commit (best-effort; skipping runtime sync): game_id=%d next_pos=%d err=%v state_json_len=%d",
+					gameID, nextPos, err, len(stateJSON),
+				)
+				// Join succeeded in DB; degrade gracefully. Next request will attempt recovery from DB snapshot.
+				log.Printf("syncRuntimeStateFromDB continuing despite unmarshal failure; DB state is authoritative: game_id=%d next_pos=%d", gameID, nextPos)
+				reloadFullState = false
+				if returnedErr == nil {
+					returnedErr = fmt.Errorf("state_json unmarshal failed: %w", err)
+				}
+			} else {
+				reloadFullState = true
+				restoredOK = true
+			}
+		} else {
+			handCardsOK = true
+		}
+	}
+
+	st, unlock, ok := defaultGameManager.GetLocked(gameID)
+	if ok {
+		defer unlock()
+		if reloadFullState {
+			*st = restored
+			log.Printf("syncRuntimeStateFromDB: runtime state reloaded from DB snapshot after hand decode failure: game_id=%d next_pos=%d", gameID, nextPos)
+		} else if handCardsOK && nextPos >= 0 && nextPos < len(st.Hands) {
+			st.Hands[nextPos] = handCards
+		}
+		return returnedErr
+	}
+
+	// Restore full state from DB snapshot if runtime state is missing (e.g., restart).
+	if !reloadFullState {
+		if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
+			// DB transaction already committed the join; don't return an HTTP error here.
+			// Log and continue without installing runtime state.
+			log.Printf(
+				"syncRuntimeStateFromDB: state_json unmarshal failed while restoring missing runtime state after commit (best-effort; runtime state remains missing): game_id=%d next_pos=%d err=%v state_json_len=%d",
+				gameID, nextPos, err, len(stateJSON),
+			)
+			if returnedErr == nil {
+				returnedErr = fmt.Errorf("state_json unmarshal failed: %w", err)
+			}
+		} else {
+			restoredOK = true
+		}
+	}
+
+	// Only install runtime state if we successfully decoded a snapshot.
+	if restoredOK {
+		defaultGameManager.Set(gameID, &restored)
+	}
+	return returnedErr
+}
 
 type createLobbyRequest struct {
 	Name       string `json:"name"`
@@ -28,11 +118,17 @@ type createLobbyResponse struct {
 
 func ListLobbiesHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		limit := int64(0)
+		// Keep handler defaults consistent with models.ListLobbies, and avoid the
+		// common "LIMIT 0 returns empty set" pitfall.
+		limit := int64(50)
 		offset := int64(0)
 		if v := strings.TrimSpace(c.Query("limit")); v != "" {
 			n, err := strconv.ParseInt(v, 10, 64)
 			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
+				return
+			}
+			if n < 0 {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
 				return
 			}
@@ -41,6 +137,10 @@ func ListLobbiesHandler(db *sql.DB) gin.HandlerFunc {
 		if v := strings.TrimSpace(c.Query("offset")); v != "" {
 			n, err := strconv.ParseInt(v, 10, 64)
 			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid offset"})
+				return
+			}
+			if n < 0 {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid offset"})
 				return
 			}
@@ -222,9 +322,7 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		// Persist joining player's initial hand WITHOUT taking the in-memory state lock.
 		// Use the persisted engine state in DB (if present) to keep lock ordering DB -> memory.
 		var handJSON string
-		var handJSONOk bool
 		var stateJSON string
-		var stateJSONOk bool
 		var s sql.NullString
 		if err := tx.QueryRow(`SELECT state_json FROM games WHERE id = ?`, gameID).Scan(&s); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
@@ -232,7 +330,6 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		}
 		if s.Valid && strings.TrimSpace(s.String) != "" {
 			stateJSON = s.String
-			stateJSONOk = true
 
 			var restored cribbage.State
 			if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
@@ -243,7 +340,6 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			if int(nextPos) >= 0 && int(nextPos) < len(restored.Hands) {
 				if b, err := json.Marshal(restored.Hands[nextPos]); err == nil {
 					handJSON = string(b)
-					handJSONOk = true
 					if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, userID, handJSON); err != nil {
 						log.Printf("UpdatePlayerHandIfEmptyTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
@@ -253,6 +349,14 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 					return
 				}
+			} else {
+				// This indicates a mismatch between the persisted engine state and the assigned position.
+				log.Printf(
+					"JoinLobbyHandler: position out of bounds while persisting player hand: game_id=%d user_id=%d next_pos=%d hands_len=%d",
+					gameID, userID, nextPos, len(restored.Hands),
+				)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "position out of bounds"})
+				return
 			}
 		}
 
@@ -261,53 +365,16 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		// After commit, briefly acquire the in-memory lock to keep runtime state aligned with DB.
-		// No DB operations while holding this lock.
-		if stateJSONOk {
-			var handCards []common.Card
-			handCardsOK := false
-			reloadFullState := false
-			var restored cribbage.State
-
-			if handJSONOk {
-				if err := json.Unmarshal([]byte(handJSON), &handCards); err != nil {
-					// Do not leave stale in-memory state when DB already has the joining player's hand.
-					// Reload from the persisted game state snapshot instead.
-					log.Printf("JoinLobbyHandler handJSON unmarshal failed; reloading runtime state from state_json: game_id=%d next_pos=%d err=%v hand_json_len=%d", gameID, nextPos, err, len(handJSON))
-					if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
-						log.Printf("JoinLobbyHandler reload runtime state_json unmarshal failed (aborting): game_id=%d err=%v state_json_len=%d", gameID, err, len(stateJSON))
-						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-						return
-					}
-					reloadFullState = true
-				} else {
-					handCardsOK = true
-				}
-			}
-
-			st, unlock, ok := defaultGameManager.GetLocked(gameID)
-			if ok {
-				if reloadFullState {
-					*st = restored
-					log.Printf("JoinLobbyHandler runtime state reloaded from DB snapshot after hand decode failure: game_id=%d", gameID)
-				} else if handCardsOK && int(nextPos) >= 0 && int(nextPos) < len(st.Hands) {
-					st.Hands[nextPos] = handCards
-				}
-				unlock()
-			} else {
-				// Restore full state from DB snapshot if runtime state is missing (e.g., restart).
-				if !reloadFullState {
-					if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
-						log.Printf("JoinLobbyHandler restore runtime state_json unmarshal failed (aborting): game_id=%d err=%v state_json_len=%d", gameID, err, len(stateJSON))
-						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-						return
-					}
-				}
-				defaultGameManager.Set(gameID, &restored)
-			}
+		resp := gin.H{"lobby": l, "game_id": gameID, "joined_persisted": true, "realtime_sync": "ok"}
+		if err := syncRuntimeStateFromDB(gameID, int(nextPos), stateJSON, handJSON); err != nil {
+			log.Printf(
+				"JoinLobbyHandler: runtime state sync encountered errors after commit (best-effort; continuing): game_id=%d user_id=%d next_pos=%d err=%v",
+				gameID, userID, nextPos, err,
+			)
+			resp["realtime_sync"] = "failed"
 		}
 
-		c.JSON(http.StatusOK, gin.H{"lobby": l, "game_id": gameID})
+		c.JSON(http.StatusOK, resp)
 	}
 }
 

@@ -100,6 +100,10 @@ func WebSocketHandler(hub *ws.Hub, db *sql.DB, cfg config.Config) gin.HandlerFun
 
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
+			log.Printf("WebSocketHandler upgrade failed: method=%s path=%s remote=%s origin=%q err=%v",
+				c.Request.Method, c.Request.URL.Path, c.ClientIP(), c.Request.Header.Get("Origin"), err,
+			)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "websocket upgrade failed"})
 			return
 		}
 

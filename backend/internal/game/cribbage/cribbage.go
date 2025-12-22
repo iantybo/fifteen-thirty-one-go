@@ -58,7 +58,9 @@ func (s *State) Deal() error {
 		return errors.New("invalid player count")
 	}
 	s.Deck = common.NewStandardDeck()
-	common.Shuffle(s.Deck)
+	if err := common.Shuffle(s.Deck); err != nil {
+		return err
+	}
 
 	handSize := s.Rules.HandSize()
 	for i := 0; i < s.Rules.MaxPlayers; i++ {

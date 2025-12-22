@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 )
 
 type Config struct {
@@ -94,9 +92,16 @@ func LoadFromEnv() (Config, error) {
 	// BACKEND_ADDR is optional if PORT is set by the hosting environment.
 	if cfg.Addr == "" {
 		if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
-			// If PORT starts with a digit, treat it as a bare port number (":<port>").
+			// If PORT is a bare numeric port, treat it as ":<port>".
 			// Otherwise treat it as already containing host / host:port (or ":<port>").
-			if r, _ := utf8.DecodeRuneInString(port); unicode.IsDigit(r) {
+			onlyDigits := true
+			for i := 0; i < len(port); i++ {
+				if port[i] < '0' || port[i] > '9' {
+					onlyDigits = false
+					break
+				}
+			}
+			if onlyDigits {
 				cfg.Addr = ":" + port
 			} else {
 				cfg.Addr = port

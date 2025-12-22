@@ -24,6 +24,10 @@ type authResponse struct {
 	User  *models.User `json:"user"`
 }
 
+// fakeHash is a constant bcrypt hash used to normalize login timing when a user
+// lookup fails or the username does not exist.
+const fakeHash = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8lvZ9i8a9kaI0s5momkGLumZ5qX6e."
+
 func RegisterHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req authRequest
@@ -99,11 +103,12 @@ func LoginHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 		}
 
 		u, err := models.GetUserByUsername(db, req.Username)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
-			return
+		pwHash := fakeHash
+		if err == nil {
+			pwHash = u.PasswordHash
 		}
-		if err := auth.ComparePasswordHash(u.PasswordHash, req.Password); err != nil {
+		// Always run bcrypt comparison exactly once per request to normalize timing.
+		if cmpErr := auth.ComparePasswordHash(pwHash, req.Password); err != nil || cmpErr != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 			return
 		}

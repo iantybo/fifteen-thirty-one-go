@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 )
 
 type GamePlayer struct {
@@ -127,13 +128,33 @@ func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 }
 
 func UpdatePlayerHand(db *sql.DB, gameID, userID int64, handJSON string) error {
-	_, err := db.Exec(`UPDATE game_players SET hand = ? WHERE game_id = ? AND user_id = ?`, handJSON, gameID, userID)
-	return err
+	res, err := db.Exec(`UPDATE game_players SET hand = ? WHERE game_id = ? AND user_id = ?`, handJSON, gameID, userID)
+	if err != nil {
+		return fmt.Errorf("update player hand: game_id=%d user_id=%d: %w", gameID, userID, err)
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update player hand rows affected: game_id=%d user_id=%d: %w", gameID, userID, err)
+	}
+	if ra == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func UpdatePlayerHandTx(tx *sql.Tx, gameID, userID int64, handJSON string) error {
-	_, err := tx.Exec(`UPDATE game_players SET hand = ? WHERE game_id = ? AND user_id = ?`, handJSON, gameID, userID)
-	return err
+	res, err := tx.Exec(`UPDATE game_players SET hand = ? WHERE game_id = ? AND user_id = ?`, handJSON, gameID, userID)
+	if err != nil {
+		return fmt.Errorf("update player hand (tx): game_id=%d user_id=%d: %w", gameID, userID, err)
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update player hand rows affected (tx): game_id=%d user_id=%d: %w", gameID, userID, err)
+	}
+	if ra == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // UpdatePlayerHandIfEmpty sets the hand only when it is still the default '[]'.
@@ -163,8 +184,18 @@ func UpdatePlayerHandIfEmptyTx(tx *sql.Tx, gameID, userID int64, handJSON string
 }
 
 func UpdatePlayerScore(db *sql.DB, gameID, userID int64, score int64) error {
-	_, err := db.Exec(`UPDATE game_players SET score = ? WHERE game_id = ? AND user_id = ?`, score, gameID, userID)
-	return err
+	res, err := db.Exec(`UPDATE game_players SET score = ? WHERE game_id = ? AND user_id = ?`, score, gameID, userID)
+	if err != nil {
+		return fmt.Errorf("update player score: game_id=%d user_id=%d: %w", gameID, userID, err)
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update player score rows affected: game_id=%d user_id=%d: %w", gameID, userID, err)
+	}
+	if ra == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func boolToInt(b bool) int {

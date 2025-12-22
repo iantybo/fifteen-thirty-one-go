@@ -167,8 +167,18 @@ func GetGameStateJSON(db *sql.DB, gameID int64) (stateJSON string, ok bool, err 
 }
 
 func UpdateGameStateTx(tx *sql.Tx, gameID int64, stateJSON string) error {
-	_, err := tx.Exec(`UPDATE games SET state_json = ? WHERE id = ?`, stateJSON, gameID)
-	return err
+	res, err := tx.Exec(`UPDATE games SET state_json = ? WHERE id = ?`, stateJSON, gameID)
+	if err != nil {
+		return err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		return ErrGameNotFound
+	}
+	return nil
 }
 
 

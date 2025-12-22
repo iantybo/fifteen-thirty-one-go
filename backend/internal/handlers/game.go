@@ -115,6 +115,11 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "game not ready"})
 			return
 		}
+		if st.Stage != "counting" {
+			unlock()
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid stage for counting"})
+			return
+		}
 		// Copy the minimal read-only fields we need, then release the lock before DB work.
 		cut := *st.Cut
 		dealerIndex := st.DealerIndex
@@ -171,6 +176,19 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 		mt := "count_" + req.Kind
 		if req.Final {
 			mt = mt + "_final"
+		}
+		if req.Final {
+			// Prevent duplicate final submissions for the same player/game/type.
+			// Corrections should use the correction flow which marks the original as corrected.
+			exists, err := models.HasUncorrectedMoveType(db, gameID, userID, mt)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+			if exists {
+				c.JSON(http.StatusConflict, gin.H{"error": "final count already submitted"})
+				return
+			}
 		}
 		if _, err := models.InsertMove(db, models.GameMove{
 			GameID:        gameID,
@@ -230,6 +248,12 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 		}
 		if prev.GameID != gameID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid move"})
+			return
+		}
+		// Reject attempts to correct a move that has already been corrected.
+		// Do this early to avoid permission/finalization work and prevent conflicting corrections.
+		if prev.IsCorrected {
+			c.JSON(http.StatusConflict, gin.H{"error": "move already corrected"})
 			return
 		}
 		isHost := false
