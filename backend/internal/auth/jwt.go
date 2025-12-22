@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"fifteen-thirty-one-go/backend/internal/handlers"
+	"fifteen-thirty-one-go/backend/internal/config"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -15,7 +15,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(userID int64, username string, cfg handlers.Config) (string, error) {
+func GenerateToken(userID int64, username string, cfg config.Config) (string, error) {
 	if cfg.JWTSecret == "" {
 		return "", fmt.Errorf("JWT_SECRET is required")
 	}
@@ -36,7 +36,7 @@ func GenerateToken(userID int64, username string, cfg handlers.Config) (string, 
 	return tok.SignedString([]byte(cfg.JWTSecret))
 }
 
-func ParseAndValidateToken(tokenString string, cfg handlers.Config) (*Claims, error) {
+func ParseAndValidateToken(tokenString string, cfg config.Config) (*Claims, error) {
 	if cfg.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required")
 	}

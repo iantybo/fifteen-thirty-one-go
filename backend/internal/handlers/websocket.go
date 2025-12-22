@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"fifteen-thirty-one-go/backend/internal/auth"
+	"fifteen-thirty-one-go/backend/internal/config"
 	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -51,7 +52,7 @@ func isAllowedOrigin(origin string) bool { return allowedOrigins[origin] }
 
 // WebSocketHandler upgrades the connection and registers the client.
 // Full message routing is implemented in Phase 4.
-func WebSocketHandler(hub *ws.Hub, db *sql.DB, cfg Config) gin.HandlerFunc {
+func WebSocketHandler(hub *ws.Hub, db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := tokenFromHeaderOrQuery(c)
 		if token == "" {

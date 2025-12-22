@@ -3,11 +3,12 @@ package handlers
 import (
 	"database/sql"
 
+	"fifteen-thirty-one-go/backend/internal/config"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterAuthRoutes wires auth endpoints. Implemented fully in Phase 1.2.
-func RegisterAuthRoutes(rg *gin.RouterGroup, db *sql.DB, cfg Config) {
+func RegisterAuthRoutes(rg *gin.RouterGroup, db *sql.DB, cfg config.Config) {
 	rg.POST("/auth/register", RegisterHandler(db, cfg))
 	rg.POST("/auth/login", LoginHandler(db, cfg))
 }

@@ -1,4 +1,4 @@
-package handlers
+package config
 
 import (
 	"fmt"
@@ -16,11 +16,11 @@ type Config struct {
 	JWTIssuer string
 	JWTTTL    time.Duration
 
-	AppEnv          string
+	AppEnv           string
 	WSAllowedOrigins []string
 }
 
-func LoadConfigFromEnv() (Config, error) {
+func LoadFromEnv() (Config, error) {
 	ttlMinutes := int64(10080) // 7 days
 	if v := os.Getenv("JWT_TTL_MINUTES"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
@@ -46,6 +46,7 @@ func LoadConfigFromEnv() (Config, error) {
 	if cfg.AppEnv == "" {
 		cfg.AppEnv = "development"
 	}
+
 	if v := os.Getenv("WS_ALLOWED_ORIGINS"); v != "" {
 		parts := strings.Split(v, ",")
 		for _, p := range parts {

@@ -5,12 +5,12 @@ import (
 	"strings"
 
 	"fifteen-thirty-one-go/backend/internal/auth"
-	"fifteen-thirty-one-go/backend/internal/handlers"
+	"fifteen-thirty-one-go/backend/internal/config"
 
 	"github.com/gin-gonic/gin"
 )
 
-func RequireAuth(cfg handlers.Config) gin.HandlerFunc {
+func RequireAuth(cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := tokenFromRequest(c)
 		if token == "" {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"fifteen-thirty-one-go/backend/internal/auth"
+	"fifteen-thirty-one-go/backend/internal/config"
 	"fifteen-thirty-one-go/backend/internal/models"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +23,7 @@ type authResponse struct {
 	User  *models.User `json:"user"`
 }
 
-func RegisterHandler(db *sql.DB, cfg Config) gin.HandlerFunc {
+func RegisterHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req authRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -77,7 +78,7 @@ func RegisterHandler(db *sql.DB, cfg Config) gin.HandlerFunc {
 	}
 }
 
-func LoginHandler(db *sql.DB, cfg Config) gin.HandlerFunc {
+func LoginHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req authRequest
 		if err := c.ShouldBindJSON(&req); err != nil {

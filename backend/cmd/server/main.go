@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"fifteen-thirty-one-go/backend/internal/config"
 	"fifteen-thirty-one-go/backend/internal/database"
 	"fifteen-thirty-one-go/backend/internal/handlers"
 	"fifteen-thirty-one-go/backend/internal/middleware"
@@ -13,7 +14,7 @@ import (
 )
 
 func main() {
-	cfg, err := handlers.LoadConfigFromEnv()
+	cfg, err := config.LoadFromEnv()
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
