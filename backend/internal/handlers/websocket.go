@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"fifteen-thirty-one-go/backend/internal/auth"
@@ -33,10 +34,13 @@ var upgrader = websocket.Upgrader{
 }
 
 // set by config at startup
+var originMu sync.RWMutex
 var allowedOrigins = map[string]bool{}
 var devMode = false
 
 func SetWebSocketOriginPolicy(isDev bool, origins []string) {
+	originMu.Lock()
+	defer originMu.Unlock()
 	devMode = isDev
 	allowedOrigins = map[string]bool{}
 	for _, o := range origins {
@@ -47,8 +51,16 @@ func SetWebSocketOriginPolicy(isDev bool, origins []string) {
 	}
 }
 
-func cfgIsDev() bool { return devMode }
-func isAllowedOrigin(origin string) bool { return allowedOrigins[origin] }
+func cfgIsDev() bool {
+	originMu.RLock()
+	defer originMu.RUnlock()
+	return devMode
+}
+func isAllowedOrigin(origin string) bool {
+	originMu.RLock()
+	defer originMu.RUnlock()
+	return allowedOrigins[origin]
+}
 
 // WebSocketHandler upgrades the connection and registers the client.
 // Full message routing is implemented in Phase 4.

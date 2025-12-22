@@ -112,6 +112,16 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		st.Hands[pos] = hand
 	}
 
+	// Turn validation (pegging). Discard stage currently doesn't track per-player discard completion.
+	if req.Type == "play_card" || req.Type == "go" {
+		if st.Stage != "pegging" {
+			return nil, errors.New("not in pegging stage")
+		}
+		if st.CurrentIndex != int(pos) {
+			return nil, errors.New("not your turn")
+		}
+	}
+
 	switch req.Type {
 	case "discard":
 		var discards []common.Card
@@ -174,21 +184,13 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 }
 
 func ensureGameStateLocked(gameID int64, playerCount int) (*cribbage.State, func(), error) {
-	st, unlock, ok := defaultGameManager.GetLocked(gameID)
-	if ok {
-		return st, unlock, nil
-	}
-	// Initialize a new in-memory state for this game.
-	tmp := cribbage.NewState(playerCount)
-	if err := tmp.Deal(); err != nil {
-		return nil, nil, err
-	}
-	defaultGameManager.Set(gameID, tmp)
-	st, unlock, ok = defaultGameManager.GetLocked(gameID)
-	if !ok {
-		return nil, nil, errors.New("game state unavailable")
-	}
-	return st, unlock, nil
+	return defaultGameManager.GetOrCreateLocked(gameID, func() (*cribbage.State, error) {
+		tmp := cribbage.NewState(playerCount)
+		if err := tmp.Deal(); err != nil {
+			return nil, err
+		}
+		return tmp, nil
+	})
 }
 
 

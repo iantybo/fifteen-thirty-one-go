@@ -36,7 +36,11 @@ func GetGameHandler(db *sql.DB) gin.HandlerFunc {
 		}
 		snap, err := BuildGameSnapshotForUser(db, gameID, userID)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+			if errors.Is(err, models.ErrNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
 		c.JSON(http.StatusOK, snap)
@@ -96,11 +100,15 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 		}
 
 		st, unlock, ok := defaultGameManager.GetLocked(gameID)
-		if !ok || st.Cut == nil {
+		if !ok {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "game not ready"})
 			return
 		}
 		defer unlock()
+		if st.Cut == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "game not ready"})
+			return
+		}
 
 		players, err := models.ListGamePlayersByGame(db, gameID)
 		if err != nil {

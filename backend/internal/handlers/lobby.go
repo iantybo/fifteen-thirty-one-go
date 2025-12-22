@@ -171,6 +171,9 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		st, unlock, ok := defaultGameManager.GetLocked(gameID)
 		if !ok {
 			// Avoid re-dealing a different game state (would desync hands).
+			if _, err := db.Exec(`UPDATE lobbies SET current_players = CASE WHEN current_players > 0 THEN current_players - 1 ELSE 0 END WHERE id = ?`, lobbyID); err != nil {
+				log.Printf("JoinLobby rollback decrement failed: lobby_id=%d user_id=%d err=%v", lobbyID, userID, err)
+			}
 			c.JSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
 			return
 		}
@@ -178,7 +181,8 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 
 		nextPos, err := models.AddGamePlayerAutoPosition(db, gameID, userID, false, nil)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			log.Printf("AddGamePlayerAutoPosition failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unable to join game"})
 			return
 		}
 

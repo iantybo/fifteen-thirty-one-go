@@ -208,14 +208,15 @@ func (s *State) Go(player int) (awarded int, err error) {
 	if allPassed {
 		// Last card point only if we didn't hit 31.
 		awardLast := s.PeggingTotal != 31
+		lastPlay := s.LastPlayIndex
 		if awardLast && s.LastPlayIndex >= 0 {
 			s.Scores[s.LastPlayIndex] += 1
 			awarded = 1
 			// Prevent a second award when the round finishes.
 			s.LastPlayIndex = -1
 		}
-		nextLead := (s.LastPlayIndex + 1) % s.Rules.MaxPlayers
-		if s.LastPlayIndex < 0 {
+		nextLead := (lastPlay + 1) % s.Rules.MaxPlayers
+		if lastPlay < 0 {
 			nextLead = (s.DealerIndex + 1) % s.Rules.MaxPlayers
 		}
 		s.resetPeggingAfterSequenceEnd(nextLead, false)

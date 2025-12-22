@@ -23,7 +23,7 @@ type Client struct {
 	Room string
 	UserID int64
 
-	CloseOnce sync.Once
+	SendCloseOnce sync.Once
 	Send chan []byte
 }
 
@@ -37,10 +37,19 @@ func NewClient(conn *websocket.Conn, hub *Hub, room string, userID int64) *Clien
 	}
 }
 
+func (c *Client) Close() {
+	// Best-effort: Unregister triggers hub-side removal/cleanup (including closing Send via SendCloseOnce).
+	if c.Hub != nil {
+		c.Hub.Unregister(c)
+	}
+	if c.Conn != nil {
+		_ = c.Conn.Close()
+	}
+}
+
 func (c *Client) ReadPump(onMessage func([]byte)) {
 	defer func() {
-		c.Hub.Unregister(c)
-		_ = c.Conn.Close()
+		c.Close()
 	}()
 
 	c.Conn.SetReadLimit(maxMessageSize)
@@ -66,7 +75,7 @@ func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		_ = c.Conn.Close()
+		c.Close()
 	}()
 
 	for {

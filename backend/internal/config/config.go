@@ -65,7 +65,17 @@ func LoadFromEnv() (Config, error) {
 		missing = append(missing, "DATABASE_PATH")
 	}
 	// BACKEND_ADDR is optional if PORT is set by the hosting environment.
-	if cfg.Addr == "" && os.Getenv("PORT") == "" {
+	if cfg.Addr == "" {
+		if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+			// If PORT is a bare port, accept ":<port>". If it already includes host, keep it.
+			if strings.Contains(port, ":") {
+				cfg.Addr = port
+			} else {
+				cfg.Addr = ":" + port
+			}
+		}
+	}
+	if cfg.Addr == "" {
 		missing = append(missing, "BACKEND_ADDR (or PORT)")
 	}
 	if len(missing) > 0 {

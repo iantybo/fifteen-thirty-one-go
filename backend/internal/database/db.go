@@ -48,7 +48,7 @@ func sqliteDSN(dbPath string) string {
 	// foreign_keys=on ensures FK constraints are enforced at the connection level.
 	// _busy_timeout reduces spurious SQLITE_BUSY for concurrent reads/writes.
 	if dbPath == ":memory:" {
-		return dbPath
+		return "file::memory:?_foreign_keys=on&_busy_timeout=5000"
 	}
 	if strings.HasPrefix(dbPath, "file:") {
 		base := dbPath
@@ -57,7 +57,11 @@ func sqliteDSN(dbPath string) string {
 			base = dbPath[:idx]
 			query = dbPath[idx+1:]
 		}
-		q, _ := url.ParseQuery(query)
+		q, err := url.ParseQuery(query)
+		if err != nil {
+			// Preserve user intent on malformed queries.
+			return dbPath
+		}
 		if q.Get("_foreign_keys") == "" {
 			q.Set("_foreign_keys", "on")
 		}
