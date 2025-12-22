@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+var ErrInvalidMode = errors.New("invalid mode")
+
 type UserPreferences struct {
 	UserID        int64     `json:"user_id"`
 	AutoCountMode string    `json:"auto_count_mode"` // off|suggest|auto
@@ -27,7 +29,7 @@ func GetUserPreferences(db *sql.DB, userID int64) (*UserPreferences, error) {
 
 func SetUserAutoCountMode(db *sql.DB, userID int64, mode string) error {
 	if mode != "off" && mode != "suggest" && mode != "auto" {
-		return errors.New("invalid mode")
+		return ErrInvalidMode
 	}
 	_, err := db.Exec(
 		`INSERT INTO user_preferences(user_id, auto_count_mode) VALUES (?, ?)

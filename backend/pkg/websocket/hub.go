@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 )
 
@@ -113,7 +114,11 @@ func (h *Hub) broadcastToRoom(room, typ string, payload any) {
 		"payload":   payload,
 		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
 	}
-	data, _ := json.Marshal(msg)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("ws broadcast marshal error: room=%s type=%s err=%v", room, typ, err)
+		return
+	}
 
 	for c := range clients {
 		select {

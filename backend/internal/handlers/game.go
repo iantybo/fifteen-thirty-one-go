@@ -97,13 +97,18 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		st, ok := defaultGameManager.Get(gameID)
+		st, unlock, ok := defaultGameManager.GetLocked(gameID)
 		if !ok || st.Cut == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "game not ready"})
 			return
 		}
+		defer unlock()
 
-		players, _ := models.ListGamePlayersByGame(db, gameID)
+		players, err := models.ListGamePlayersByGame(db, gameID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
 		var pos int64 = -1
 		for _, p := range players {
 			if p.UserID == userID {
@@ -141,16 +146,23 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 		if req.Final {
 			mt = mt + "_final"
 		}
-		_, _ = models.InsertMove(db, models.GameMove{
+		if _, err := models.InsertMove(db, models.GameMove{
 			GameID:        gameID,
 			PlayerID:      userID,
 			MoveType:      mt,
 			ScoreClaimed:  &claim,
 			ScoreVerified: &verified,
 			IsCorrected:   false,
-		})
+		}); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
 
-		prefs, _ := models.GetUserPreferences(db, userID)
+		prefs, err := models.GetUserPreferences(db, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"verified": verified, "breakdown": breakdown, "auto_count_mode": prefs.AutoCountMode})
 	}
 }
@@ -209,14 +221,17 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 
 		verified := *prev.ScoreVerified
 		newClaim := req.NewClaim
-		_, _ = models.InsertMove(db, models.GameMove{
+		if _, err := models.InsertMove(db, models.GameMove{
 			GameID:        gameID,
 			PlayerID:      userID,
 			MoveType:      prev.MoveType + "_correct",
 			ScoreClaimed:  &newClaim,
 			ScoreVerified: &verified,
 			IsCorrected:   true,
-		})
+		}); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"verified": verified})
 	}
 }

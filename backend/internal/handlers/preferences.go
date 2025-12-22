@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
+	"log"
 	"net/http"
 
 	"fifteen-thirty-one-go/backend/internal/models"
@@ -43,7 +45,12 @@ func PutPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		if err := models.SetUserAutoCountMode(db, userID, req.AutoCountMode); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			if errors.Is(err, models.ErrInvalidMode) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			log.Printf("SetUserAutoCountMode failed: user_id=%d err=%v", userID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
 		prefs, err := models.GetUserPreferences(db, userID)

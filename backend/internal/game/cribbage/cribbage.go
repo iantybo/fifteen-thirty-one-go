@@ -177,7 +177,9 @@ func (s *State) PlayPeggingCard(player int, card common.Card) (score int, reason
 		s.advanceToNextPlayableOrGo()
 	}
 
-	s.maybeFinishRound()
+	if err := s.maybeFinishRound(); err != nil {
+		return points, reasons, err
+	}
 
 	return points, reasons, nil
 }
@@ -221,7 +223,9 @@ func (s *State) Go(player int) (awarded int, err error) {
 		s.advanceToNextPlayableOrGo()
 	}
 
-	s.maybeFinishRound()
+	if err := s.maybeFinishRound(); err != nil {
+		return awarded, err
+	}
 	return awarded, nil
 }
 
@@ -261,7 +265,7 @@ func (s *State) advanceToNextPlayableOrGo() {
 	}
 }
 
-func (s *State) maybeFinishRound() {
+func (s *State) maybeFinishRound() error {
 	// If all hands are empty, finish pegging and count hands + crib.
 	allEmpty := true
 	for i := 0; i < s.Rules.MaxPlayers; i++ {
@@ -271,7 +275,7 @@ func (s *State) maybeFinishRound() {
 		}
 	}
 	if !allEmpty {
-		return
+		return nil
 	}
 
 	// Award last card point if the last sequence didn't end on 31.
@@ -284,7 +288,7 @@ func (s *State) maybeFinishRound() {
 	if s.Cut == nil {
 		// Should not happen, but avoid panic.
 		s.Stage = "finished"
-		return
+		return fmt.Errorf("missing cut card")
 	}
 
 	// Count each hand (non-crib), then dealer counts crib.
@@ -298,7 +302,7 @@ func (s *State) maybeFinishRound() {
 	for i := 0; i < s.Rules.MaxPlayers; i++ {
 		if s.Scores[i] >= 121 {
 			s.Stage = "finished"
-			return
+			return nil
 		}
 	}
 
@@ -308,7 +312,9 @@ func (s *State) maybeFinishRound() {
 		// revert dealer increment on failure
 		s.DealerIndex = (s.DealerIndex - 1 + s.Rules.MaxPlayers) % s.Rules.MaxPlayers
 		s.Stage = "finished"
+		return err
 	}
+	return nil
 }
 
 func (s *State) MarshalJSON() ([]byte, error) {

@@ -25,6 +25,8 @@ func LoadConfigFromEnv() (Config, error) {
 	if v := os.Getenv("JWT_TTL_MINUTES"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			ttlMinutes = n
+		} else {
+			fmt.Fprintf(os.Stderr, "WARNING: invalid JWT_TTL_MINUTES=%q, using default %d\n", v, ttlMinutes)
 		}
 	}
 
@@ -61,11 +63,9 @@ func LoadConfigFromEnv() (Config, error) {
 	if cfg.DatabasePath == "" {
 		missing = append(missing, "DATABASE_PATH")
 	}
-	if cfg.Addr == "" {
-		missing = append(missing, "BACKEND_ADDR")
-	}
-	if cfg.JWTTTL <= 0 {
-		missing = append(missing, "JWT_TTL_MINUTES")
+	// BACKEND_ADDR is optional if PORT is set by the hosting environment.
+	if cfg.Addr == "" && os.Getenv("PORT") == "" {
+		missing = append(missing, "BACKEND_ADDR (or PORT)")
 	}
 	if len(missing) > 0 {
 		return Config{}, fmt.Errorf("missing/invalid env: %s", strings.Join(missing, ", "))

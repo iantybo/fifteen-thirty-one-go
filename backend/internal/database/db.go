@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -46,8 +47,28 @@ func OpenAndMigrate(dbPath string) (*sql.DB, error) {
 func sqliteDSN(dbPath string) string {
 	// foreign_keys=on ensures FK constraints are enforced at the connection level.
 	// _busy_timeout reduces spurious SQLITE_BUSY for concurrent reads/writes.
-	if strings.HasPrefix(dbPath, "file:") || dbPath == ":memory:" {
+	if dbPath == ":memory:" {
 		return dbPath
+	}
+	if strings.HasPrefix(dbPath, "file:") {
+		base := dbPath
+		query := ""
+		if idx := strings.Index(dbPath, "?"); idx >= 0 {
+			base = dbPath[:idx]
+			query = dbPath[idx+1:]
+		}
+		q, _ := url.ParseQuery(query)
+		if q.Get("_foreign_keys") == "" {
+			q.Set("_foreign_keys", "on")
+		}
+		if q.Get("_busy_timeout") == "" {
+			q.Set("_busy_timeout", "5000")
+		}
+		enc := q.Encode()
+		if enc == "" {
+			return base
+		}
+		return base + "?" + enc
 	}
 	return fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=5000", dbPath)
 }
@@ -158,9 +179,9 @@ func execSQLScript(exec sqlExecer, script string) error {
 	// This is sufficient for our simple schema files.
 	cleaned := stripLineCommentsOutsideQuotes(script)
 
-	parts := strings.Split(cleaned, ";")
-	for _, p := range parts {
-		stmt := strings.TrimSpace(p)
+	stmts := splitSQLStatements(cleaned)
+	for _, stmt := range stmts {
+		stmt = strings.TrimSpace(stmt)
 		if stmt == "" {
 			continue
 		}
@@ -221,6 +242,52 @@ func stripLineCommentsOutsideQuotes(s string) string {
 	}
 
 	return b.String()
+}
+
+func splitSQLStatements(s string) []string {
+	var out []string
+	var b strings.Builder
+	b.Grow(len(s))
+
+	inSingle := false
+	inDouble := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+
+		if ch == '\'' && !inDouble {
+			if inSingle && i+1 < len(s) && s[i+1] == '\'' {
+				b.WriteByte(ch)
+				b.WriteByte(ch)
+				i++
+				continue
+			}
+			inSingle = !inSingle
+			b.WriteByte(ch)
+			continue
+		}
+		if ch == '"' && !inSingle {
+			if inDouble && i+1 < len(s) && s[i+1] == '"' {
+				b.WriteByte(ch)
+				b.WriteByte(ch)
+				i++
+				continue
+			}
+			inDouble = !inDouble
+			b.WriteByte(ch)
+			continue
+		}
+
+		if !inSingle && !inDouble && ch == ';' {
+			out = append(out, b.String())
+			b.Reset()
+			continue
+		}
+		b.WriteByte(ch)
+	}
+	if b.Len() > 0 {
+		out = append(out, b.String())
+	}
+	return out
 }
 
 

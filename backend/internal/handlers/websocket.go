@@ -52,7 +52,6 @@ func isAllowedOrigin(origin string) bool { return allowedOrigins[origin] }
 // WebSocketHandler upgrades the connection and registers the client.
 // Full message routing is implemented in Phase 4.
 func WebSocketHandler(hub *ws.Hub, db *sql.DB, cfg Config) gin.HandlerFunc {
-	_ = db
 	return func(c *gin.Context) {
 		token := tokenFromHeaderOrQuery(c)
 		if token == "" {

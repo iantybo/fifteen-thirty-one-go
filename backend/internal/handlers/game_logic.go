@@ -29,17 +29,13 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 		return nil, errors.New("no players")
 	}
 
-	st, ok := defaultGameManager.Get(gameID)
-	if !ok {
-		st = cribbage.NewState(len(players))
-		_ = st.Deal()
-		defaultGameManager.Set(gameID, st)
+	st, unlock, err := ensureGameStateLocked(gameID, len(players))
+	if err != nil {
+		return nil, err
 	}
+	view := cloneStateForView(st)
+	unlock()
 
-	view := *st
-	for i := range view.Hands {
-		view.Hands[i] = []common.Card{}
-	}
 	for _, gp := range players {
 		if gp.UserID == userID {
 			var yourHand []common.Card
@@ -71,16 +67,12 @@ func BuildGameSnapshotPublic(db *sql.DB, gameID int64) (*GameSnapshot, error) {
 	if len(players) == 0 {
 		return nil, errors.New("no players")
 	}
-	st, ok := defaultGameManager.Get(gameID)
-	if !ok {
-		st = cribbage.NewState(len(players))
-		_ = st.Deal()
-		defaultGameManager.Set(gameID, st)
+	st, unlock, err := ensureGameStateLocked(gameID, len(players))
+	if err != nil {
+		return nil, err
 	}
-	view := *st
-	for i := range view.Hands {
-		view.Hands[i] = []common.Card{}
-	}
+	view := cloneStateForView(st)
+	unlock()
 	return &GameSnapshot{Game: g, Players: players, State: view}, nil
 }
 
@@ -100,12 +92,11 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		return nil, errors.New("not a player in this game")
 	}
 
-	st, ok := defaultGameManager.Get(gameID)
-	if !ok {
-		st = cribbage.NewState(len(players))
-		_ = st.Deal()
-		defaultGameManager.Set(gameID, st)
+	st, unlock, err := ensureGameStateLocked(gameID, len(players))
+	if err != nil {
+		return nil, err
 	}
+	defer unlock()
 
 	// Load player's current hand from DB for action validation and to keep UI consistent.
 	var hand []common.Card
@@ -180,6 +171,24 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 	default:
 		return nil, errors.New("unknown move type")
 	}
+}
+
+func ensureGameStateLocked(gameID int64, playerCount int) (*cribbage.State, func(), error) {
+	st, unlock, ok := defaultGameManager.GetLocked(gameID)
+	if ok {
+		return st, unlock, nil
+	}
+	// Initialize a new in-memory state for this game.
+	tmp := cribbage.NewState(playerCount)
+	if err := tmp.Deal(); err != nil {
+		return nil, nil, err
+	}
+	defaultGameManager.Set(gameID, tmp)
+	st, unlock, ok = defaultGameManager.GetLocked(gameID)
+	if !ok {
+		return nil, nil, errors.New("game state unavailable")
+	}
+	return st, unlock, nil
 }
 
 

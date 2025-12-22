@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/rand"
 	"sort"
+	"sync"
 	"time"
 
 	"fifteen-thirty-one-go/backend/internal/game/common"
@@ -17,18 +18,22 @@ const (
 	BotHard   BotDifficulty = "hard"
 )
 
+var botRandMu sync.Mutex
+var botRand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
 func ChooseDiscard(hand []common.Card, difficulty BotDifficulty) ([]common.Card, error) {
 	if len(hand) < 2 {
 		return nil, errors.New("hand too small")
 	}
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	// Always operate on a copy.
 	cards := append([]common.Card(nil), hand...)
 
 	switch difficulty {
 	case BotEasy:
-		r.Shuffle(len(cards), func(i, j int) { cards[i], cards[j] = cards[j], cards[i] })
+		botRandMu.Lock()
+		botRand.Shuffle(len(cards), func(i, j int) { cards[i], cards[j] = cards[j], cards[i] })
+		botRandMu.Unlock()
 		return cards[:2], nil
 	case BotMedium, BotHard:
 		// Simple heuristic: discard two lowest Value15 cards, breaking ties by rank.
@@ -60,18 +65,19 @@ func ChoosePeggingPlay(hand []common.Card, peggingTotal int, peggingSeq []common
 		return nil, true
 	}
 
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	botRandMu.Lock()
+	defer botRandMu.Unlock()
 
 	switch difficulty {
 	case BotEasy:
-		pick := legal[r.Intn(len(legal))]
+		pick := legal[botRand.Intn(len(legal))]
 		return &pick, false
 	case BotMedium:
 		return bestImmediatePegging(legal, peggingTotal, peggingSeq, false)
 	case BotHard:
 		return bestImmediatePegging(legal, peggingTotal, peggingSeq, true)
 	default:
-		pick := legal[r.Intn(len(legal))]
+		pick := legal[botRand.Intn(len(legal))]
 		return &pick, false
 	}
 }

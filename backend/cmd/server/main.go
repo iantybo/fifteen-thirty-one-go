@@ -45,11 +45,12 @@ func main() {
 
 	addr := cfg.Addr
 	if addr == "" {
-		addr = "127.0.0.1:8080"
-	}
-	if v := os.Getenv("PORT"); v != "" {
-		// Optional: some hosts set PORT. For local dev, BACKEND_ADDR wins.
-		addr = "0.0.0.0:" + v
+		if v := os.Getenv("PORT"); v != "" {
+			// Some hosts set PORT. For local dev, BACKEND_ADDR (if set) takes precedence.
+			addr = "0.0.0.0:" + v
+		} else {
+			addr = "127.0.0.1:8080"
+		}
 	}
 
 	log.Printf("listening on %s", addr)
