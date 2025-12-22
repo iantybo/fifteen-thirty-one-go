@@ -29,6 +29,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("db open/migrate: %v", err)
 	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("db close error: %v", err)
+		}
+	}()
 
 	hub := websocket.NewHub()
 	go hub.Run()
@@ -52,7 +57,10 @@ func main() {
 	addr := cfg.Addr
 	if addr == "" {
 		if v := os.Getenv("PORT"); v != "" {
-			// Some hosts set PORT. For local dev, BACKEND_ADDR (if set) takes precedence.
+			// Address resolution precedence:
+			// 1) BACKEND_ADDR (already loaded into cfg.Addr)
+			// 2) PORT (when BACKEND_ADDR is not set)
+			// 3) Default 127.0.0.1:8080
 			addr = "0.0.0.0:" + v
 		} else {
 			addr = "127.0.0.1:8080"
@@ -91,9 +99,6 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Printf("server shutdown error: %v", err)
-	}
-	if err := db.Close(); err != nil {
-		log.Printf("db close error: %v", err)
 	}
 }
 

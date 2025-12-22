@@ -72,12 +72,27 @@ func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 }
 
 func SetCurrentPlayer(db *sql.DB, gameID int64, userID int64) error {
+	if err := ensurePlayerInGame(db, gameID, userID); err != nil {
+		return err
+	}
 	_, err := db.Exec(`UPDATE games SET current_player_id = ? WHERE id = ?`, userID, gameID)
 	return err
 }
 
 func SetDealer(db *sql.DB, gameID int64, dealerID int64) error {
+	if err := ensurePlayerInGame(db, gameID, dealerID); err != nil {
+		return err
+	}
 	_, err := db.Exec(`UPDATE games SET dealer_id = ? WHERE id = ?`, dealerID, gameID)
+	return err
+}
+
+func ensurePlayerInGame(db *sql.DB, gameID int64, userID int64) error {
+	var one int
+	err := db.QueryRow(`SELECT 1 FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrPlayerNotInGame
+	}
 	return err
 }
 

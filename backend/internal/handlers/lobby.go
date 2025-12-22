@@ -217,20 +217,23 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			stateJSONOk = true
 
 			var restored cribbage.State
-			if err := json.Unmarshal([]byte(stateJSON), &restored); err == nil {
-				if int(nextPos) >= 0 && int(nextPos) < len(restored.Hands) {
-					if b, err := json.Marshal(restored.Hands[nextPos]); err == nil {
-						handJSON = string(b)
-						handJSONOk = true
-						if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, userID, handJSON); err != nil {
-							log.Printf("UpdatePlayerHandIfEmptyTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
-							c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-							return
-						}
-					} else {
+			if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
+				log.Printf("JoinLobbyHandler restore state_json unmarshal failed: game_id=%d err=%v state_json_len=%d", gameID, err, len(stateJSON))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+			if int(nextPos) >= 0 && int(nextPos) < len(restored.Hands) {
+				if b, err := json.Marshal(restored.Hands[nextPos]); err == nil {
+					handJSON = string(b)
+					handJSONOk = true
+					if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, userID, handJSON); err != nil {
+						log.Printf("UpdatePlayerHandIfEmptyTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 						return
 					}
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+					return
 				}
 			}
 		}
@@ -247,17 +250,19 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			if ok {
 				if handJSONOk {
 					var h []common.Card
-					if err := json.Unmarshal([]byte(handJSON), &h); err == nil {
-						if int(nextPos) >= 0 && int(nextPos) < len(st.Hands) {
-							st.Hands[nextPos] = h
-						}
+					if err := json.Unmarshal([]byte(handJSON), &h); err != nil {
+						log.Printf("JoinLobbyHandler handJSON unmarshal failed: game_id=%d next_pos=%d err=%v hand_json_len=%d", gameID, nextPos, err, len(handJSON))
+					} else if int(nextPos) >= 0 && int(nextPos) < len(st.Hands) {
+						st.Hands[nextPos] = h
 					}
 				}
 				unlock()
 			} else {
 				// Restore full state from DB snapshot if runtime state is missing (e.g., restart).
 				var restored cribbage.State
-				if err := json.Unmarshal([]byte(stateJSON), &restored); err == nil {
+				if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
+					log.Printf("JoinLobbyHandler restore runtime state_json unmarshal failed: game_id=%d err=%v state_json_len=%d", gameID, err, len(stateJSON))
+				} else {
 					defaultGameManager.Set(gameID, &restored)
 				}
 			}

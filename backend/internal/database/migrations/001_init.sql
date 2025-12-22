@@ -73,8 +73,15 @@ BEGIN
     SET current_players = (
       SELECT COUNT(*)
       FROM game_players gp
-      JOIN games g ON g.id = gp.game_id
-      WHERE g.lobby_id = (SELECT lobby_id FROM games WHERE id = NEW.game_id)
+      WHERE gp.game_id = (
+        -- Count only the lobby's active game (waiting/playing), not historical games.
+        SELECT id
+        FROM games
+        WHERE lobby_id = (SELECT lobby_id FROM games WHERE id = NEW.game_id)
+          AND status IN ('waiting', 'playing')
+        ORDER BY id DESC
+        LIMIT 1
+      )
     )
   WHERE id = (SELECT lobby_id FROM games WHERE id = NEW.game_id);
 END;
@@ -86,8 +93,15 @@ BEGIN
     SET current_players = (
       SELECT COUNT(*)
       FROM game_players gp
-      JOIN games g ON g.id = gp.game_id
-      WHERE g.lobby_id = (SELECT lobby_id FROM games WHERE id = OLD.game_id)
+      WHERE gp.game_id = (
+        -- Count only the lobby's active game (waiting/playing), not historical games.
+        SELECT id
+        FROM games
+        WHERE lobby_id = (SELECT lobby_id FROM games WHERE id = OLD.game_id)
+          AND status IN ('waiting', 'playing')
+        ORDER BY id DESC
+        LIMIT 1
+      )
     )
   WHERE id = (SELECT lobby_id FROM games WHERE id = OLD.game_id);
 END;

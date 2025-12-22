@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 type Config struct {
@@ -62,11 +64,15 @@ func LoadFromEnv() (Config, error) {
 	if v := strings.TrimSpace(os.Getenv("WS_ALLOW_QUERY_TOKENS")); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.WSAllowQueryTokens = b
+		} else {
+			fmt.Fprintf(os.Stderr, "WARNING: invalid WS_ALLOW_QUERY_TOKENS=%q, using default false\n", v)
 		}
 	}
 	if v := strings.TrimSpace(os.Getenv("DEV_WEBSOCKETS_ALLOW_ALL")); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.DevWebSocketsAllowAll = b
+		} else {
+			fmt.Fprintf(os.Stderr, "WARNING: invalid DEV_WEBSOCKETS_ALLOW_ALL=%q, using default false\n", v)
 		}
 	}
 
@@ -80,11 +86,12 @@ func LoadFromEnv() (Config, error) {
 	// BACKEND_ADDR is optional if PORT is set by the hosting environment.
 	if cfg.Addr == "" {
 		if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
-			// If PORT is a bare port, accept ":<port>". If it already includes host, keep it.
-			if strings.Contains(port, ":") {
-				cfg.Addr = port
-			} else {
+			// If PORT starts with a digit, treat it as a bare port number (":<port>").
+			// Otherwise treat it as already containing host / host:port (or ":<port>").
+			if r, _ := utf8.DecodeRuneInString(port); unicode.IsDigit(r) {
 				cfg.Addr = ":" + port
+			} else {
+				cfg.Addr = port
 			}
 		}
 	}

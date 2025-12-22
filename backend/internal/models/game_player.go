@@ -26,36 +26,36 @@ func AddGamePlayer(db *sql.DB, gameID, userID int64, position int64, isBot bool,
 
 func AddGamePlayerAutoPosition(db *sql.DB, gameID, userID int64, isBot bool, botDifficulty *string) (int64, error) {
 	// Retry on unique position collision (due to concurrent joins).
+	//
+	// Important: retries must start a new transaction. In SQLite, constraint
+	// violations can abort the current transaction, so we never retry within a
+	// single tx.
 	for attempt := 0; attempt < 3; attempt++ {
-		res, err := db.Exec(
-			`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty)
-			 SELECT ?, ?, COALESCE(MAX(position), -1) + 1, ?, ?
-			 FROM game_players WHERE game_id = ?
-			 HAVING COALESCE(MAX(position), -1) + 1 <= 2`,
-			gameID, userID, boolToInt(isBot), botDifficulty, gameID,
-		)
+		tx, err := db.Begin()
 		if err != nil {
-			// For now, treat any error as retryable only if it looks like a constraint collision.
+			return 0, err
+		}
+		committed := false
+		defer func() {
+			if !committed {
+				_ = tx.Rollback()
+			}
+		}()
+
+		pos, err := AddGamePlayerAutoPositionTx(tx, gameID, userID, isBot, botDifficulty)
+		if err != nil {
 			if IsUniqueConstraint(err) && attempt < 2 {
+				_ = tx.Rollback()
 				continue
 			}
+			_ = tx.Rollback()
 			return 0, err
 		}
-		ra, err := res.RowsAffected()
-		if err != nil {
+		if err := tx.Commit(); err != nil {
+			_ = tx.Rollback()
 			return 0, err
 		}
-		if ra == 0 {
-			return 0, errors.New("could not allocate position")
-		}
-
-		var pos int64
-		if err := db.QueryRow(`SELECT position FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&pos); err != nil {
-			return 0, err
-		}
-		if pos < 0 {
-			return 0, errors.New("invalid assigned position")
-		}
+		committed = true
 		return pos, nil
 	}
 	return 0, errors.New("could not allocate position")

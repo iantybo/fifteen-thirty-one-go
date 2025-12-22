@@ -107,7 +107,16 @@ func (h *Hub) Join(c *Client, room string) {
 }
 
 func (h *Hub) Broadcast(room, typ string, payload any) {
-	h.broadcast <- Broadcast{Room: room, Type: typ, Payload: payload}
+	select {
+	case <-h.stop:
+		return
+	case h.broadcast <- Broadcast{Room: room, Type: typ, Payload: payload}:
+		return
+	default:
+		// Drop rather than block forever (e.g., if Run() has exited and the
+		// channel buffer fills).
+		return
+	}
 }
 
 func (h *Hub) removeClient(c *Client) {

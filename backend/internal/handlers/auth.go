@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"fifteen-thirty-one-go/backend/internal/auth"
 	"fifteen-thirty-one-go/backend/internal/config"
@@ -37,7 +38,7 @@ func RegisterHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 			return
 		}
 		// Do not TrimSpace passwords: leading/trailing spaces are valid characters.
-		if len(req.Password) < 8 {
+		if utf8.RuneCountInString(req.Password) < 8 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "password must be at least 8 characters"})
 			return
 		}
@@ -52,6 +53,10 @@ func RegisterHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 
 		hash, err := auth.HashPassword(req.Password)
 		if err != nil {
+			if auth.IsPasswordValidationError(err) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "password hash error"})
 			return
 		}
