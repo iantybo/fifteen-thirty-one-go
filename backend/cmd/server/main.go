@@ -40,7 +40,13 @@ func main() {
 	go func() {
 		for {
 			panicked := false
-			currentHub := hubRef.Get()
+			currentHub, ok := hubRef.Get()
+			if !ok || currentHub == nil {
+				// Should never happen (we always Store a *Hub), but avoid nil deref.
+				time.Sleep(1 * time.Second)
+				hubRef.Set(websocket.NewHub())
+				continue
+			}
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -110,7 +116,7 @@ func main() {
 		log.Printf("server error: %v", err)
 	}
 
-	if h := hubRef.Get(); h != nil {
+	if h, ok := hubRef.Get(); ok && h != nil {
 		h.Stop()
 	}
 

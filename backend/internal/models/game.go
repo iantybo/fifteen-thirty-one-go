@@ -92,13 +92,13 @@ func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 }
 
 func SetCurrentPlayer(db *sql.DB, gameID int64, userID int64) error {
-	if err := ensureGameExists(db, gameID); err != nil {
-		return err
-	}
-	if err := ensurePlayerInGame(db, gameID, userID); err != nil {
-		return err
-	}
-	res, err := db.Exec(`UPDATE games SET current_player_id = ? WHERE id = ?`, userID, gameID)
+	res, err := db.Exec(
+		`UPDATE games
+		 SET current_player_id = ?
+		 WHERE id = ?
+		   AND EXISTS (SELECT 1 FROM game_players WHERE game_id = ? AND user_id = ?)`,
+		userID, gameID, gameID, userID,
+	)
 	if err != nil {
 		return err
 	}
@@ -107,19 +107,23 @@ func SetCurrentPlayer(db *sql.DB, gameID int64, userID int64) error {
 		return err
 	}
 	if ra == 0 {
-		return ErrGameNotFound
+		// Could be either game not found or player not in game; disambiguate.
+		if err := ensureGameExists(db, gameID); err != nil {
+			return err
+		}
+		return ErrPlayerNotInGame
 	}
 	return nil
 }
 
 func SetDealer(db *sql.DB, gameID int64, dealerID int64) error {
-	if err := ensureGameExists(db, gameID); err != nil {
-		return err
-	}
-	if err := ensurePlayerInGame(db, gameID, dealerID); err != nil {
-		return err
-	}
-	res, err := db.Exec(`UPDATE games SET dealer_id = ? WHERE id = ?`, dealerID, gameID)
+	res, err := db.Exec(
+		`UPDATE games
+		 SET dealer_id = ?
+		 WHERE id = ?
+		   AND EXISTS (SELECT 1 FROM game_players WHERE game_id = ? AND user_id = ?)`,
+		dealerID, gameID, gameID, dealerID,
+	)
 	if err != nil {
 		return err
 	}
@@ -202,6 +206,14 @@ func UpdateGameStateTxCAS(tx *sql.Tx, gameID int64, expectedVersion int64, state
 		return err
 	}
 	if ra == 0 {
+		// Disambiguate "no rows updated": either the game doesn't exist or state_version mismatched.
+		var one int
+		if err := tx.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrGameNotFound
+			}
+			return err
+		}
 		return ErrGameStateConflict
 	}
 	return nil

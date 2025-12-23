@@ -91,7 +91,7 @@ fifteen-thirty-one-go/
 
 ## Database Schema
 
-**users**
+### users
 
 - id (INTEGER PRIMARY KEY)
 - username (TEXT UNIQUE)
@@ -100,7 +100,7 @@ fifteen-thirty-one-go/
 - games_played (INTEGER)
 - games_won (INTEGER)
 
-**lobbies**
+### lobbies
 
 - id (INTEGER PRIMARY KEY)
 - name (TEXT)
@@ -110,7 +110,7 @@ fifteen-thirty-one-go/
 - status (TEXT: 'waiting', 'in_progress', 'finished')
 - created_at (TIMESTAMP)
 
-**games**
+### games
 
 - id (INTEGER PRIMARY KEY)
 - lobby_id (INTEGER, FK to lobbies)
@@ -120,7 +120,7 @@ fifteen-thirty-one-go/
 - created_at (TIMESTAMP)
 - finished_at (TIMESTAMP)
 
-**game_players**
+### game_players
 
 - game_id (INTEGER, FK to games)
 - user_id (INTEGER, FK to users)
@@ -131,7 +131,7 @@ fifteen-thirty-one-go/
 - is_bot (BOOLEAN, default false)
 - bot_difficulty (TEXT, nullable)
 
-**game_moves**
+### game_moves
 
 - id (INTEGER PRIMARY KEY)
 - game_id (INTEGER, FK to games)
@@ -143,7 +143,7 @@ fifteen-thirty-one-go/
 - is_corrected (BOOLEAN, default false)
 - created_at (TIMESTAMP)
 
-**scoreboard**
+### scoreboard
 
 - id (INTEGER PRIMARY KEY)
 - user_id (INTEGER, FK to users)
@@ -182,10 +182,10 @@ fifteen-thirty-one-go/
 - Card deck representation and shuffling
 - Hand dealing logic
 - Cribbage scoring engine:
-    - 15s, pairs, runs, flushes, nobs
-    - Hand counting (6 cards)
-    - Crib counting (4 cards + cut card)
-    - Pegging scoring (31, pairs, runs, 15)
+  - 15s, pairs, runs, flushes, nobs
+  - Hand counting (6 cards)
+  - Crib counting (4 cards + cut card)
+  - Pegging scoring (31, pairs, runs, 15)
 - Game state management
 - Turn progression logic
 - Win condition checking (121 points)
@@ -225,11 +225,11 @@ fifteen-thirty-one-go/
 - WebSocket hub for managing connections
 - Room-based messaging (per game/lobby)
 - Message types:
-    - Game state updates
-    - Player actions
-    - Count submissions
-    - Turn changes
-    - Game end notifications
+  - Game state updates
+  - Player actions
+  - Count submissions
+  - Turn changes
+  - Game end notifications
 
 9. **WebSocket Handler** ([backend/internal/handlers/websocket.go](backend/internal/handlers/websocket.go))
 
@@ -383,7 +383,7 @@ sequenceDiagram
 
 ## Dependencies
 
-**Backend (go.mod)**
+### Backend (go.mod)
 
 - github.com/gin-gonic/gin
 - github.com/gorilla/websocket
@@ -391,7 +391,7 @@ sequenceDiagram
 - github.com/mattn/go-sqlite3
 - golang.org/x/crypto (bcrypt)
 
-**Frontend (package.json)**
+### Frontend (package.json)
 
 - react, react-dom
 - react-router-dom

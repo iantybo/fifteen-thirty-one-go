@@ -43,7 +43,7 @@ func isJWTSecretPlaceholder(secret string) bool {
 }
 
 func LoadFromEnv() (Config, error) {
-	ttlMinutes := int64(10080) // 7 days
+	ttlMinutes := int64(1440) // 24 hours
 	if v := os.Getenv("JWT_TTL_MINUTES"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			ttlMinutes = n

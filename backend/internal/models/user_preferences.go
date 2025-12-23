@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -69,10 +70,9 @@ func SetUserAutoCountModeAndGetPreferencesTx(db *sql.DB, userID int64, mode stri
 			// Preserve the upsert; commit even though the SELECT returned no rows.
 			// (This should be unreachable, but keeps DB changes consistent with caller intent.)
 			if err := tx.Commit(); err != nil {
-				_ = tx.Rollback()
-				return nil, err
+				return nil, fmt.Errorf("commit user_preferences tx: %w", err)
 			}
-			return &UserPreferences{UserID: userID, AutoCountMode: "suggest", UpdatedAt: time.Now().UTC()}, nil
+			return &UserPreferences{UserID: userID, AutoCountMode: mode, UpdatedAt: time.Now().UTC()}, nil
 		}
 		_ = tx.Rollback()
 		return nil, err

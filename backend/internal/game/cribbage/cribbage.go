@@ -107,7 +107,7 @@ func (s *State) Discard(player int, cards []common.Card) error {
 	if player < 0 || player >= s.Rules.MaxPlayers {
 		return models.ErrInvalidPlayer
 	}
-	if len(s.DiscardCompleted) == s.Rules.MaxPlayers && s.DiscardCompleted[player] {
+	if s.DiscardCompleted[player] {
 		return models.ErrDiscardAlreadyCompleted
 	}
 	if len(cards) != s.Rules.DiscardCount() {
@@ -130,18 +130,8 @@ func (s *State) Discard(player int, cards []common.Card) error {
 	}
 
 	neededDiscards := s.Rules.MaxPlayers * s.Rules.DiscardCount()
-	if len(s.DiscardCompleted) == s.Rules.MaxPlayers {
-		s.DiscardCompleted[player] = true
-	}
+	s.DiscardCompleted[player] = true
 	allDone := len(s.Crib) == neededDiscards
-	if len(s.DiscardCompleted) == s.Rules.MaxPlayers {
-		for i := 0; i < s.Rules.MaxPlayers; i++ {
-			if !s.DiscardCompleted[i] {
-				allDone = false
-				break
-			}
-		}
-	}
 
 	if allDone && len(s.Crib) == neededDiscards {
 		// 3-player cribbage: add one random card from deck to the crib to make 4.

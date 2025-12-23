@@ -85,7 +85,7 @@ func isLocalhostOrigin(origin string) bool {
 
 // WebSocketHandler upgrades the connection and registers the client.
 // Full message routing is implemented in Phase 4.
-func WebSocketHandler(hubProvider func() *ws.Hub, db *sql.DB, cfg config.Config) gin.HandlerFunc {
+func WebSocketHandler(hubProvider func() (*ws.Hub, bool), db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := tokenFromHeaderOrQuery(c, cfg)
 		if token == "" {
@@ -98,6 +98,19 @@ func WebSocketHandler(hubProvider func() *ws.Hub, db *sql.DB, cfg config.Config)
 			return
 		}
 
+		// Preconditions before attempting the upgrade so we can return HTTP errors normally.
+		room := strings.TrimSpace(c.Query("room"))
+		if room == "" {
+			room = "lobby:global"
+		}
+		hub, ok := hubProvider()
+		if !ok || hub == nil {
+			// Should never happen; treat as an internal error (still HTTP at this point).
+			log.Printf("WebSocketHandler hubProvider returned nil: user_id=%d room=%q", claims.UserID, room)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			log.Printf("WebSocketHandler upgrade failed: method=%s path=%s remote=%s origin=%q err=%v",
@@ -106,15 +119,29 @@ func WebSocketHandler(hubProvider func() *ws.Hub, db *sql.DB, cfg config.Config)
 			return
 		}
 
-		room := strings.TrimSpace(c.Query("room"))
-		if room == "" {
-			room = "lobby:global"
-		}
-		hub := hubProvider()
+		// Defensive: hub should never be nil here, but if it is, close the WS and return.
 		if hub == nil {
-			// Should never happen; treat as an internal error.
-			_ = conn.Close()
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			log.Printf(
+				"WebSocketHandler unexpected nil hub after upgrade (closing ws): path=%s remote=%s user_id=%d room=%q",
+				c.Request.URL.Path, c.Request.RemoteAddr, claims.UserID, room,
+			)
+			// Best-effort: send a close control message so the peer sees a clean disconnect.
+			if err := conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "internal error"),
+				time.Now().Add(1*time.Second),
+			); err != nil {
+				log.Printf(
+					"WebSocketHandler close control write failed: path=%s remote=%s user_id=%d room=%q err=%v",
+					c.Request.URL.Path, c.Request.RemoteAddr, claims.UserID, room, err,
+				)
+			}
+			if err := conn.Close(); err != nil {
+				log.Printf(
+					"WebSocketHandler conn.Close failed: path=%s remote=%s user_id=%d room=%q err=%v",
+					c.Request.URL.Path, c.Request.RemoteAddr, claims.UserID, room, err,
+				)
+			}
 			return
 		}
 		client := ws.NewClient(conn, hub, room, claims.UserID)

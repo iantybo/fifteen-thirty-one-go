@@ -54,4 +54,12 @@ func cloneStateForView(st *cribbage.State) cribbage.State {
 	return view
 }
 
+// CloneStateForView returns a deep-copied state suitable for sending to clients,
+// with hidden-card fields omitted to avoid accidental leakage.
+//
+// This is the exported wrapper used by snapshot builders.
+func CloneStateForView(st *cribbage.State) cribbage.State {
+	return cloneStateForView(st)
+}
+
 

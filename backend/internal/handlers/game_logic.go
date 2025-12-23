@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 
 	"fifteen-thirty-one-go/backend/internal/game/common"
@@ -34,7 +35,7 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 	if err != nil {
 		return nil, err
 	}
-	view := cloneStateForView(st)
+	view := CloneStateForView(st)
 	unlock()
 
 	for _, gp := range players {
@@ -72,7 +73,7 @@ func BuildGameSnapshotPublic(db *sql.DB, gameID int64) (*GameSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	view := cloneStateForView(st)
+	view := CloneStateForView(st)
 	unlock()
 	return &GameSnapshot{Game: g, Players: players, State: view}, nil
 }
@@ -240,21 +241,37 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		working.Version = newVersion
 
 		st2, unlock2, err := ensureGameStateLocked(db, gameID, players)
-		if err == nil {
-			if st2.Version == baseVersion {
-				*st2 = working
-			} else if st2.Version != newVersion {
-				// Unexpected: don't overwrite newer runtime state. Best-effort: reload runtime from DB.
-				if raw, v, ok, rerr := models.GetGameStateJSON(db, gameID); rerr == nil && ok {
-					var restored cribbage.State
-					if uerr := json.Unmarshal([]byte(raw), &restored); uerr == nil {
-						restored.Version = v
-						*st2 = restored
-					}
+		if err != nil {
+			// This should be rare; failing to re-acquire can leave runtime state stale even though DB committed.
+			// Make it observable and attempt a best-effort runtime reload from the DB snapshot.
+			log.Printf("ApplyMove: failed to re-acquire game state lock after commit; game_id=%d players=%+v err=%v", gameID, players, err)
+			if raw, v, ok, rerr := models.GetGameStateJSON(db, gameID); rerr != nil {
+				log.Printf("ApplyMove: best-effort runtime reload failed (GetGameStateJSON); game_id=%d err=%v", gameID, rerr)
+			} else if ok {
+				var restored cribbage.State
+				if uerr := json.Unmarshal([]byte(raw), &restored); uerr != nil {
+					log.Printf("ApplyMove: best-effort runtime reload failed (unmarshal state_json); game_id=%d err=%v", gameID, uerr)
+				} else {
+					restored.Version = v
+					defaultGameManager.Set(gameID, &restored)
 				}
 			}
-			unlock2()
+			return resp, nil
 		}
+
+		if st2.Version == baseVersion {
+			*st2 = working
+		} else if st2.Version != newVersion {
+			// Unexpected: don't overwrite newer runtime state. Best-effort: reload runtime from DB.
+			if raw, v, ok, rerr := models.GetGameStateJSON(db, gameID); rerr == nil && ok {
+				var restored cribbage.State
+				if uerr := json.Unmarshal([]byte(raw), &restored); uerr == nil {
+					restored.Version = v
+					*st2 = restored
+				}
+			}
+		}
+		unlock2()
 
 		return resp, nil
 	}

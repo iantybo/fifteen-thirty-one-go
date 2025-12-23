@@ -15,9 +15,9 @@ func NewHubRef(initial *Hub) *HubRef {
 	return r
 }
 
-func (r *HubRef) Get() *Hub {
-	h, _ := r.v.Load().(*Hub)
-	return h
+func (r *HubRef) Get() (*Hub, bool) {
+	h, ok := r.v.Load().(*Hub)
+	return h, ok && h != nil
 }
 
 func (r *HubRef) Set(h *Hub) {

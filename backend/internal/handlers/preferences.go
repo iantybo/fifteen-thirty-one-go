@@ -47,7 +47,8 @@ func PutPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 		prefs, err := models.SetUserAutoCountModeAndGetPreferencesTx(db, userID, req.AutoCountMode)
 		if err != nil {
 			if errors.Is(err, models.ErrInvalidMode) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				log.Printf("PutPreferencesHandler invalid mode: user_id=%d err=%v", userID, err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mode"})
 				return
 			}
 			log.Printf("SetUserAutoCountModeAndGetPreferencesTx failed: user_id=%d err=%v", userID, err)

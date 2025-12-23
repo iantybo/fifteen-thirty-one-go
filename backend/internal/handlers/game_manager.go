@@ -23,11 +23,22 @@ func NewGameManager() *GameManager {
 func (m *GameManager) GetLocked(gameID int64) (*cribbage.State, func(), bool) {
 	m.mu.RLock()
 	e, ok := m.games[gameID]
-	m.mu.RUnlock()
 	if !ok || e == nil {
+		m.mu.RUnlock()
 		return nil, nil, false
 	}
+	// Hold the map read lock while acquiring the per-entry lock so Delete/Set can't
+	// remove/replace the entry in the gap (TOCTOU).
 	e.mu.Lock()
+	// While m.mu.RLock is held, m.games cannot be mutated, but we still defensively
+	// ensure the map still points at the same entry.
+	if cur := m.games[gameID]; cur != e {
+		e.mu.Unlock()
+		m.mu.RUnlock()
+		return nil, nil, false
+	}
+	m.mu.RUnlock()
+
 	if e.state == nil {
 		e.mu.Unlock()
 		return nil, nil, false
