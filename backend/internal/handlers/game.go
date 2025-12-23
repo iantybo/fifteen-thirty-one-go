@@ -250,12 +250,6 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid move"})
 			return
 		}
-		// Reject attempts to correct a move that has already been corrected.
-		// Do this early to avoid permission/finalization work and prevent conflicting corrections.
-		if prev.IsCorrected {
-			c.JSON(http.StatusConflict, gin.H{"error": "move already corrected"})
-			return
-		}
 		isHost := false
 		var hostID int64
 		if err := db.QueryRow(`SELECT l.host_id FROM games g JOIN lobbies l ON l.id = g.lobby_id WHERE g.id = ?`, gameID).Scan(&hostID); err != nil {
@@ -271,6 +265,12 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 		}
 		if prev.PlayerID != userID && !isHost {
 			c.JSON(http.StatusForbidden, gin.H{"error": "cannot correct someone else's move"})
+			return
+		}
+		// Reject attempts to correct a move that has already been corrected.
+		// Note: run this after permission checks to avoid leaking state to unauthorized users.
+		if prev.IsCorrected {
+			c.JSON(http.StatusConflict, gin.H{"error": "move already corrected"})
 			return
 		}
 		if strings.HasSuffix(prev.MoveType, "_final") && !isHost {

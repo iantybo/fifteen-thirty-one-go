@@ -63,15 +63,18 @@ func SetUserAutoCountModeAndGetPreferencesTx(db *sql.DB, userID int64, mode stri
 	err = tx.QueryRow(`SELECT user_id, auto_count_mode, updated_at FROM user_preferences WHERE user_id = ?`, userID).
 		Scan(&p.UserID, &p.AutoCountMode, &p.UpdatedAt)
 	if err != nil {
-		_ = tx.Rollback()
 		// Extremely defensive: after an upsert, the row should exist.
 		// Preserve GetUserPreferences semantics if it somehow doesn't.
 		if errors.Is(err, sql.ErrNoRows) {
+			// Preserve the upsert; commit even though the SELECT returned no rows.
+			// (This should be unreachable, but keeps DB changes consistent with caller intent.)
 			if err := tx.Commit(); err != nil {
+				_ = tx.Rollback()
 				return nil, err
 			}
 			return &UserPreferences{UserID: userID, AutoCountMode: "suggest", UpdatedAt: time.Now().UTC()}, nil
 		}
+		_ = tx.Rollback()
 		return nil, err
 	}
 

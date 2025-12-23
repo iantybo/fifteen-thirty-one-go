@@ -22,6 +22,26 @@ type Config struct {
 	DevWebSocketsAllowAll bool
 }
 
+func isJWTSecretPlaceholder(secret string) bool {
+	s := strings.ToUpper(strings.TrimSpace(secret))
+	if s == "" {
+		return true
+	}
+	// Common placeholder values (case-insensitive).
+	switch s {
+	case "REPLACE_ME",
+		"CHANGE_ME",
+		"CHANGEME",
+		"CHANGE_ME_OR_APP_WILL_NOT_START":
+		return true
+	}
+	// Clearly unsafe sentinels (prefix match).
+	if strings.HasPrefix(s, "DO_NOT_USE_IN_PRODUCTION") {
+		return true
+	}
+	return false
+}
+
 func LoadFromEnv() (Config, error) {
 	ttlMinutes := int64(10080) // 7 days
 	if v := os.Getenv("JWT_TTL_MINUTES"); v != "" {
@@ -78,7 +98,8 @@ func LoadFromEnv() (Config, error) {
 	// - must be present (and not a placeholder)
 	// - must be at least 32 bytes for HS256
 	// NOTE: use raw byte length (len(secret)) as requested.
-	if strings.TrimSpace(cfg.JWTSecret) == "" || cfg.JWTSecret == "REPLACE_ME" || cfg.JWTSecret == "change-me" {
+	cfg.JWTSecret = strings.TrimSpace(cfg.JWTSecret)
+	if isJWTSecretPlaceholder(cfg.JWTSecret) {
 		return Config{}, fmt.Errorf("JWT_SECRET is required; generate and set a strong secret (e.g., `openssl rand -hex 32`)")
 	}
 	if len(cfg.JWTSecret) < 32 {

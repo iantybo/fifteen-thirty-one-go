@@ -85,7 +85,7 @@ func isLocalhostOrigin(origin string) bool {
 
 // WebSocketHandler upgrades the connection and registers the client.
 // Full message routing is implemented in Phase 4.
-func WebSocketHandler(hub *ws.Hub, db *sql.DB, cfg config.Config) gin.HandlerFunc {
+func WebSocketHandler(hubProvider func() *ws.Hub, db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := tokenFromHeaderOrQuery(c, cfg)
 		if token == "" {
@@ -109,6 +109,13 @@ func WebSocketHandler(hub *ws.Hub, db *sql.DB, cfg config.Config) gin.HandlerFun
 		room := strings.TrimSpace(c.Query("room"))
 		if room == "" {
 			room = "lobby:global"
+		}
+		hub := hubProvider()
+		if hub == nil {
+			// Should never happen; treat as an internal error.
+			_ = conn.Close()
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
 		}
 		client := ws.NewClient(conn, hub, room, claims.UserID)
 		hub.Register(client)

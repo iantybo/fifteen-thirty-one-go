@@ -35,7 +35,7 @@ Cribbage (first), with a platform designed to grow into **multiple card games** 
 - **Designed for extension**: a game-engine interface and registry so we can add other games later without rewriting the platform.
 
 ## Go version
-- **Go toolchain**: Go **1.25.5** (see `backend/go.mod` `go`/`toolchain` directives).
+- **Go version**: Go **1.25.0** (see `backend/go.mod` `go` directive; toolchain is `go1.25.5`).
 
 ## Public Repo / Security Rules (important)
 This repository is **public**. Do not commit secrets.

@@ -75,6 +75,9 @@ func writeAPIError(c *gin.Context, err error) {
 	case errors.Is(err, models.ErrGameStateMissing):
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
 		return
+	case errors.Is(err, models.ErrGameStateConflict):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "game state changed; retry"})
+		return
 	case errors.Is(err, models.ErrLobbyFull):
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "lobby full"})
 		return

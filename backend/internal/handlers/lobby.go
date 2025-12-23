@@ -17,7 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func syncRuntimeStateFromDB(gameID int64, nextPos int, stateJSON, handJSON string) error {
+func syncRuntimeStateFromDB(gameID int64, nextPos int, stateVersion int64, stateJSON, handJSON string) error {
 	// After commit, briefly acquire the in-memory lock to keep runtime state aligned with DB.
 	// No DB operations while holding this lock.
 	if strings.TrimSpace(stateJSON) == "" {
@@ -62,6 +62,7 @@ func syncRuntimeStateFromDB(gameID int64, nextPos int, stateJSON, handJSON strin
 					returnedErr = fmt.Errorf("state_json unmarshal failed: %w", err)
 				}
 			} else {
+				restored.Version = stateVersion
 				reloadFullState = true
 				restoredOK = true
 			}
@@ -95,6 +96,7 @@ func syncRuntimeStateFromDB(gameID int64, nextPos int, stateJSON, handJSON strin
 				returnedErr = fmt.Errorf("state_json unmarshal failed: %w", err)
 			}
 		} else {
+			restored.Version = stateVersion
 			restoredOK = true
 		}
 	}
@@ -264,6 +266,8 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Fresh game: UpdateGameStateTx has incremented from 0 -> 1.
+		st.Version = 1
 		defaultGameManager.Set(g.ID, st)
 
 		c.JSON(http.StatusCreated, createLobbyResponse{Lobby: l, Game: g})
@@ -328,10 +332,15 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		// Use the persisted engine state in DB (if present) to keep lock ordering DB -> memory.
 		var handJSON string
 		var stateJSON string
+		var stateVersion int64
 		var s sql.NullString
-		if err := tx.QueryRow(`SELECT state_json FROM games WHERE id = ?`, gameID).Scan(&s); err != nil {
+		var v sql.NullInt64
+		if err := tx.QueryRow(`SELECT state_json, state_version FROM games WHERE id = ?`, gameID).Scan(&s, &v); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
+		}
+		if v.Valid {
+			stateVersion = v.Int64
 		}
 		if s.Valid && strings.TrimSpace(s.String) != "" {
 			stateJSON = s.String
@@ -342,6 +351,7 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 				return
 			}
+			restored.Version = stateVersion
 			if int(nextPos) >= 0 && int(nextPos) < len(restored.Hands) {
 				if b, err := json.Marshal(restored.Hands[nextPos]); err == nil {
 					handJSON = string(b)
@@ -371,7 +381,7 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		}
 
 		resp := gin.H{"lobby": l, "game_id": gameID, "joined_persisted": true, "realtime_sync": "ok"}
-		if err := syncRuntimeStateFromDB(gameID, int(nextPos), stateJSON, handJSON); err != nil {
+		if err := syncRuntimeStateFromDB(gameID, int(nextPos), stateVersion, stateJSON, handJSON); err != nil {
 			log.Printf(
 				"JoinLobbyHandler: runtime state sync encountered errors after commit (best-effort; continuing): game_id=%d user_id=%d next_pos=%d err=%v",
 				gameID, userID, nextPos, err,

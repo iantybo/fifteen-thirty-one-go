@@ -36,10 +36,11 @@ func main() {
 		}
 	}()
 
-	hub := websocket.NewHub()
+	hubRef := websocket.NewHubRef(websocket.NewHub())
 	go func() {
 		for {
 			panicked := false
+			currentHub := hubRef.Get()
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -47,7 +48,7 @@ func main() {
 						log.Printf("hub.Run panic: %v\n%s", r, debug.Stack())
 					}
 				}()
-				hub.Run()
+				currentHub.Run()
 			}()
 
 			// If hub.Run returned normally (e.g., Stop() called), exit.
@@ -55,6 +56,11 @@ func main() {
 			if !panicked {
 				return
 			}
+			// Ensure any existing clients stop attempting to enqueue work to a dead hub.
+			// This makes Register/Join/Unregister/Broadcast no-ops instead of potentially blocking forever.
+			currentHub.Stop()
+			// Reinitialize hub to ensure clean state.
+			hubRef.Set(websocket.NewHub())
 			time.Sleep(1 * time.Second)
 		}
 	}()
@@ -73,7 +79,7 @@ func main() {
 	handlers.RegisterGameRoutes(protected, db)
 
 	// WebSocket endpoint is auth-gated via token query param or Authorization header.
-	r.GET("/ws", handlers.WebSocketHandler(hub, db, cfg))
+	r.GET("/ws", handlers.WebSocketHandler(hubRef.Get, db, cfg))
 
 	// cfg.Addr is fully resolved by config.LoadFromEnv() (BACKEND_ADDR or PORT).
 	addr := cfg.Addr
@@ -104,7 +110,9 @@ func main() {
 		log.Printf("server error: %v", err)
 	}
 
-	hub.Stop()
+	if h := hubRef.Get(); h != nil {
+		h.Stop()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

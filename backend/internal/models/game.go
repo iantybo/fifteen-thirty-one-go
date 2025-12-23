@@ -151,23 +151,27 @@ func ensurePlayerInGame(db *sql.DB, gameID int64, userID int64) error {
 	return err
 }
 
-// GetGameStateJSON returns the persisted cribbage state JSON for a game.
+// GetGameStateJSON returns the persisted cribbage state JSON for a game along with its version.
 // ok=false when no state is stored yet (backwards compatible).
-func GetGameStateJSON(db *sql.DB, gameID int64) (stateJSON string, ok bool, err error) {
+func GetGameStateJSON(db *sql.DB, gameID int64) (stateJSON string, stateVersion int64, ok bool, err error) {
 	var s sql.NullString
-	if err := db.QueryRow(`SELECT state_json FROM games WHERE id = ?`, gameID).Scan(&s); errors.Is(err, sql.ErrNoRows) {
-		return "", false, ErrNotFound
+	var v sql.NullInt64
+	if err := db.QueryRow(`SELECT state_json, state_version FROM games WHERE id = ?`, gameID).Scan(&s, &v); errors.Is(err, sql.ErrNoRows) {
+		return "", 0, false, ErrNotFound
 	} else if err != nil {
-		return "", false, err
+		return "", 0, false, err
 	}
 	if !s.Valid || strings.TrimSpace(s.String) == "" {
-		return "", false, nil
+		return "", 0, false, nil
 	}
-	return s.String, true, nil
+	if v.Valid {
+		stateVersion = v.Int64
+	}
+	return s.String, stateVersion, true, nil
 }
 
 func UpdateGameStateTx(tx *sql.Tx, gameID int64, stateJSON string) error {
-	res, err := tx.Exec(`UPDATE games SET state_json = ? WHERE id = ?`, stateJSON, gameID)
+	res, err := tx.Exec(`UPDATE games SET state_json = ?, state_version = state_version + 1 WHERE id = ?`, stateJSON, gameID)
 	if err != nil {
 		return err
 	}
@@ -177,6 +181,28 @@ func UpdateGameStateTx(tx *sql.Tx, gameID int64, stateJSON string) error {
 	}
 	if ra == 0 {
 		return ErrGameNotFound
+	}
+	return nil
+}
+
+// UpdateGameStateTxCAS updates state_json only if the current state_version matches expectedVersion.
+// On success, the version is incremented by 1.
+func UpdateGameStateTxCAS(tx *sql.Tx, gameID int64, expectedVersion int64, stateJSON string) error {
+	res, err := tx.Exec(
+		`UPDATE games
+		 SET state_json = ?, state_version = state_version + 1
+		 WHERE id = ? AND state_version = ?`,
+		stateJSON, gameID, expectedVersion,
+	)
+	if err != nil {
+		return err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		return ErrGameStateConflict
 	}
 	return nil
 }

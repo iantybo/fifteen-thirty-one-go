@@ -21,6 +21,7 @@ var (
 	ErrLobbyFull                 = errors.New("lobby full")
 	ErrLobbyNotJoinable          = errors.New("lobby not joinable")
 	ErrGameStateMissing          = errors.New("persisted game state missing")
+	ErrGameStateConflict         = errors.New("game state conflict")
 	ErrPlayerNotInGame           = errors.New("player not in game")
 	ErrGameNotFound              = errors.New("game not found")
 )

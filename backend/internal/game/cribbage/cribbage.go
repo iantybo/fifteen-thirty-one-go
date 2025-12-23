@@ -12,6 +12,10 @@ import (
 // A minimal server-authoritative cribbage state model.
 // This will be expanded as REST/WS handlers are implemented.
 type State struct {
+	// Version is an in-memory optimistic concurrency token aligned with games.state_version.
+	// It is intentionally NOT persisted inside state_json (DB persists the version separately).
+	Version int64 `json:"-"`
+
 	Rules Rules `json:"rules"`
 
 	DealerIndex  int `json:"dealer_index"`
