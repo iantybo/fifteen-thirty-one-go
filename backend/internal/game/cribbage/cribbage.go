@@ -64,7 +64,13 @@ func (s *State) Deal() error {
 
 	handSize := s.Rules.HandSize()
 	for i := 0; i < s.Rules.MaxPlayers; i++ {
-		s.Hands[i] = s.Hands[i][:0]
+		// NewState initializes Hands as a slice of nil slices; nil[:0] would panic.
+		// Ensure each hand is a non-nil empty slice with enough capacity for dealing.
+		if s.Hands[i] == nil {
+			s.Hands[i] = make([]common.Card, 0, handSize)
+		} else {
+			s.Hands[i] = s.Hands[i][:0]
+		}
 	}
 	for round := 0; round < handSize; round++ {
 		for p := 0; p < s.Rules.MaxPlayers; p++ {

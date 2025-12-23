@@ -23,8 +23,8 @@ func OpenAndMigrate(dbPath string) (*sql.DB, error) {
 	}
 
 	// Ensure parent directory exists for file-backed DBs.
-	if looksLikeFilePath(dbPath) {
-		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	if fsPath, ok := filesystemPathFromDBPath(dbPath); ok {
+		if err := os.MkdirAll(filepath.Dir(fsPath), 0o755); err != nil {
 			return nil, fmt.Errorf("mkdir db dir: %w", err)
 		}
 	}
@@ -78,13 +78,36 @@ func sqliteDSN(dbPath string) string {
 }
 
 func looksLikeFilePath(p string) bool {
-	if p == ":memory:" {
-		return false
+	// Treat any DSN that resolves to a filesystem path as file-backed.
+	// This includes file: URIs like file:/path/to/db.sqlite or file:./data/db.sqlite?cache=shared.
+	// Memory-backed DSNs (":memory:" / "file::memory:...") return false.
+	_, ok := filesystemPathFromDBPath(p)
+	return ok
+}
+
+// filesystemPathFromDBPath returns the underlying filesystem path for SQLite DSN-ish inputs.
+// It strips the "file:" prefix and any query string (everything after '?').
+// Returns ok=false for memory-backed databases (":memory:" or "file::memory:...") and for empty paths.
+func filesystemPathFromDBPath(dbPath string) (path string, ok bool) {
+	if dbPath == "" {
+		return "", false
 	}
-	if strings.HasPrefix(p, "file:") {
-		return false
+	if dbPath == ":memory:" {
+		return "", false
 	}
-	return true
+	if strings.HasPrefix(dbPath, "file:") {
+		rest := strings.TrimPrefix(dbPath, "file:")
+		if i := strings.Index(rest, "?"); i >= 0 {
+			rest = rest[:i]
+		}
+		// file::memory: (and variants) are not filesystem-backed.
+		if rest == "" || rest == ":memory:" || strings.HasPrefix(rest, ":memory:") || strings.HasPrefix(rest, "::memory:") {
+			return "", false
+		}
+		return rest, true
+	}
+	// Plain paths are treated as filesystem-backed.
+	return dbPath, true
 }
 
 func migrate(db *sql.DB) error {

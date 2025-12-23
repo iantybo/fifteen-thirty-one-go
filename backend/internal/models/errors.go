@@ -16,12 +16,9 @@ func IsUniqueConstraint(err error) bool {
 	if !errors.As(err, &se) {
 		return false
 	}
-	// Prefer a precise UNIQUE check when available via ExtendedCode.
-	if se.ExtendedCode == sqlite3.ErrConstraintUnique {
-		return true
-	}
-	// Fallback to generic constraint code (covers older/driver-wrapped cases).
-	return se.Code == sqlite3.ErrConstraint
+	// We only detect UNIQUE violations via ExtendedCode.
+	// If ExtendedCode is unavailable (or indicates a different constraint), this returns false.
+	return se.ExtendedCode == sqlite3.ErrConstraintUnique
 }
 
 

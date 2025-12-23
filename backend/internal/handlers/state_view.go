@@ -36,6 +36,9 @@ func cloneStateForView(st *cribbage.State) cribbage.State {
 	if st.DiscardCompleted != nil {
 		view.DiscardCompleted = append([]bool(nil), st.DiscardCompleted...)
 	}
+	if st.PeggingSeq != nil {
+		view.PeggingSeq = append([]common.Card(nil), st.PeggingSeq...)
+	}
 
 	// Deep copy hands slice headers (but leave cards empty; filled selectively by caller).
 	view.Hands = make([][]common.Card, len(st.Hands))
@@ -46,7 +49,6 @@ func cloneStateForView(st *cribbage.State) cribbage.State {
 	// Hidden-card fields omitted.
 	view.KeptHands = nil
 	view.Crib = nil
-	view.PeggingSeq = nil
 	view.Deck = nil
 
 	return view

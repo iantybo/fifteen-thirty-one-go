@@ -259,6 +259,10 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 		isHost := false
 		var hostID int64
 		if err := db.QueryRow(`SELECT l.host_id FROM games g JOIN lobbies l ON l.id = g.lobby_id WHERE g.id = ?`, gameID).Scan(&hostID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}

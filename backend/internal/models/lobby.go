@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -82,35 +83,27 @@ func ListLobbies(db *sql.DB, limit, offset int64) ([]Lobby, error) {
 
 // JoinLobby increments current_players if possible.
 func JoinLobby(db *sql.DB, lobbyID int64) (*Lobby, error) {
-	res, err := db.Exec(`UPDATE lobbies SET current_players = current_players + 1 WHERE id = ? AND status = 'waiting' AND current_players < max_players`, lobbyID)
+	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, err
 	}
-	ra, err := res.RowsAffected()
+	l, err := JoinLobbyTx(tx, lobbyID)
 	if err != nil {
+		_ = tx.Rollback()
 		return nil, err
 	}
-	if ra > 0 {
-		return GetLobbyByID(db, lobbyID)
-	}
-
-	// ra==0: determine why the conditional update failed.
-	l, err := GetLobbyByID(db, lobbyID)
-	if err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	if l.Status != "waiting" {
-		return nil, ErrLobbyNotJoinable
-	}
-	if l.CurrentPlayers >= l.MaxPlayers {
-		return nil, ErrLobbyFull
-	}
-	return nil, errors.New("unable to join lobby")
+	return l, nil
 }
 
 // JoinLobbyTx increments current_players if possible, within a transaction.
 // This allows callers to rollback the increment if subsequent steps fail.
 func JoinLobbyTx(tx *sql.Tx, lobbyID int64) (*Lobby, error) {
+	// Note: SQLite doesn't support SELECT ... FOR UPDATE. We rely on a write
+	// statement inside this transaction to acquire the relevant lock before we
+	// classify the failure, so concurrent joins can't skew the diagnosis.
 	res, err := tx.Exec(`UPDATE lobbies SET current_players = current_players + 1 WHERE id = ? AND status = 'waiting' AND current_players < max_players`, lobbyID)
 	if err != nil {
 		return nil, err
@@ -120,7 +113,8 @@ func JoinLobbyTx(tx *sql.Tx, lobbyID int64) (*Lobby, error) {
 		return nil, err
 	}
 	if ra == 0 {
-		// Inspect the lobby to give a better error.
+		// Inspect the lobby under the same transaction to classify why the guarded
+		// increment didn't apply.
 		var status string
 		var currentPlayers int64
 		var maxPlayers int64

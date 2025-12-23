@@ -166,8 +166,13 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "max_players must be 2-4"})
 			return
 		}
+		req.Name = strings.TrimSpace(req.Name)
 		if req.Name == "" {
 			req.Name = "Lobby"
+		}
+		if len(req.Name) > 100 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "name must be <= 100 characters"})
+			return
 		}
 
 		hostID, ok := userIDFromContext(c)

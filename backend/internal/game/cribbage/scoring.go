@@ -119,12 +119,8 @@ func scoreRuns(cards []common.Card) int {
 				bestLen = runLen
 				bestMult = mult
 			} else if runLen == bestLen {
-				// Only score the single longest run; multiplicity is the number of ways
-				// duplicates form that run. If multiple candidates of the same length are
-				// found, keep the largest multiplicity (don't sum).
-				if mult > bestMult {
-					bestMult = mult
-				}
+				// If multiple distinct runs of the same maximal length exist, score all of them.
+				bestMult += mult
 			}
 		}
 	}

@@ -75,6 +75,15 @@ func writeAPIError(c *gin.Context, err error) {
 	case errors.Is(err, models.ErrGameStateMissing):
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
 		return
+	case errors.Is(err, models.ErrLobbyFull):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "lobby full"})
+		return
+	case errors.Is(err, models.ErrLobbyNotJoinable):
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "lobby not joinable"})
+		return
+	case errors.Is(err, models.ErrPlayerNotInGame):
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "player not in game"})
+		return
 	}
 
 	// Unknown/internal errors: log details, return generic message.

@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -104,11 +105,23 @@ func LoginHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 
 		u, err := models.GetUserByUsername(db, req.Username)
 		pwHash := fakeHash
+		userFound := false
 		if err == nil {
 			pwHash = u.PasswordHash
+			userFound = true
+		} else if errors.Is(err, models.ErrNotFound) {
+			// Keep pwHash=fakeHash and continue to the bcrypt check to normalize timing.
+			userFound = false
+		} else {
+			// Real DB error: return 500 (don't mask as invalid credentials).
+			log.Printf("LoginHandler GetUserByUsername failed: username=%q err=%v", req.Username, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
 		}
+
 		// Always run bcrypt comparison exactly once per request to normalize timing.
-		if cmpErr := auth.ComparePasswordHash(pwHash, req.Password); err != nil || cmpErr != nil {
+		// Return 401 only for invalid credentials (including user-not-found after timing-normalized compare).
+		if cmpErr := auth.ComparePasswordHash(pwHash, req.Password); cmpErr != nil || !userFound {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 			return
 		}
