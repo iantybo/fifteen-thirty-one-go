@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_lobbies_host_id ON lobbies(host_id);
 CREATE TABLE IF NOT EXISTS games (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   lobby_id INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'playing', 'finished')),
+  status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'in_progress', 'finished')),
   current_player_id INTEGER,
   dealer_id INTEGER,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS games (
 );
 
 CREATE INDEX IF NOT EXISTS idx_games_lobby_id ON games(lobby_id);
+CREATE INDEX IF NOT EXISTS idx_games_lobby_id_status_id ON games(lobby_id, status, id);
 
 -- game_players
 CREATE TABLE IF NOT EXISTS game_players (
@@ -74,11 +75,11 @@ BEGIN
       SELECT COUNT(*)
       FROM game_players gp
       WHERE gp.game_id = (
-        -- Count only the lobby's active game (waiting/playing), not historical games.
+        -- Count only the lobby's active game (waiting/in_progress), not historical games.
         SELECT id
         FROM games
         WHERE lobby_id = (SELECT lobby_id FROM games WHERE id = NEW.game_id)
-          AND status IN ('waiting', 'playing')
+          AND status IN ('waiting', 'in_progress')
         ORDER BY id DESC
         LIMIT 1
       )
@@ -94,11 +95,11 @@ BEGIN
       SELECT COUNT(*)
       FROM game_players gp
       WHERE gp.game_id = (
-        -- Count only the lobby's active game (waiting/playing), not historical games.
+        -- Count only the lobby's active game (waiting/in_progress), not historical games.
         SELECT id
         FROM games
         WHERE lobby_id = (SELECT lobby_id FROM games WHERE id = OLD.game_id)
-          AND status IN ('waiting', 'playing')
+          AND status IN ('waiting', 'in_progress')
         ORDER BY id DESC
         LIMIT 1
       )

@@ -114,7 +114,7 @@ func LoginHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 			userFound = false
 		} else {
 			// Real DB error: return 500 (don't mask as invalid credentials).
-			log.Printf("LoginHandler GetUserByUsername failed: username=%q err=%v", req.Username, err)
+			log.Printf("LoginHandler GetUserByUsername failed: err=%v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
