@@ -132,7 +132,11 @@ func SetDealer(db *sql.DB, gameID int64, dealerID int64) error {
 		return err
 	}
 	if ra == 0 {
-		return ErrGameNotFound
+		// Could be either game not found or player not in game; disambiguate.
+		if err := ensureGameExists(db, gameID); err != nil {
+			return err
+		}
+		return ErrPlayerNotInGame
 	}
 	return nil
 }
@@ -142,15 +146,6 @@ func ensureGameExists(db *sql.DB, gameID int64) error {
 	err := db.QueryRow(`SELECT id FROM games WHERE id = ?`, gameID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrGameNotFound
-	}
-	return err
-}
-
-func ensurePlayerInGame(db *sql.DB, gameID int64, userID int64) error {
-	var one int
-	err := db.QueryRow(`SELECT 1 FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&one)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrPlayerNotInGame
 	}
 	return err
 }

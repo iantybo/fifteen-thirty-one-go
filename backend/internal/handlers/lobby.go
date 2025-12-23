@@ -58,9 +58,7 @@ func syncRuntimeStateFromDB(gameID int64, nextPos int, stateVersion int64, state
 				// Join succeeded in DB; degrade gracefully. Next request will attempt recovery from DB snapshot.
 				log.Printf("syncRuntimeStateFromDB continuing despite unmarshal failure; DB state is authoritative: game_id=%d next_pos=%d", gameID, nextPos)
 				reloadFullState = false
-				if returnedErr == nil {
-					returnedErr = fmt.Errorf("state_json unmarshal failed: %w", err)
-				}
+				returnedErr = fmt.Errorf("%v; state_json unmarshal failed: %w", returnedErr, err)
 			} else {
 				restored.Version = stateVersion
 				reloadFullState = true

@@ -29,6 +29,10 @@ func UserStatsHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
 			return
 		}
+		if userID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+			return
+		}
 		stats, err := models.GetUserStats(db, userID)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {

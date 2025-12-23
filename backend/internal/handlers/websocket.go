@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -153,10 +154,14 @@ func WebSocketHandler(hubProvider func() (*ws.Hub, bool), db *sql.DB, cfg config
 		})
 
 		// Send a direct "connected" ack.
-		_ = sendDirect(client, "connected", map[string]any{
+		if err := sendDirect(client, "connected", map[string]any{
 			"user_id": client.UserID,
 			"room":    room,
-		})
+		}); err != nil {
+			log.Printf("sendDirect failed (connected): err=%v", err)
+			client.Close()
+			return
+		}
 	}
 }
 
@@ -168,7 +173,10 @@ type inboundMessage struct {
 func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 	var in inboundMessage
 	if err := json.Unmarshal(msg, &in); err != nil {
-		_ = sendDirect(client, "error", map[string]any{"error": "invalid json"})
+		if err := sendDirect(client, "error", map[string]any{"error": "invalid json"}); err != nil {
+			log.Printf("sendDirect failed (invalid_json): err=%v", err)
+			client.Close()
+		}
 		return
 	}
 
@@ -178,28 +186,45 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 			Room string `json:"room"`
 		}
 		if err := json.Unmarshal(in.Payload, &p); err != nil || strings.TrimSpace(p.Room) == "" {
-			_ = sendDirect(client, "error", map[string]any{"error": "invalid room"})
+			if err := sendDirect(client, "error", map[string]any{"error": "invalid room"}); err != nil {
+				log.Printf("sendDirect failed (invalid_room): err=%v", err)
+				client.Close()
+			}
 			return
 		}
 		room := strings.TrimSpace(p.Room)
 		hub.Join(client, room)
-		_ = sendDirect(client, "joined_room", map[string]any{"room": room})
+		if err := sendDirect(client, "joined_room", map[string]any{"room": room}); err != nil {
+			log.Printf("sendDirect failed (joined_room): err=%v", err)
+			client.Close()
+			return
+		}
 	case "move":
 		var p struct {
 			GameID int64      `json:"game_id"`
 			Move   moveRequest `json:"move"`
 		}
 		if err := json.Unmarshal(in.Payload, &p); err != nil || p.GameID <= 0 {
-			_ = sendDirect(client, "error", map[string]any{"error": "invalid move payload"})
+			if err := sendDirect(client, "error", map[string]any{"error": "invalid move payload"}); err != nil {
+				log.Printf("sendDirect failed (invalid_move_payload): err=%v", err)
+				client.Close()
+			}
 			return
 		}
 		resp, err := ApplyMove(db, p.GameID, client.UserID, p.Move)
 		if err != nil {
 			// Avoid leaking internal details; ApplyMove errors are mapped in HTTP handlers only.
-			_ = sendDirect(client, "error", map[string]any{"error": "invalid move"})
+			if err := sendDirect(client, "error", map[string]any{"error": "invalid move"}); err != nil {
+				log.Printf("sendDirect failed (move_error): err=%v", err)
+				client.Close()
+			}
 			return
 		}
-		_ = sendDirect(client, "move_ok", resp)
+		if err := sendDirect(client, "move_ok", resp); err != nil {
+			log.Printf("sendDirect failed (move_ok): err=%v", err)
+			client.Close()
+			return
+		}
 
 		// Broadcast updated snapshot to the game room.
 		snap, err := BuildGameSnapshotPublic(db, p.GameID)
@@ -209,7 +234,10 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 			log.Printf("BuildGameSnapshotPublic failed: game_id=%d err=%v", p.GameID, err)
 		}
 	default:
-		_ = sendDirect(client, "error", map[string]any{"error": "unknown message type"})
+		if err := sendDirect(client, "error", map[string]any{"error": "unknown message type"}); err != nil {
+			log.Printf("sendDirect failed (unknown_type): err=%v", err)
+			client.Close()
+		}
 	}
 }
 
@@ -225,10 +253,11 @@ func sendDirect(c *ws.Client, typ string, payload any) error {
 	}
 	select {
 	case c.Send <- b:
+		return nil
 	default:
-		log.Printf("ws send drop: user_id=%d room=%s type=%s", c.UserID, c.Room, typ)
+		log.Printf("ws send drop (channel full): user_id=%d room=%s type=%s", c.UserID, c.Room, typ)
+		return fmt.Errorf("ws send backpressure: user_id=%d room=%s type=%s", c.UserID, c.Room, typ)
 	}
-	return nil
 }
 
 func tokenFromHeaderOrQuery(c *gin.Context, cfg config.Config) string {
