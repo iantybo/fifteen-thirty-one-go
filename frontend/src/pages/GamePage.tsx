@@ -20,6 +20,7 @@ export function GamePage() {
 
     // Fetch an initial snapshot immediately so the UI isn't "null" until a WS update arrives.
     void (async () => {
+      setErr(null)
       try {
         const snap = await api.getGame(gameId)
         if (!cancelled) setLastMsg(snap)

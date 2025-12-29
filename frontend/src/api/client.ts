@@ -7,7 +7,7 @@ export type RegisterRequest = AuthCredentials
 export type LoginRequest = AuthCredentials
 export type CreateLobbyRequest = { name: string; max_players: number }
 
-const UNEXPECTED_EMPTY_RESPONSE_STATUS = 520
+const UNEXPECTED_EMPTY_RESPONSE_STATUS = 599
 
 export const api = {
   async register(req: RegisterRequest) {
