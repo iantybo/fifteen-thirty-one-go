@@ -22,6 +22,10 @@ export function CreateLobbyPage() {
     setBusy(true)
     try {
       const trimmed = name.trim()
+      if (trimmed === '') {
+        setErr('Lobby name is required')
+        return
+      }
       const res = await api.createLobby(token, { name: trimmed, max_players: maxPlayers })
       nav(`/games/${res.game.id}`, { replace: true })
     } catch (e: unknown) {
@@ -39,9 +43,12 @@ export function CreateLobbyPage() {
         <input
           id="lobby_name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value)
+            if (err) setErr(null)
+          }}
           required
-          maxLength={50}
+          maxLength={100}
         />
         <label htmlFor="lobby_max_players">Max players</label>
         <select

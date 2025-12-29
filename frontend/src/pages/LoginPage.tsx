@@ -1,13 +1,18 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import type { Location } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/auth'
+
+interface LocationState {
+  from?: string
+}
 
 export function LoginPage() {
   const { setAuth } = useAuth()
   const nav = useNavigate()
-  const loc = useLocation() as any
+  const loc = useLocation() as Location<LocationState>
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState<string | null>(null)
@@ -20,9 +25,9 @@ export function LoginPage() {
     try {
       const res = await api.login({ username, password })
       setAuth(res.token, res.user)
-      nav(loc?.state?.from ?? '/lobbies', { replace: true })
-    } catch (e: any) {
-      setErr(e?.message ?? 'login failed')
+      nav(loc.state?.from ?? '/lobbies', { replace: true })
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'login failed')
     } finally {
       setBusy(false)
     }
@@ -34,11 +39,11 @@ export function LoginPage() {
       <form onSubmit={onSubmit}>
         <label>
           Username
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" disabled={busy} />
         </label>
         <label>
           Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" disabled={busy} />
         </label>
         {err && <div style={{ color: 'crimson', marginTop: 8 }}>{err}</div>}
         <button disabled={busy} style={{ marginTop: 12 }}>

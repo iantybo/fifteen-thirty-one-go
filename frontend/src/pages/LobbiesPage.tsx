@@ -17,8 +17,8 @@ export function LobbiesPage() {
       try {
         const res = await api.listLobbies(token)
         if (!cancelled) setLobbies(res.lobbies)
-      } catch (e: any) {
-        if (!cancelled) setErr(e?.message ?? 'failed to load lobbies')
+      } catch (e: unknown) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : 'failed to load lobbies')
       }
     }
     void load()

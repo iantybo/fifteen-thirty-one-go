@@ -14,14 +14,16 @@ export function RegisterPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!username.trim() || !password.trim()) {
+    const trimmedUsername = username.trim()
+    const trimmedPassword = password.trim()
+    if (!trimmedUsername || !trimmedPassword) {
       setErr('Username and password are required')
       return
     }
     setErr(null)
     setBusy(true)
     try {
-      const res = await api.register({ username, password })
+      const res = await api.register({ username: trimmedUsername, password: trimmedPassword })
       setAuth(res.token, res.user)
       nav('/lobbies', { replace: true })
     } catch (e: unknown) {

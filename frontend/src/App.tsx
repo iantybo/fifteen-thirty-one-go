@@ -22,7 +22,7 @@ function App() {
         <Route path="/games/:id" element={<GamePage />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/lobbies" replace />} />
     </Routes>
   )
 }

@@ -10,7 +10,7 @@ export function GamePage() {
   const { token } = useAuth()
   const ws = useMemo(() => new WsClient(), [])
   const [status, setStatus] = useState<string>('disconnected')
-  const [lastMsg, setLastMsg] = useState<any>(null)
+  const [lastMsg, setLastMsg] = useState<unknown>(null)
 
   useEffect(() => {
     if (!token || !isValidId) return

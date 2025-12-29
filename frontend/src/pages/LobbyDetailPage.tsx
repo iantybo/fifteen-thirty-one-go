@@ -19,8 +19,8 @@ export function LobbyDetailPage() {
     try {
       const res = await api.joinLobby(token, lobbyId)
       nav(`/games/${res.game_id}`, { replace: true })
-    } catch (e: any) {
-      setErr(e?.message ?? 'failed to join')
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'failed to join')
     } finally {
       setBusy(false)
     }

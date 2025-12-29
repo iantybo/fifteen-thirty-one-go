@@ -1,6 +1,6 @@
 import { wsBaseUrl } from '../lib/env'
 
-type Handler = (payload: unknown) => void
+export type Handler = (payload: unknown) => void
 
 export class WsClient {
   private ws?: WebSocket
@@ -15,7 +15,6 @@ export class WsClient {
   connect(token: string, room?: string) {
     this.disconnect()
     const base = wsBaseUrl()
-    if (!base) throw new Error('VITE_WS_BASE_URL is not set')
     const url = new URL('/ws', base)
     if (room) url.searchParams.set('room', room)
 
@@ -49,6 +48,7 @@ export class WsClient {
       if (!msg || typeof msg !== 'object') return
       const m = msg as Record<string, unknown>
       const type = typeof m.type === 'string' ? m.type : ''
+      if (!type) return
       this.emit(type, m.payload)
     }
   }
