@@ -261,17 +261,17 @@ func sendDirect(c *ws.Client, typ string, payload any) error {
 }
 
 func tokenFromHeaderOrQuery(c *gin.Context, cfg config.Config) string {
+	// Cookie-based auth first (httpOnly cookie set by the server).
+	if v, err := c.Cookie(auth.AuthCookieName); err == nil {
+		if t := strings.TrimSpace(v); t != "" {
+			return t
+		}
+	}
 	authz := c.GetHeader("Authorization")
 	if authz != "" {
 		parts := strings.SplitN(authz, " ", 2)
 		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
 			return strings.TrimSpace(parts[1])
-		}
-	}
-	// Cookie-based auth (httpOnly cookie set by the server).
-	if v, err := c.Cookie("fto_token"); err == nil {
-		if t := strings.TrimSpace(v); t != "" {
-			return t
 		}
 	}
 	if cfg.WSAllowQueryTokens {

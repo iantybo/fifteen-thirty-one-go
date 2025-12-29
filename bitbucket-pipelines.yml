@@ -1,0 +1,34 @@
+image: node:20
+
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          name: frontend eslint
+          caches:
+            - node
+          condition:
+            changesets:
+              includePaths:
+                - "frontend/**"
+          script:
+            - cd frontend
+            - npm ci --no-audit --no-fund
+            - npm run lint
+
+  branches:
+    main:
+      - step:
+          name: frontend eslint
+          caches:
+            - node
+          condition:
+            changesets:
+              includePaths:
+                - "frontend/**"
+          script:
+            - cd frontend
+            - npm ci --no-audit --no-fund
+            - npm run lint
+
+

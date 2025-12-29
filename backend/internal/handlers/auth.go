@@ -29,8 +29,6 @@ type meResponse struct {
 	User *models.User `json:"user"`
 }
 
-const authCookieName = "fto_token"
-
 // fakeHash is a constant bcrypt hash used to normalize login timing when a user
 // lookup fails or the username does not exist.
 const fakeHash = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8lvZ9i8a9kaI0s5momkGLumZ5qX6e."
@@ -181,18 +179,18 @@ func setAuthCookie(c *gin.Context, cfg config.Config, token string) {
 	maxAge := int(cfg.JWTTTL.Seconds())
 	secure := cfg.AppEnv != "development"
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(authCookieName, token, maxAge, "/", "", secure, true)
+	c.SetCookie(auth.AuthCookieName, token, maxAge, "/", "", secure, true)
 }
 
 func clearAuthCookie(c *gin.Context, cfg config.Config) {
 	secure := cfg.AppEnv != "development"
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(authCookieName, "", -1, "/", "", secure, true)
+	c.SetCookie(auth.AuthCookieName, "", -1, "/", "", secure, true)
 }
 
 func tokenFromHeaderOrCookie(c *gin.Context) string {
 	// Cookie first (preferred for browser clients).
-	if v, err := c.Cookie(authCookieName); err == nil {
+	if v, err := c.Cookie(auth.AuthCookieName); err == nil {
 		if t := strings.TrimSpace(v); t != "" {
 			return t
 		}

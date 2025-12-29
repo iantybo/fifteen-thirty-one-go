@@ -36,7 +36,7 @@ func tokenFromRequest(c *gin.Context) string {
 	//   rather than trusting JS-supplied headers (more resilient to token exfil in XSS scenarios)
 	// - cookie is set with HttpOnly and SameSite=Lax, and Secure is enabled outside development
 	// - dev CORS middleware explicitly allows credentialed requests so cookies can be sent safely
-	if v, err := c.Cookie("fto_token"); err == nil {
+	if v, err := c.Cookie(auth.AuthCookieName); err == nil {
 		if t := strings.TrimSpace(v); t != "" {
 			return t
 		}

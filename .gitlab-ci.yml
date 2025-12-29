@@ -1,0 +1,28 @@
+stages:
+  - lint
+
+frontend:eslint:
+  stage: lint
+  image: node:20
+  rules:
+    # Run on merge request pipelines when frontend changed
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - frontend/**/*
+    # Run on default-branch pipelines when frontend changed (post-merge)
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - frontend/**/*
+    - when: never
+  variables:
+    NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  cache:
+    key: "npm-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - .npm/
+  script:
+    - cd frontend
+    - npm ci --no-audit --no-fund
+    - npm run lint
+
+
