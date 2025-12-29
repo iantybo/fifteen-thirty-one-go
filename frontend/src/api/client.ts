@@ -24,7 +24,8 @@ export const api = {
     return apiFetch<{ user: User }>(`${apiBaseUrl()}/api/auth/me`)
   },
   logout() {
-    return apiFetch<void>(`${apiBaseUrl()}/api/auth/logout`, { method: 'POST' })
+    // Logout is best-effort; callers shouldn't need to catch.
+    return apiFetch<void>(`${apiBaseUrl()}/api/auth/logout`, { method: 'POST' }).catch(() => undefined)
   },
   listLobbies() {
     return apiFetch<{ lobbies: Lobby[] }>(`${apiBaseUrl()}/api/lobbies`)

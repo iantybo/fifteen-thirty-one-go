@@ -21,15 +21,15 @@ export function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     const trimmedUsername = username.trim()
-    const trimmedPassword = password.trim()
-    if (!trimmedUsername || !trimmedPassword) {
+    // Do not trim passwords: leading/trailing spaces are valid characters (backend preserves them).
+    if (!trimmedUsername || password === '') {
       setErr('Username and password are required')
       return
     }
     setErr(null)
     setBusy(true)
     try {
-      const res = await api.login({ username: trimmedUsername, password: trimmedPassword })
+      const res = await api.login({ username: trimmedUsername, password })
       setAuth(res.user)
       nav(loc.state?.from ?? '/lobbies', { replace: true })
     } catch (e: unknown) {

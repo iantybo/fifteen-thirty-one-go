@@ -23,7 +23,6 @@ export function GamePage() {
       offClose()
       offUpdate()
       ws.disconnect()
-      setStatus('disconnected')
     }
   }, [user, gameId, isValidId, ws])
 

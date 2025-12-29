@@ -43,8 +43,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       clearAuth: () => {
         setUser(null)
-        // Best-effort: clear server cookie session too.
-        void api.logout().catch(() => undefined)
+        // Best-effort: clear server cookie session too (logout() never rejects).
+        void api.logout()
       },
     }),
     [user, loading],

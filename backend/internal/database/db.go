@@ -287,11 +287,14 @@ func splitSQLStatements(s string) []string {
 	//
 	// We intentionally keep this heuristic small:
 	// - detect CREATE TRIGGER ... BEGIN
+	// - also handle optional qualifiers between CREATE and TRIGGER (e.g., CREATE TEMP TRIGGER)
 	// - once inside BEGIN..END, ignore ';' until END is seen
 	inTriggerDef := false
 	blockDepth := 0
 	var tok strings.Builder
-	lastTok := ""
+	// Track the last two tokens (lowercased) to recognize "CREATE <qualifier?> TRIGGER".
+	prevTok1 := ""
+	prevTok2 := ""
 	for i := 0; i < len(s); i++ {
 		ch := s[i]
 
@@ -328,18 +331,23 @@ func splitSQLStatements(s string) []string {
 				tok.Reset()
 
 				// Track when we're inside a CREATE TRIGGER statement.
-				if t == "trigger" && lastTok == "create" {
+				if t == "trigger" && (prevTok1 == "create" || prevTok2 == "create") {
 					inTriggerDef = true
 				}
 				// Track BEGIN..END blocks only for triggers.
 				if inTriggerDef {
-					if t == "begin" {
+					// SQLite triggers use BEGIN..END, but trigger bodies can contain CASE..END
+					// expressions. Treat CASE like a nested block so its END doesn't terminate
+					// the trigger BEGIN..END scope.
+					if t == "begin" || t == "case" {
 						blockDepth++
 					} else if t == "end" && blockDepth > 0 {
 						blockDepth--
 					}
 				}
-				lastTok = t
+				// Shift token window.
+				prevTok2 = prevTok1
+				prevTok1 = t
 			}
 		}
 
@@ -347,7 +355,8 @@ func splitSQLStatements(s string) []string {
 			out = append(out, b.String())
 			b.Reset()
 			inTriggerDef = false
-			lastTok = ""
+			prevTok1 = ""
+			prevTok2 = ""
 			continue
 		}
 		b.WriteByte(ch)

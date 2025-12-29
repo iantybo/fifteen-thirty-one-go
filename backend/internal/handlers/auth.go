@@ -157,6 +157,10 @@ func MeHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 		}
 		u, err := models.GetUserByID(db, claims.UserID)
 		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found or unauthorized"})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}

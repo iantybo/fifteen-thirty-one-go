@@ -11,9 +11,17 @@ export function LobbyDetailPage() {
   const nav = useNavigate()
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const canJoin = !!user && isValidId && !busy
 
   async function join() {
-    if (!user || !isValidId) return
+    if (!user) {
+      setErr('You must be logged in to join a lobby')
+      return
+    }
+    if (!isValidId) {
+      setErr('Invalid lobby id')
+      return
+    }
     setErr(null)
     setBusy(true)
     try {
@@ -29,7 +37,12 @@ export function LobbyDetailPage() {
   return (
     <div style={{ maxWidth: 700, margin: '24px auto', padding: '0 16px' }}>
       <h1>Lobby {isValidId ? lobbyId : 'Invalid ID'}</h1>
-      <button disabled={busy || !isValidId} onClick={join}>
+      <button
+        disabled={!canJoin}
+        aria-disabled={!canJoin}
+        title={!user ? 'Log in to join this lobby' : !isValidId ? 'Invalid lobby id' : undefined}
+        onClick={join}
+      >
         {busy ? 'Joining…' : 'Join lobby'}
       </button>
       {err && <div style={{ color: 'crimson', marginTop: 8 }}>{err}</div>}
