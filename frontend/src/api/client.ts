@@ -7,13 +7,15 @@ export type RegisterRequest = AuthCredentials
 export type LoginRequest = AuthCredentials
 export type CreateLobbyRequest = { name: string; max_players: number }
 
+const UNEXPECTED_EMPTY_RESPONSE_STATUS = 520
+
 export const api = {
   async register(req: RegisterRequest) {
     const res = await apiFetch<AuthResponse>(`${apiBaseUrl()}/api/auth/register`, {
       method: 'POST',
       body: req,
     })
-    if (!res) throw new ApiError('Empty response', 200)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
   async login(req: LoginRequest) {
@@ -21,12 +23,12 @@ export const api = {
       method: 'POST',
       body: req,
     })
-    if (!res) throw new ApiError('Empty response', 200)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
   async me() {
     const res = await apiFetch<{ user: User }>(`${apiBaseUrl()}/api/auth/me`)
-    if (!res) throw new ApiError('Empty response', 200)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
   async logout() {
@@ -35,7 +37,7 @@ export const api = {
   },
   async listLobbies() {
     const res = await apiFetch<{ lobbies: Lobby[] }>(`${apiBaseUrl()}/api/lobbies`)
-    if (!res) throw new ApiError('Empty response', 200)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
   async createLobby(req: CreateLobbyRequest) {
@@ -43,7 +45,7 @@ export const api = {
       method: 'POST',
       body: req,
     })
-    if (!res) throw new ApiError('Empty response', 200)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
   async joinLobby(lobbyId: number) {
@@ -55,12 +57,12 @@ export const api = {
     }>(`${apiBaseUrl()}/api/lobbies/${lobbyId}/join`, {
       method: 'POST',
     })
-    if (!res) throw new ApiError('Empty response', 200)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
   async getGame(gameId: number) {
     const res = await apiFetch<GameSnapshot>(`${apiBaseUrl()}/api/games/${gameId}`)
-    if (!res) throw new ApiError('Empty response', 200)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
 }

@@ -40,11 +40,11 @@ export function RegisterPage() {
       <form onSubmit={onSubmit}>
         <label>
           Username
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" disabled={busy} required />
         </label>
         <label>
           Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" disabled={busy} required />
         </label>
         {err && <div style={{ color: 'crimson', marginTop: 8 }}>{err}</div>}
         <button disabled={busy} style={{ marginTop: 12 }}>

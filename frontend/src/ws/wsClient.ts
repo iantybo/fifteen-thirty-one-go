@@ -6,6 +6,7 @@ export class WsClient {
   private ws?: WebSocket
   private handlers = new Map<string, Set<Handler>>()
 
+  /** Clears registered message handlers only (does not close the WebSocket). Useful for swapping listeners while keeping the connection alive. */
   clearHandlers() {
     this.handlers.clear()
   }
@@ -17,7 +18,7 @@ export class WsClient {
   }
 
   connect(room?: string) {
-    this.disconnect()
+    this.closeSocket()
     const base = wsBaseUrl()
     const url = new URL('/ws', base)
     if (room) url.searchParams.set('room', room)
@@ -67,7 +68,7 @@ export class WsClient {
     this.ws.send(JSON.stringify({ type, payload }))
   }
 
-  disconnect() {
+  private closeSocket() {
     if (!this.ws) return
     const ws = this.ws
     // Detach event handlers to avoid retaining closures.
@@ -81,6 +82,11 @@ export class WsClient {
       // ignore
     }
     this.ws = undefined
+  }
+
+  disconnect() {
+    this.clearHandlers()
+    this.closeSocket()
   }
 }
 
