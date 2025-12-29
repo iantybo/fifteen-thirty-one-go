@@ -31,7 +31,11 @@ func RequireAuth(cfg config.Config) gin.HandlerFunc {
 }
 
 func tokenFromRequest(c *gin.Context) string {
-	// Cookie-based auth (httpOnly cookie set by the server).
+	// Cookie-based auth takes precedence over Authorization headers:
+	// - preferred for browser clients since the token is server-controlled (HttpOnly cookie),
+	//   rather than trusting JS-supplied headers (more resilient to token exfil in XSS scenarios)
+	// - cookie is set with HttpOnly and SameSite=Lax, and Secure is enabled outside development
+	// - dev CORS middleware explicitly allows credentialed requests so cookies can be sent safely
 	if v, err := c.Cookie("fto_token"); err == nil {
 		if t := strings.TrimSpace(v); t != "" {
 			return t

@@ -21,8 +21,9 @@ export function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     const trimmedUsername = username.trim()
-    // Do not trim passwords: leading/trailing spaces are valid characters (backend preserves them).
-    if (!trimmedUsername || password === '') {
+    // Do not trim passwords for submission: leading/trailing spaces are preserved and allowed (backend preserves them).
+    // However, we reject passwords that are empty or consist only of whitespace.
+    if (!trimmedUsername || password.trim().length === 0) {
       setErr('Username and password are required')
       return
     }

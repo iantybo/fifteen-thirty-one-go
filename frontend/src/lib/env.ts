@@ -9,12 +9,20 @@ export function apiBaseUrl(): string {
     )
   }
 
+  let u: URL
   try {
     // Validate it's an absolute URL (will throw on invalid/missing protocol, etc).
-    new URL(baseUrl)
+    u = new URL(baseUrl)
   } catch {
     throw new Error(
       `VITE_API_BASE_URL is invalid: expected an absolute URL like "http://127.0.0.1:8080". Got ${JSON.stringify(
+        baseUrl,
+      )}`,
+    )
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error(
+      `VITE_API_BASE_URL must use http:// or https://. Got protocol ${JSON.stringify(u.protocol)} from ${JSON.stringify(
         baseUrl,
       )}`,
     )

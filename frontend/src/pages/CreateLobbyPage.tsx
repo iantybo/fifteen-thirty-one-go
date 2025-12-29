@@ -19,13 +19,13 @@ export function CreateLobbyPage() {
       return
     }
     setErr(null)
+    const trimmed = name.trim()
+    if (trimmed === '') {
+      setErr('Lobby name is required')
+      return
+    }
     setBusy(true)
     try {
-      const trimmed = name.trim()
-      if (trimmed === '') {
-        setErr('Lobby name is required')
-        return
-      }
       const res = await api.createLobby({ name: trimmed, max_players: maxPlayers })
       nav(`/games/${res.game.id}`, { replace: true })
     } catch (e: unknown) {
