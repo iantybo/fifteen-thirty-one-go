@@ -11,6 +11,8 @@ import (
 func RegisterAuthRoutes(rg *gin.RouterGroup, db *sql.DB, cfg config.Config) {
 	rg.POST("/auth/register", RegisterHandler(db, cfg))
 	rg.POST("/auth/login", LoginHandler(db, cfg))
+	rg.GET("/auth/me", MeHandler(db, cfg))
+	rg.POST("/auth/logout", LogoutHandler(cfg))
 }
 
 // RegisterLobbyRoutes wires lobby endpoints. Implemented fully in Phase 3.

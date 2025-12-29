@@ -12,7 +12,7 @@ export function apiBaseUrl(): string {
   try {
     // Validate it's an absolute URL (will throw on invalid/missing protocol, etc).
     new URL(baseUrl)
-  } catch (e: unknown) {
+  } catch {
     throw new Error(
       `VITE_API_BASE_URL is invalid: expected an absolute URL like "http://127.0.0.1:8080". Got ${JSON.stringify(
         baseUrl,
@@ -37,7 +37,7 @@ export function wsBaseUrl(): string {
   let u: URL
   try {
     u = new URL(baseUrl)
-  } catch (e: unknown) {
+  } catch {
     throw new Error(
       `VITE_WS_BASE_URL is invalid: expected an absolute WebSocket URL like "ws://127.0.0.1:8080" or "wss://example.com". Got ${JSON.stringify(
         baseUrl,

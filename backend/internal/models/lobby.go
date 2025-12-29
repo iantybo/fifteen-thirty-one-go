@@ -70,7 +70,7 @@ func ListLobbies(db *sql.DB, limit, offset int64) ([]Lobby, error) {
 	}
 	defer rows.Close()
 
-	var out []Lobby
+	out := make([]Lobby, 0)
 	for rows.Next() {
 		var l Lobby
 		if err := rows.Scan(&l.ID, &l.Name, &l.HostID, &l.MaxPlayers, &l.CurrentPlayers, &l.Status, &l.CreatedAt); err != nil {

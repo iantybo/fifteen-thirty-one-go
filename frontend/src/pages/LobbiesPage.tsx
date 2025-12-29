@@ -5,27 +5,31 @@ import type { Lobby } from '../api/types'
 import { useAuth } from '../auth/auth'
 
 export function LobbiesPage() {
-  const { token, clearAuth } = useAuth()
+  const { user, clearAuth } = useAuth()
   const [lobbies, setLobbies] = useState<Lobby[]>([])
   const [err, setErr] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      if (!token) return
+      if (!user) return
       setErr(null)
+      setLoading(true)
       try {
-        const res = await api.listLobbies(token)
+        const res = await api.listLobbies()
         if (!cancelled) setLobbies(res.lobbies)
       } catch (e: unknown) {
         if (!cancelled) setErr(e instanceof Error ? e.message : 'failed to load lobbies')
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
     void load()
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [user])
 
   return (
     <div style={{ maxWidth: 800, margin: '24px auto', padding: '0 16px' }}>
@@ -38,6 +42,12 @@ export function LobbiesPage() {
       </header>
 
       {err && <div style={{ color: 'crimson' }}>{err}</div>}
+      {loading && <div>Loading lobbies...</div>}
+      {!loading && !err && lobbies.length === 0 && (
+        <div style={{ marginTop: 12, opacity: 0.8 }}>
+          No lobbies yet. <Link to="/lobbies/new">Create one</Link>.
+        </div>
+      )}
       <ul>
         {lobbies.map((l) => (
           <li key={l.id} style={{ margin: '10px 0' }}>

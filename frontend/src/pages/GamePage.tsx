@@ -7,24 +7,25 @@ export function GamePage() {
   const { id } = useParams()
   const gameId = Number(id)
   const isValidId = Number.isFinite(gameId) && gameId > 0
-  const { token } = useAuth()
+  const { user } = useAuth()
   const ws = useMemo(() => new WsClient(), [])
   const [status, setStatus] = useState<string>('disconnected')
   const [lastMsg, setLastMsg] = useState<unknown>(null)
 
   useEffect(() => {
-    if (!token || !isValidId) return
-    setStatus('connecting')
-    ws.connect(token, `game:${gameId}`)
-    const off = ws.on('connected', () => setStatus('connected'))
+    if (!user || !isValidId) return
+    ws.connect(`game:${gameId}`)
+    const offOpen = ws.on('ws_open', () => setStatus('connected'))
+    const offClose = ws.on('ws_close', () => setStatus('disconnected'))
     const offUpdate = ws.on('game_update', (p) => setLastMsg(p))
     return () => {
-      off()
+      offOpen()
+      offClose()
       offUpdate()
       ws.disconnect()
       setStatus('disconnected')
     }
-  }, [token, gameId, isValidId, ws])
+  }, [user, gameId, isValidId, ws])
 
   return (
     <div style={{ maxWidth: 900, margin: '24px auto', padding: '0 16px' }}>

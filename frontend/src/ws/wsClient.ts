@@ -6,23 +6,21 @@ export class WsClient {
   private ws?: WebSocket
   private handlers = new Map<string, Set<Handler>>()
 
+  clearHandlers() {
+    this.handlers.clear()
+  }
+
   private emit(type: string, payload: unknown) {
     const set = this.handlers.get(type)
     if (!set) return
     for (const h of set) h(payload)
   }
 
-  connect(token: string, room?: string) {
+  connect(room?: string) {
     this.disconnect()
     const base = wsBaseUrl()
     const url = new URL('/ws', base)
     if (room) url.searchParams.set('room', room)
-
-    // Prefer Authorization header, but browsers don't allow it for WebSocket.
-    // Backend supports query tokens only when WS_ALLOW_QUERY_TOKENS=true.
-    // WARNING: Query-string tokens can leak via access logs, proxy logs, and browser history.
-    // For production, prefer an ephemeral one-time WS token exchange or another auth mechanism.
-    url.searchParams.set('token', token)
 
     const ws = new WebSocket(url.toString())
     this.ws = ws
@@ -83,7 +81,6 @@ export class WsClient {
       // ignore
     }
     this.ws = undefined
-    this.handlers.clear()
   }
 }
 

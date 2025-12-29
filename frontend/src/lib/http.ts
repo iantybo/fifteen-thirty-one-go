@@ -16,13 +16,23 @@ export type RequestOptions = Omit<RequestInit, 'headers'> & {
 }
 
 export async function apiFetch<T>(url: string, opts: RequestOptions = {}): Promise<T> {
+  const { token, headers: headersOpt, credentials, ...fetchOpts } = opts
   const headers: Record<string, string> = {
-    ...(opts.headers ?? {}),
+    ...(headersOpt ?? {}),
   }
-  if (opts.token) headers.Authorization = `Bearer ${opts.token}`
-  if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json'
+  if (token) headers.Authorization = `Bearer ${token}`
+  if (opts.body) {
+    // Case-insensitive header check to avoid duplicates like "content-type" + "Content-Type".
+    const existingContentTypeKey = Object.keys(headers).find((k) => k.toLowerCase() === 'content-type')
+    if (existingContentTypeKey) {
+      headers[existingContentTypeKey] = 'application/json'
+    } else {
+      headers['Content-Type'] = 'application/json'
+    }
+  }
 
-  const res = await fetch(url, { ...opts, headers })
+  // Default to credentialed requests so server-set httpOnly cookies (sessions) are sent.
+  const res = await fetch(url, { ...fetchOpts, headers, credentials: credentials ?? 'include' })
   const contentType = res.headers.get('content-type') ?? ''
 
   const parseJson = async () => {
@@ -40,7 +50,11 @@ export async function apiFetch<T>(url: string, opts: RequestOptions = {}): Promi
   }
 
   if (contentType.includes('application/json')) {
-    return (await res.json()) as T
+    try {
+      return (await res.json()) as T
+    } catch {
+      throw new ApiError(`Failed to parse JSON response (${res.status})`, res.status)
+    }
   }
   throw new ApiError('Unexpected non-JSON response', res.status)
 }

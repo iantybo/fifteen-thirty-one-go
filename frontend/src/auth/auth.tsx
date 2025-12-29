@@ -1,71 +1,59 @@
-import React, { createContext, useContext, useMemo, useState } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { api } from '../api/client'
 import type { User } from '../api/types'
 
 type AuthState = {
-  token: string | null
   user: User | null
-  setAuth: (token: string, user: User) => void
+  loading: boolean
+  setAuth: (user: User) => void
   clearAuth: () => void
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined)
 
-const LS_TOKEN = 'fto_token'
-const LS_USER = 'fto_user'
-
-function isUser(v: unknown): v is User {
-  if (!v || typeof v !== 'object') return false
-  const o = v as any
-  return typeof o.id === 'number' && Number.isFinite(o.id) && typeof o.username === 'string'
-}
-
-function loadInitial(): { token: string | null; user: User | null } {
-  const token = localStorage.getItem(LS_TOKEN)
-  const userRaw = localStorage.getItem(LS_USER)
-  if (!token || !userRaw) return { token: null, user: null }
-  try {
-    const parsed = JSON.parse(userRaw) as unknown
-    if (!isUser(parsed)) {
-      localStorage.removeItem(LS_TOKEN)
-      localStorage.removeItem(LS_USER)
-      return { token: null, user: null }
-    }
-    return { token, user: parsed }
-  } catch {
-    localStorage.removeItem(LS_TOKEN)
-    localStorage.removeItem(LS_USER)
-    return { token: null, user: null }
-  }
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const init = useMemo(loadInitial, [])
-  const [token, setToken] = useState<string | null>(init.token)
-  const [user, setUser] = useState<User | null>(init.user)
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadSession() {
+      try {
+        const res = await api.me()
+        if (!cancelled) setUser(res.user)
+      } catch {
+        // Not logged in (or session invalid). Ignore.
+        if (!cancelled) setUser(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void loadSession()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const value = useMemo<AuthState>(
     () => ({
-      token,
       user,
-      setAuth: (t, u) => {
-        setToken(t)
+      loading,
+      setAuth: (u) => {
         setUser(u)
-        localStorage.setItem(LS_TOKEN, t)
-        localStorage.setItem(LS_USER, JSON.stringify(u))
       },
       clearAuth: () => {
-        setToken(null)
         setUser(null)
-        localStorage.removeItem(LS_TOKEN)
-        localStorage.removeItem(LS_USER)
+        // Best-effort: clear server cookie session too.
+        void api.logout().catch(() => undefined)
       },
     }),
-    [token, user],
+    [user, loading],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthState {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used within AuthProvider')

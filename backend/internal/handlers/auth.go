@@ -25,6 +25,12 @@ type authResponse struct {
 	User  *models.User `json:"user"`
 }
 
+type meResponse struct {
+	User *models.User `json:"user"`
+}
+
+const authCookieName = "fto_token"
+
 // fakeHash is a constant bcrypt hash used to normalize login timing when a user
 // lookup fails or the username does not exist.
 const fakeHash = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8lvZ9i8a9kaI0s5momkGLumZ5qX6e."
@@ -85,6 +91,7 @@ func RegisterHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 			return
 		}
 
+		setAuthCookie(c, cfg, token)
 		c.JSON(http.StatusCreated, authResponse{Token: token, User: u})
 	}
 }
@@ -131,8 +138,70 @@ func LoginHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "token error"})
 			return
 		}
+		setAuthCookie(c, cfg, token)
 		c.JSON(http.StatusOK, authResponse{Token: token, User: u})
 	}
+}
+
+func MeHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := tokenFromHeaderOrCookie(c)
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			return
+		}
+		claims, err := auth.ParseAndValidateToken(token, cfg)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
+		u, err := models.GetUserByID(db, claims.UserID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		c.JSON(http.StatusOK, meResponse{User: u})
+	}
+}
+
+func LogoutHandler(cfg config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Clear cookie regardless of auth status.
+		clearAuthCookie(c, cfg)
+		c.Status(http.StatusNoContent)
+	}
+}
+
+func setAuthCookie(c *gin.Context, cfg config.Config, token string) {
+	// JWT TTL already enforced server-side; cookie lifetime is best-effort for UX.
+	maxAge := int(cfg.JWTTTL.Seconds())
+	secure := cfg.AppEnv != "development"
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(authCookieName, token, maxAge, "/", "", secure, true)
+}
+
+func clearAuthCookie(c *gin.Context, cfg config.Config) {
+	secure := cfg.AppEnv != "development"
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(authCookieName, "", -1, "/", "", secure, true)
+}
+
+func tokenFromHeaderOrCookie(c *gin.Context) string {
+	// Cookie first (preferred for browser clients).
+	if v, err := c.Cookie(authCookieName); err == nil {
+		if t := strings.TrimSpace(v); t != "" {
+			return t
+		}
+	}
+	// Authorization: Bearer <token>
+	authz := c.GetHeader("Authorization")
+	if authz != "" {
+		parts := strings.SplitN(authz, " ", 2)
+		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+			return strings.TrimSpace(parts[1])
+		}
+	}
+	return ""
 }
 
 

@@ -5,7 +5,7 @@ import { api } from '../api/client'
 import { useAuth } from '../auth/auth'
 
 export function CreateLobbyPage() {
-  const { token } = useAuth()
+  const { user } = useAuth()
   const nav = useNavigate()
   const [name, setName] = useState('Lobby')
   const [maxPlayers, setMaxPlayers] = useState(2)
@@ -14,7 +14,7 @@ export function CreateLobbyPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!token) {
+    if (!user) {
       setErr('You must be logged in to create a lobby')
       return
     }
@@ -26,7 +26,7 @@ export function CreateLobbyPage() {
         setErr('Lobby name is required')
         return
       }
-      const res = await api.createLobby(token, { name: trimmed, max_players: maxPlayers })
+      const res = await api.createLobby({ name: trimmed, max_players: maxPlayers })
       nav(`/games/${res.game.id}`, { replace: true })
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : 'failed to create lobby')

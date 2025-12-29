@@ -268,6 +268,12 @@ func tokenFromHeaderOrQuery(c *gin.Context, cfg config.Config) string {
 			return strings.TrimSpace(parts[1])
 		}
 	}
+	// Cookie-based auth (httpOnly cookie set by the server).
+	if v, err := c.Cookie("fto_token"); err == nil {
+		if t := strings.TrimSpace(v); t != "" {
+			return t
+		}
+	}
 	if cfg.WSAllowQueryTokens {
 		return strings.TrimSpace(c.Query("token"))
 	}

@@ -31,6 +31,12 @@ func RequireAuth(cfg config.Config) gin.HandlerFunc {
 }
 
 func tokenFromRequest(c *gin.Context) string {
+	// Cookie-based auth (httpOnly cookie set by the server).
+	if v, err := c.Cookie("fto_token"); err == nil {
+		if t := strings.TrimSpace(v); t != "" {
+			return t
+		}
+	}
 	// Authorization: Bearer <token>
 	authz := c.GetHeader("Authorization")
 	if authz != "" {

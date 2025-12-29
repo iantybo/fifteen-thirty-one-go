@@ -1,10 +1,11 @@
 import { apiBaseUrl } from '../lib/env'
 import { apiFetch } from '../lib/http'
-import type { AuthResponse, Lobby } from './types'
+import type { AuthResponse, Game, Lobby, User } from './types'
 
-export type RegisterRequest = { username: string; password: string }
-export type LoginRequest = { username: string; password: string }
-export type CreateLobbyRequest = { name?: string; max_players: number }
+type AuthCredentials = { username: string; password: string }
+export type RegisterRequest = AuthCredentials
+export type LoginRequest = AuthCredentials
+export type CreateLobbyRequest = { name: string; max_players: number }
 
 export const api = {
   register(req: RegisterRequest) {
@@ -19,20 +20,29 @@ export const api = {
       body: JSON.stringify(req),
     })
   },
-  listLobbies(token: string) {
-    return apiFetch<{ lobbies: Lobby[] }>(`${apiBaseUrl()}/api/lobbies`, { token })
+  me() {
+    return apiFetch<{ user: User }>(`${apiBaseUrl()}/api/auth/me`)
   },
-  createLobby(token: string, req: CreateLobbyRequest) {
-    return apiFetch<{ lobby: Lobby; game: { id: number; lobby_id: number; status: string } }>(`${apiBaseUrl()}/api/lobbies`, {
+  logout() {
+    return apiFetch<void>(`${apiBaseUrl()}/api/auth/logout`, { method: 'POST' })
+  },
+  listLobbies() {
+    return apiFetch<{ lobbies: Lobby[] }>(`${apiBaseUrl()}/api/lobbies`)
+  },
+  createLobby(req: CreateLobbyRequest) {
+    return apiFetch<{ lobby: Lobby; game: Game }>(`${apiBaseUrl()}/api/lobbies`, {
       method: 'POST',
-      token,
       body: JSON.stringify(req),
     })
   },
-  joinLobby(token: string, lobbyId: number) {
-    return apiFetch<{ lobby: Lobby; game_id: number }>(`${apiBaseUrl()}/api/lobbies/${lobbyId}/join`, {
+  joinLobby(lobbyId: number) {
+    return apiFetch<{
+      lobby: Lobby
+      game_id: number
+      joined_persisted?: boolean
+      realtime_sync?: string
+    }>(`${apiBaseUrl()}/api/lobbies/${lobbyId}/join`, {
       method: 'POST',
-      token,
     })
   },
 }

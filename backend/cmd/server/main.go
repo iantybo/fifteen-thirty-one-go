@@ -74,6 +74,7 @@ func main() {
 	handlers.SetWebSocketOriginPolicy(cfg.AppEnv == "development", cfg.DevWebSocketsAllowAll, cfg.WSAllowedOrigins)
 
 	r := gin.Default()
+	r.Use(middleware.DevCORS(cfg))
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
 	api := r.Group("/api")

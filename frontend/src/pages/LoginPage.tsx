@@ -20,11 +20,17 @@ export function LoginPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    const trimmedUsername = username.trim()
+    const trimmedPassword = password.trim()
+    if (!trimmedUsername || !trimmedPassword) {
+      setErr('Username and password are required')
+      return
+    }
     setErr(null)
     setBusy(true)
     try {
-      const res = await api.login({ username, password })
-      setAuth(res.token, res.user)
+      const res = await api.login({ username: trimmedUsername, password: trimmedPassword })
+      setAuth(res.user)
       nav(loc.state?.from ?? '/lobbies', { replace: true })
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : 'login failed')

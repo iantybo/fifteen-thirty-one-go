@@ -282,6 +282,16 @@ func splitSQLStatements(s string) []string {
 
 	inSingle := false
 	inDouble := false
+	// SQLite triggers use BEGIN...END blocks that may contain semicolons.
+	// Our migration runner splits on ';', so we must avoid splitting inside these blocks.
+	//
+	// We intentionally keep this heuristic small:
+	// - detect CREATE TRIGGER ... BEGIN
+	// - once inside BEGIN..END, ignore ';' until END is seen
+	inTriggerDef := false
+	blockDepth := 0
+	var tok strings.Builder
+	lastTok := ""
 	for i := 0; i < len(s); i++ {
 		ch := s[i]
 
@@ -308,12 +318,43 @@ func splitSQLStatements(s string) []string {
 			continue
 		}
 
-		if !inSingle && !inDouble && ch == ';' {
+		if !inSingle && !inDouble {
+			// Tokenize outside quotes to detect BEGIN/END within CREATE TRIGGER blocks.
+			isWord := (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_'
+			if isWord {
+				tok.WriteByte(ch)
+			} else if tok.Len() > 0 {
+				t := strings.ToLower(tok.String())
+				tok.Reset()
+
+				// Track when we're inside a CREATE TRIGGER statement.
+				if t == "trigger" && lastTok == "create" {
+					inTriggerDef = true
+				}
+				// Track BEGIN..END blocks only for triggers.
+				if inTriggerDef {
+					if t == "begin" {
+						blockDepth++
+					} else if t == "end" && blockDepth > 0 {
+						blockDepth--
+					}
+				}
+				lastTok = t
+			}
+		}
+
+		if !inSingle && !inDouble && ch == ';' && blockDepth == 0 {
 			out = append(out, b.String())
 			b.Reset()
+			inTriggerDef = false
+			lastTok = ""
 			continue
 		}
 		b.WriteByte(ch)
+	}
+	// Flush trailing token, if any.
+	if !inSingle && !inDouble && tok.Len() > 0 {
+		tok.Reset()
 	}
 	if b.Len() > 0 {
 		out = append(out, b.String())

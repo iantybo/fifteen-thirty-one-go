@@ -7,17 +7,17 @@ export function LobbyDetailPage() {
   const { id } = useParams()
   const lobbyId = Number(id)
   const isValidId = Number.isFinite(lobbyId) && lobbyId > 0
-  const { token } = useAuth()
+  const { user } = useAuth()
   const nav = useNavigate()
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function join() {
-    if (!token || !isValidId) return
+    if (!user || !isValidId) return
     setErr(null)
     setBusy(true)
     try {
-      const res = await api.joinLobby(token, lobbyId)
+      const res = await api.joinLobby(lobbyId)
       nav(`/games/${res.game_id}`, { replace: true })
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : 'failed to join')
