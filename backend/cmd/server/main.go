@@ -72,6 +72,7 @@ func main() {
 	}()
 
 	handlers.SetWebSocketOriginPolicy(cfg.AppEnv == "development", cfg.DevWebSocketsAllowAll, cfg.WSAllowedOrigins)
+	handlers.SetHubProvider(hubRef.Get)
 
 	r := gin.Default()
 	r.Use(middleware.DevCORS(cfg))

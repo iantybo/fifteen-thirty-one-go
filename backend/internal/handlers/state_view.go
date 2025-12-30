@@ -40,15 +40,36 @@ func cloneStateForView(st *cribbage.State) cribbage.State {
 		view.PeggingSeq = append([]common.Card(nil), st.PeggingSeq...)
 	}
 
+	// History is safe to expose at all times (it contains only past, non-secret info).
+	if st.History != nil {
+		view.History = append([]cribbage.RoundSummary(nil), st.History...)
+	}
+
 	// Deep copy hands slice headers (but leave cards empty; filled selectively by caller).
 	view.Hands = make([][]common.Card, len(st.Hands))
 	for i := range view.Hands {
 		view.Hands[i] = []common.Card{}
 	}
 
-	// Hidden-card fields omitted.
-	view.KeptHands = nil
-	view.Crib = nil
+	// Hidden-card fields:
+	// - During discard/pegging we omit kept hands + crib to avoid leaking information.
+	// - During counting/finished we reveal them so the UI can show the full hand scoring breakdown.
+	if st.Stage == "counting" || st.Stage == "finished" {
+		if st.KeptHands != nil {
+			view.KeptHands = make([][]common.Card, len(st.KeptHands))
+			for i := range st.KeptHands {
+				view.KeptHands[i] = append([]common.Card(nil), st.KeptHands[i]...)
+			}
+		}
+		if st.Crib != nil {
+			view.Crib = append([]common.Card(nil), st.Crib...)
+		}
+		view.CountSummary = st.CountSummary
+	} else {
+		view.KeptHands = nil
+		view.Crib = nil
+		view.CountSummary = nil
+	}
 	view.Deck = nil
 
 	return view

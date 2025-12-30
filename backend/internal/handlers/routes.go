@@ -20,6 +20,7 @@ func RegisterLobbyRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/lobbies", ListLobbiesHandler(db))
 	rg.POST("/lobbies", CreateLobbyHandler(db))
 	rg.POST("/lobbies/:id/join", JoinLobbyHandler(db))
+	rg.POST("/lobbies/:id/add_bot", AddBotToLobbyHandler(db))
 }
 
 // RegisterGameRoutes wires game endpoints. Implemented fully in Phase 3/5.
@@ -31,6 +32,8 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/games/:id", GetGameHandler(db))
 	rg.GET("/games/:id/moves", GameMovesHandler(db))
 	rg.POST("/games/:id/move", MoveHandler(db))
+	rg.POST("/games/:id/quit", QuitGameHandler(db))
+	rg.POST("/games/:id/next_hand", NextHandHandler(db))
 	rg.POST("/games/:id/count", CountHandler(db))
 	rg.POST("/games/:id/correct", CorrectHandler(db))
 	rg.GET("/scoreboard", ScoreboardHandler(db))

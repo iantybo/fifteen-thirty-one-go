@@ -220,6 +220,10 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 			}
 			return
 		}
+		// Let bots respond synchronously (single-player support).
+		if err := maybeRunBotTurns(db, p.GameID); err != nil {
+			log.Printf("maybeRunBotTurns failed: game_id=%d err=%v", p.GameID, err)
+		}
 		if err := sendDirect(client, "move_ok", resp); err != nil {
 			log.Printf("sendDirect failed (move_ok): err=%v", err)
 			client.Close()

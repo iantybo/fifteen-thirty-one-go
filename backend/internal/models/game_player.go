@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type GamePlayer struct {
@@ -108,16 +109,32 @@ func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 	for rows.Next() {
 		var gp GamePlayer
 		var crib sql.NullString
-		var isBotInt int
+		var isBotVal any
 		var botDiff sql.NullString
-		if err := rows.Scan(&gp.GameID, &gp.UserID, &gp.Position, &gp.Score, &gp.Hand, &crib, &isBotInt, &botDiff); err != nil {
+		if err := rows.Scan(&gp.GameID, &gp.UserID, &gp.Position, &gp.Score, &gp.Hand, &crib, &isBotVal, &botDiff); err != nil {
 			return nil, err
 		}
 		if crib.Valid {
 			v := crib.String
 			gp.CribCards = &v
 		}
-		gp.IsBot = isBotInt != 0
+		// SQLite boolean handling is driver-dependent: we may see int64(0/1), bool, or string/[]byte.
+		switch v := isBotVal.(type) {
+		case int64:
+			gp.IsBot = v != 0
+		case int:
+			gp.IsBot = v != 0
+		case bool:
+			gp.IsBot = v
+		case []byte:
+			s := strings.TrimSpace(strings.ToLower(string(v)))
+			gp.IsBot = s == "1" || s == "true" || s == "t"
+		case string:
+			s := strings.TrimSpace(strings.ToLower(v))
+			gp.IsBot = s == "1" || s == "true" || s == "t"
+		default:
+			gp.IsBot = false
+		}
 		if botDiff.Valid {
 			v := botDiff.String
 			gp.BotDifficulty = &v

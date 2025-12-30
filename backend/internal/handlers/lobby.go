@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"fifteen-thirty-one-go/backend/internal/auth"
 	"fifteen-thirty-one-go/backend/internal/game/common"
 	"fifteen-thirty-one-go/backend/internal/game/cribbage"
 	"fifteen-thirty-one-go/backend/internal/models"
@@ -293,6 +294,104 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		}
 		defer tx.Rollback()
 
+		// Find game for lobby (assumes one game per lobby for now).
+		// This is a small shortcut until we add explicit lobby membership and game start.
+		var gameID int64
+		if err := tx.QueryRow(`SELECT id FROM games WHERE lobby_id = ? ORDER BY id DESC LIMIT 1`, lobbyID).Scan(&gameID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
+		// If the user is already a participant in the lobby's game, "joining" should be idempotent:
+		// do not increment lobby current_players and do not attempt to insert a duplicate game_players row.
+		// This allows players to refresh, reconnect, or reopen an existing lobby without getting "lobby full".
+		var existingPos sql.NullInt64
+		if err := tx.QueryRow(`SELECT position FROM game_players WHERE game_id = ? AND user_id = ?`, gameID, userID).Scan(&existingPos); err == nil {
+			// Still attempt best-effort runtime sync and initial-hand persistence (idempotent) below.
+
+			// Load lobby for response.
+			var l models.Lobby
+			if err := tx.QueryRow(
+				`SELECT id, name, host_id, max_players, current_players, status, created_at FROM lobbies WHERE id = ?`,
+				lobbyID,
+			).Scan(&l.ID, &l.Name, &l.HostID, &l.MaxPlayers, &l.CurrentPlayers, &l.Status, &l.CreatedAt); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					c.JSON(http.StatusNotFound, gin.H{"error": "lobby not found"})
+					return
+				}
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+
+			// Persist player's initial hand WITHOUT taking the in-memory state lock.
+			// Use the persisted engine state in DB (if present) to keep lock ordering DB -> memory.
+			var handJSON string
+			var stateJSON string
+			var stateVersion int64
+			var s sql.NullString
+			var v sql.NullInt64
+			if err := tx.QueryRow(`SELECT state_json, state_version FROM games WHERE id = ?`, gameID).Scan(&s, &v); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+			if v.Valid {
+				stateVersion = v.Int64
+			}
+			if s.Valid && strings.TrimSpace(s.String) != "" && existingPos.Valid {
+				stateJSON = s.String
+
+				var restored cribbage.State
+				if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
+					log.Printf("JoinLobbyHandler restore state_json unmarshal failed: game_id=%d err=%v state_json_len=%d", gameID, err, len(stateJSON))
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+					return
+				}
+				restored.Version = stateVersion
+				pos := int(existingPos.Int64)
+				if pos >= 0 && pos < len(restored.Hands) {
+					if b, err := json.Marshal(restored.Hands[pos]); err == nil {
+						handJSON = string(b)
+						if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, userID, handJSON); err != nil {
+							log.Printf("UpdatePlayerHandIfEmptyTx failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
+							c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+							return
+						}
+					} else {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+						return
+					}
+				} else {
+					log.Printf(
+						"JoinLobbyHandler: position out of bounds while persisting player hand (already joined): game_id=%d user_id=%d pos=%d hands_len=%d",
+						gameID, userID, pos, len(restored.Hands),
+					)
+				}
+			}
+
+			if err := tx.Commit(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+
+			resp := gin.H{"lobby": &l, "game_id": gameID, "already_joined": true, "realtime_sync": "ok"}
+			// existingPos may be invalid if the row somehow had NULL position; in that case skip runtime sync.
+			if existingPos.Valid {
+				if err := syncRuntimeStateFromDB(gameID, int(existingPos.Int64), stateVersion, stateJSON, handJSON); err != nil {
+					log.Printf(
+						"JoinLobbyHandler: runtime state sync encountered errors after commit (already joined; best-effort; continuing): game_id=%d user_id=%d pos=%d err=%v",
+						gameID, userID, existingPos.Int64, err,
+					)
+					resp["realtime_sync"] = "failed"
+				}
+			}
+
+			c.JSON(http.StatusOK, resp)
+			return
+		} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
 		l, err := models.JoinLobbyTx(tx, lobbyID)
 		if err != nil {
 			// Don't leak internal details; map known messages to safe ones.
@@ -308,14 +407,6 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			}
 			log.Printf("JoinLobbyTx failed: lobby_id=%d user_id=%d err=%v", lobbyID, userID, err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": msg})
-			return
-		}
-
-		// Find game for lobby (assumes one game per lobby for now).
-		// This is a small shortcut until we add explicit lobby membership and game start.
-		var gameID int64
-		if err := tx.QueryRow(`SELECT id FROM games WHERE lobby_id = ? ORDER BY id DESC LIMIT 1`, lobbyID).Scan(&gameID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
 
@@ -388,6 +479,166 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, resp)
+	}
+}
+
+type addBotRequest struct {
+	Difficulty string `json:"difficulty"` // easy|medium|hard (optional; defaults to easy)
+}
+
+func AddBotToLobbyHandler(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		lobbyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || lobbyID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lobby id"})
+			return
+		}
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		var req addBotRequest
+		_ = c.ShouldBindJSON(&req) // optional body
+		diff := strings.TrimSpace(strings.ToLower(req.Difficulty))
+		if diff == "" {
+			diff = string(cribbage.BotEasy)
+		}
+		if diff != string(cribbage.BotEasy) && diff != string(cribbage.BotMedium) && diff != string(cribbage.BotHard) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid difficulty"})
+			return
+		}
+
+		// Ensure lobby exists and the caller is the host.
+		l, err := models.GetLobbyByID(db, lobbyID)
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "lobby not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if l.HostID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only host can add bots"})
+			return
+		}
+		if l.Status != "waiting" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "lobby not joinable"})
+			return
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		defer tx.Rollback()
+
+		// Find current game for lobby.
+		var gameID int64
+		if err := tx.QueryRow(`SELECT id FROM games WHERE lobby_id = ? ORDER BY id DESC LIMIT 1`, lobbyID).Scan(&gameID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
+		// Create a bot user row (required by FK on game_players.user_id).
+		var botID int64
+		var botName string
+		for attempt := 0; attempt < 5; attempt++ {
+			suf, rerr := randSuffix(8)
+			if rerr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+				return
+			}
+			botName = fmt.Sprintf("bot_%s_%d_%s", diff, lobbyID, suf)
+			pw, rerr := randSuffix(16)
+			if rerr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+				return
+			}
+			hash, herr := auth.HashPassword("bot-" + pw) // meets min length
+			if herr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+				return
+			}
+			res, err := tx.Exec(`INSERT INTO users(username, password_hash) VALUES (?, ?)`, botName, hash)
+			if err != nil {
+				if models.IsUniqueConstraint(err) && attempt < 4 {
+					continue
+				}
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+			id, err := res.LastInsertId()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+			botID = id
+			break
+		}
+		if botID == 0 {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to create bot"})
+			return
+		}
+
+		// Add bot as a game player in the next available position.
+		botDiff := diff
+		nextPos, err := models.AddGamePlayerAutoPositionTx(tx, gameID, botID, int64(l.MaxPlayers), true, &botDiff)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unable to add bot"})
+			return
+		}
+
+		// Persist the bot's initial hand from the persisted engine snapshot (lock order DB -> memory).
+		var handJSON string
+		var stateJSON string
+		var stateVersion int64
+		var s sql.NullString
+		var v sql.NullInt64
+		if err := tx.QueryRow(`SELECT state_json, state_version FROM games WHERE id = ?`, gameID).Scan(&s, &v); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if v.Valid {
+			stateVersion = v.Int64
+		}
+		if s.Valid && strings.TrimSpace(s.String) != "" {
+			stateJSON = s.String
+			var restored cribbage.State
+			if err := json.Unmarshal([]byte(stateJSON), &restored); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+			restored.Version = stateVersion
+			if int(nextPos) >= 0 && int(nextPos) < len(restored.Hands) {
+				if b, err := json.Marshal(restored.Hands[nextPos]); err == nil {
+					handJSON = string(b)
+					if _, err := models.UpdatePlayerHandIfEmptyTx(tx, gameID, botID, handJSON); err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+						return
+					}
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+					return
+				}
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
+		// Best-effort: align runtime state after commit.
+		if err := syncRuntimeStateFromDB(gameID, int(nextPos), stateVersion, stateJSON, handJSON); err != nil {
+			log.Printf("AddBotToLobbyHandler runtime sync failed (best-effort): lobby_id=%d game_id=%d bot_id=%d err=%v", lobbyID, gameID, botID, err)
+		}
+
+		broadcastGameUpdate(db, gameID)
+		c.JSON(http.StatusOK, gin.H{"game_id": gameID, "bot_user_id": botID, "bot_username": botName})
 	}
 }
 

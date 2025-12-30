@@ -38,6 +38,32 @@ type State struct {
 
 	Scores []int `json:"scores"`
 	Stage  string `json:"stage"` // dealing|discard|pegging|counting|finished
+
+	// CountSummary is populated when Stage transitions to "counting".
+	// It allows clients to display a counting breakdown instead of the counting phase being invisible.
+	CountSummary *CountSummary `json:"count_summary,omitempty"`
+
+	// History is an append-only record of completed counting phases.
+	// It intentionally contains only information that is no longer secret (past kept hands, crib, cut, breakdown).
+	History []RoundSummary `json:"history,omitempty"`
+}
+
+type CountSummary struct {
+	// Order is the order in which hands are counted (player indices), excluding the crib which is separate.
+	// Official order is: left of dealer up to dealer, then dealer, then crib.
+	Order []int `json:"order"`
+	Hands map[int]ScoreBreakdown `json:"hands,omitempty"` // playerIndex -> breakdown
+	Crib  *ScoreBreakdown        `json:"crib,omitempty"`
+}
+
+type RoundSummary struct {
+	Round      int              `json:"round"`
+	DealerIndex int             `json:"dealer_index"`
+	Cut        *common.Card     `json:"cut,omitempty"`
+	Hands      map[int]ScoreBreakdown `json:"hands,omitempty"` // playerIndex -> breakdown
+	Crib       *ScoreBreakdown  `json:"crib,omitempty"`
+	ScoresBefore []int          `json:"scores_before,omitempty"`
+	ScoresAfter  []int          `json:"scores_after,omitempty"`
 }
 
 func NewState(players int) *State {
@@ -87,6 +113,7 @@ func (s *State) Deal() error {
 	}
 	s.Crib = s.Crib[:0]
 	s.Cut = nil
+	s.CountSummary = nil
 	s.Stage = "discard"
 	s.KeptHands = make([][]common.Card, s.Rules.MaxPlayers)
 	s.PeggingPassed = make([]bool, s.Rules.MaxPlayers)
@@ -149,6 +176,7 @@ func (s *State) Discard(player int, cards []common.Card) error {
 		}
 		s.Cut = &cut
 		s.Stage = "pegging"
+		s.CountSummary = nil
 		s.PeggingTotal = 0
 		s.PeggingSeq = nil
 		s.PeggingPassed = make([]bool, s.Rules.MaxPlayers)
@@ -311,6 +339,7 @@ func (s *State) maybeFinishRound() error {
 	}
 
 	s.Stage = "counting"
+	s.CountSummary = &CountSummary{Order: []int{}, Hands: map[int]ScoreBreakdown{}}
 	if s.Cut == nil {
 		// Should not happen, but avoid panic.
 		s.Stage = "finished"
@@ -324,11 +353,15 @@ func (s *State) maybeFinishRound() error {
 	//
 	// We must check for a winner immediately after each hand/crib is counted so
 	// the first player to reach 121 wins (no "overcount" by later hands).
+	scoresBefore := append([]int(nil), s.Scores...)
 	for off := 1; off < s.Rules.MaxPlayers; off++ {
 		i := (s.DealerIndex + off) % s.Rules.MaxPlayers
 		b := ScoreHand(s.KeptHands[i], *s.Cut, false)
+		s.CountSummary.Order = append(s.CountSummary.Order, i)
+		s.CountSummary.Hands[i] = b
 		s.Scores[i] += b.Total
 		if s.Scores[i] >= 121 {
+			s.appendRoundSummary(scoresBefore)
 			s.Stage = "finished"
 			return nil
 		}
@@ -337,8 +370,11 @@ func (s *State) maybeFinishRound() error {
 	{
 		i := s.DealerIndex
 		b := ScoreHand(s.KeptHands[i], *s.Cut, false)
+		s.CountSummary.Order = append(s.CountSummary.Order, i)
+		s.CountSummary.Hands[i] = b
 		s.Scores[i] += b.Total
 		if s.Scores[i] >= 121 {
+			s.appendRoundSummary(scoresBefore)
 			s.Stage = "finished"
 			return nil
 		}
@@ -346,22 +382,48 @@ func (s *State) maybeFinishRound() error {
 	// Crib (dealer)
 	{
 		crib := ScoreHand(s.Crib, *s.Cut, true)
+		s.CountSummary.Crib = &crib
 		s.Scores[s.DealerIndex] += crib.Total
 		if s.Scores[s.DealerIndex] >= 121 {
+			s.appendRoundSummary(scoresBefore)
 			s.Stage = "finished"
 			return nil
 		}
 	}
 
-	// New round.
-	s.DealerIndex = (s.DealerIndex + 1) % s.Rules.MaxPlayers
-	if err := s.Deal(); err != nil {
-		// revert dealer increment on failure
-		s.DealerIndex = (s.DealerIndex - 1 + s.Rules.MaxPlayers) % s.Rules.MaxPlayers
-		s.Stage = "finished"
-		return err
-	}
+	// Round completed (counting results applied).
+	s.appendRoundSummary(scoresBefore)
+
+	// IMPORTANT: Stop here. The next hand is dealt explicitly by the server handler (NextHand endpoint)
+	// so clients can see the counting stage and its breakdown.
 	return nil
+}
+
+func (s *State) appendRoundSummary(scoresBefore []int) {
+	rs := RoundSummary{
+		Round:        len(s.History) + 1,
+		DealerIndex:  s.DealerIndex,
+		ScoresBefore: append([]int(nil), scoresBefore...),
+		ScoresAfter:  append([]int(nil), s.Scores...),
+	}
+	if s.Cut != nil {
+		c := *s.Cut
+		rs.Cut = &c
+	}
+	if s.CountSummary != nil {
+		// Deep copy breakdowns so future mutations can't affect history.
+		if s.CountSummary.Hands != nil {
+			rs.Hands = map[int]ScoreBreakdown{}
+			for k, v := range s.CountSummary.Hands {
+				rs.Hands[k] = v
+			}
+		}
+		if s.CountSummary.Crib != nil {
+			c := *s.CountSummary.Crib
+			rs.Crib = &c
+		}
+	}
+	s.History = append(s.History, rs)
 }
 
 func (s *State) MarshalJSON() ([]byte, error) {

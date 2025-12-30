@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -46,6 +47,7 @@ func GetGameHandler(db *sql.DB) gin.HandlerFunc {
 				c.JSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
 				return
 			}
+			log.Printf("GetGameHandler BuildGameSnapshotForUser failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
@@ -76,6 +78,13 @@ func MoveHandler(db *sql.DB) gin.HandlerFunc {
 			writeAPIError(c, err)
 			return
 		}
+		// Single-player support: if bots are present, let them respond immediately so
+		// the client can fetch a post-bot snapshot right away.
+		if err := maybeRunBotTurns(db, gameID); err != nil {
+			log.Printf("maybeRunBotTurns failed: game_id=%d err=%v", gameID, err)
+		}
+		// Realtime: notify all connected clients that the game changed.
+		broadcastGameUpdate(db, gameID)
 		c.JSON(http.StatusOK, resp)
 	}
 }
@@ -208,6 +217,157 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"verified": verified, "breakdown": breakdown, "auto_count_mode": prefs.AutoCountMode})
+	}
+}
+
+func QuitGameHandler(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || gameID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
+			return
+		}
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		isParticipant, err := models.IsUserInGame(db, userID, gameID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if !isParticipant {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not a player"})
+			return
+		}
+
+		g, err := models.GetGameByID(db, gameID)
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
+		// Best-effort: mark game and lobby finished. This gives the UI a clean terminal state.
+		_ = models.SetGameStatus(db, gameID, "finished")
+		_ = models.SetLobbyStatus(db, g.LobbyID, "finished")
+
+		// Drop in-memory runtime state so a future game doesn't accidentally reuse it.
+		defaultGameManager.Delete(gameID)
+
+		broadcastGameUpdate(db, gameID)
+		c.Status(http.StatusNoContent)
+	}
+}
+
+func NextHandHandler(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || gameID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
+			return
+		}
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		isParticipant, err := models.IsUserInGame(db, userID, gameID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if !isParticipant {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not a player"})
+			return
+		}
+
+		players, err := models.ListGamePlayersByGame(db, gameID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		st, unlock, err := ensureGameStateLocked(db, gameID, players)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "game not ready"})
+			return
+		}
+		if st.Stage != "counting" {
+			unlock()
+			c.JSON(http.StatusConflict, gin.H{"error": "not in counting stage"})
+			return
+		}
+		// Advance dealer and deal next hand.
+		st.DealerIndex = (st.DealerIndex + 1) % st.Rules.MaxPlayers
+		if err := st.Deal(); err != nil {
+			unlock()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "deal failed"})
+			return
+		}
+		baseVersion := st.Version
+		working := cloneStateDeep(st)
+		working.Version = baseVersion
+		unlock()
+
+		tx, err := db.Begin()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		committed := false
+		defer func() {
+			if !committed {
+				_ = tx.Rollback()
+			}
+		}()
+
+		// Persist all newly dealt hands.
+		for _, p := range players {
+			posIdx := int(p.Position)
+			if posIdx < 0 || posIdx >= len(working.Hands) {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid player position"})
+				return
+			}
+			b, err := json.Marshal(working.Hands[posIdx])
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+			if err := models.UpdatePlayerHandTx(tx, gameID, p.UserID, string(b)); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+		}
+		sb, err := json.Marshal(working)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if err := models.UpdateGameStateTxCAS(tx, gameID, baseVersion, string(sb)); err != nil {
+			writeAPIError(c, err)
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		committed = true
+
+		// Re-apply to runtime state.
+		working.Version = baseVersion + 1
+		st2, unlock2, ok := defaultGameManager.GetLocked(gameID)
+		if ok && st2 != nil {
+			*st2 = working
+			unlock2()
+		}
+
+		broadcastGameUpdate(db, gameID)
+		c.Status(http.StatusNoContent)
 	}
 }
 
