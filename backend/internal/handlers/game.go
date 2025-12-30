@@ -302,13 +302,46 @@ func NextHandHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusConflict, gin.H{"error": "not in counting stage"})
 			return
 		}
-		// Advance dealer and deal next hand.
-		st.DealerIndex = (st.DealerIndex + 1) % st.Rules.MaxPlayers
-		if err := st.Deal(); err != nil {
+
+		// Ready-up gate: during counting, both players must be ready before dealing the next hand.
+		// (Bots are auto-ready.)
+		myPos := -1
+		for _, p := range players {
+			if p.UserID == userID {
+				myPos = int(p.Position)
+				break
+			}
+		}
+		if myPos < 0 || myPos >= st.Rules.MaxPlayers {
 			unlock()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "deal failed"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "not a player"})
 			return
 		}
+		if st.ReadyNextHand == nil || len(st.ReadyNextHand) != st.Rules.MaxPlayers {
+			st.ReadyNextHand = make([]bool, st.Rules.MaxPlayers)
+		}
+		// Toggle readiness so users can un-ready if clicked accidentally.
+		st.ReadyNextHand[myPos] = !st.ReadyNextHand[myPos]
+		for _, p := range players {
+			if p.IsBot {
+				pos := int(p.Position)
+				if pos >= 0 && pos < st.Rules.MaxPlayers {
+					st.ReadyNextHand[pos] = true
+				}
+			}
+		}
+		allReady := true
+		for _, p := range players {
+			if p.IsBot {
+				continue
+			}
+			pos := int(p.Position)
+			if pos < 0 || pos >= st.Rules.MaxPlayers || !st.ReadyNextHand[pos] {
+				allReady = false
+				break
+			}
+		}
+
 		baseVersion := st.Version
 		working := cloneStateDeep(st)
 		working.Version = baseVersion
@@ -326,21 +359,29 @@ func NextHandHandler(db *sql.DB) gin.HandlerFunc {
 			}
 		}()
 
-		// Persist all newly dealt hands.
-		for _, p := range players {
-			posIdx := int(p.Position)
-			if posIdx < 0 || posIdx >= len(working.Hands) {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid player position"})
+		if allReady {
+			// Advance dealer and deal next hand.
+			working.DealerIndex = (working.DealerIndex + 1) % working.Rules.MaxPlayers
+			if err := working.Deal(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "deal failed"})
 				return
 			}
-			b, err := json.Marshal(working.Hands[posIdx])
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-				return
-			}
-			if err := models.UpdatePlayerHandTx(tx, gameID, p.UserID, string(b)); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-				return
+			// Persist all newly dealt hands.
+			for _, p := range players {
+				posIdx := int(p.Position)
+				if posIdx < 0 || posIdx >= len(working.Hands) {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid player position"})
+					return
+				}
+				b, err := json.Marshal(working.Hands[posIdx])
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+					return
+				}
+				if err := models.UpdatePlayerHandTx(tx, gameID, p.UserID, string(b)); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+					return
+				}
 			}
 		}
 		sb, err := json.Marshal(working)

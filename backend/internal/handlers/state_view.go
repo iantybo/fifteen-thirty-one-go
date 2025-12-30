@@ -36,6 +36,9 @@ func cloneStateForView(st *cribbage.State) cribbage.State {
 	if st.DiscardCompleted != nil {
 		view.DiscardCompleted = append([]bool(nil), st.DiscardCompleted...)
 	}
+	if st.ReadyNextHand != nil {
+		view.ReadyNextHand = append([]bool(nil), st.ReadyNextHand...)
+	}
 	if st.PeggingSeq != nil {
 		view.PeggingSeq = append([]common.Card(nil), st.PeggingSeq...)
 	}

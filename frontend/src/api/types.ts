@@ -63,6 +63,7 @@ export type CribbageState = {
   pegging_seq: Card[]
   pegging_passed: boolean[]
   discard_completed: boolean[]
+  ready_next_hand?: boolean[]
   scores: number[]
   stage: CribbageStage
   count_summary?: {

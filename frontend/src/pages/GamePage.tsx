@@ -190,6 +190,70 @@ function CardBack({ title }: { title?: string }) {
   )
 }
 
+function KittyStack({
+  count,
+  max,
+}: {
+  count: number
+  max?: number
+}) {
+  const prevRef = useRef<number>(count)
+  const [bump, setBump] = useState(false)
+
+  useEffect(() => {
+    const prev = prevRef.current
+    prevRef.current = count
+    if (count > prev) {
+      // Avoid synchronous setState in effects (lint rule): schedule on next tick.
+      const t0 = window.setTimeout(() => setBump(true), 0)
+      const t1 = window.setTimeout(() => setBump(false), 250)
+      return () => {
+        window.clearTimeout(t0)
+        window.clearTimeout(t1)
+      }
+    }
+  }, [count])
+
+  const visible = Math.min(7, count)
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ position: 'relative', width: 46, height: 56 }}>
+        {Array.from({ length: visible }).map((_, i) => {
+          const isTop = i === visible - 1
+          return (
+            <div
+              key={`k:${i}`}
+              style={{
+                position: 'absolute',
+                left: i * 2,
+                top: 12 - i * 1.6,
+                transform: isTop && bump ? 'translateY(-4px) scale(1.05)' : 'translateY(0) scale(1)',
+                transition: 'transform 180ms ease',
+              }}
+            >
+              <div
+                style={{
+                  width: 34,
+                  height: 44,
+                  borderRadius: 9,
+                  border: '1px solid #cbd5e1',
+                  background:
+                    'repeating-linear-gradient(45deg, #1d4ed8 0px, #1d4ed8 6px, #2563eb 6px, #2563eb 12px)',
+                  boxShadow: isTop ? '0 2px 6px rgba(0,0,0,0.18)' : '0 1px 2px rgba(0,0,0,0.12)',
+                }}
+              />
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ fontWeight: 800 }}>
+        {count}
+        {typeof max === 'number' ? <span style={{ opacity: 0.75 }}>/{max}</span> : null}
+      </div>
+    </div>
+  )
+}
+
 function safeCountHandJSON(handJSON: string | undefined): number | null {
   if (!handJSON) return null
   const s = handJSON.trim()
@@ -233,9 +297,13 @@ function PegTrack({
     }
     prevScoresRef.current = scores.slice()
     if (Object.keys(nextDeltas).length > 0) {
-      setDeltas(nextDeltas)
-      const t = window.setTimeout(() => setDeltas({}), 1100)
-      return () => window.clearTimeout(t)
+      // Avoid synchronous setState in effects (lint rule): schedule on next tick.
+      const t0 = window.setTimeout(() => setDeltas(nextDeltas), 0)
+      const t1 = window.setTimeout(() => setDeltas({}), 1100)
+      return () => {
+        window.clearTimeout(t0)
+        window.clearTimeout(t1)
+      }
     }
   }, [scores])
 
@@ -330,7 +398,7 @@ function PegTrack({
                   >
                     {s}
                   </div>
-                  {(typeof showDelta === 'number' && showDelta !== 0) || (isHighlight && highlight?.kind === 'go') ? (
+                  {typeof showDelta === 'number' && showDelta !== 0 ? (
                     <div
                       style={{
                         position: 'absolute',
@@ -339,7 +407,7 @@ function PegTrack({
                         transform: 'translateX(-50%)',
                         padding: '2px 6px',
                         borderRadius: 999,
-                        background: highlight?.kind === 'go' && isHighlight ? '#0f172a' : '#16a34a',
+                        background: '#16a34a',
                         color: 'white',
                         fontSize: 12,
                         fontWeight: 800,
@@ -348,7 +416,7 @@ function PegTrack({
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {highlight?.kind === 'go' && isHighlight ? 'GO' : `${showDelta > 0 ? '+' : ''}${showDelta}`}
+                      {`${showDelta > 0 ? '+' : ''}${showDelta}`}
                     </div>
                   ) : null}
                 </div>
@@ -453,6 +521,8 @@ export function GamePage() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [moves, setMoves] = useState<GameMove[] | null>(null)
   const [peggingCue, setPeggingCue] = useState<{ pos: number; kind: 'score' | 'go' | 'play'; delta?: number; card?: string } | null>(null)
+  const [cutPulse, setCutPulse] = useState(false)
+  const lastCueMoveIDRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!user || !isValidId) return
@@ -512,6 +582,16 @@ export function GamePage() {
   const hasLegalPeggingPlay =
     stage === 'pegging' && myHand.some((c) => peggingTotal+cardValue15(c) <= 31)
   const canGo = isMyTurn && stage === 'pegging' && !moveBusy && !loading && !hasLegalPeggingPlay
+  const kittyCount =
+    (stage === 'discard' || stage === 'pegging') && state?.discard_completed
+      ? state.discard_completed.filter(Boolean).length * discardCount
+      : undefined
+  const kittyMax =
+    (stage === 'discard' || stage === 'pegging') && state?.rules?.max_players
+      ? state.rules.max_players * discardCount
+      : undefined
+  const cutCode = state?.cut ? cardToCode(state.cut) : null
+  const prevCutRef = useRef<string | null>(null)
 
   function playerLabel(pos: number | undefined): string {
     if (typeof pos !== 'number' || !snap) return ''
@@ -525,14 +605,10 @@ export function GamePage() {
     if (!moves || !snap || !snap.state || snap.state.stage !== 'pegging') return
     const latest = moves[0]
     if (!latest) return
+    if (typeof latest.id === 'number' && lastCueMoveIDRef.current === latest.id) return
+    if (typeof latest.id === 'number') lastCueMoveIDRef.current = latest.id
     const pPos = snap.players.find((p) => p.user_id === latest.player_id)?.position
     if (typeof pPos !== 'number') return
-
-    if (latest.move_type === 'go') {
-      setPeggingCue({ pos: pPos, kind: 'go' })
-      const t = window.setTimeout(() => setPeggingCue(null), 1000)
-      return () => window.clearTimeout(t)
-    }
 
     if (latest.move_type === 'play_card') {
       const delta = latest.score_verified ?? 0
@@ -541,6 +617,21 @@ export function GamePage() {
       return () => window.clearTimeout(t)
     }
   }, [moves, snap])
+
+  useEffect(() => {
+    const prev = prevCutRef.current
+    prevCutRef.current = cutCode
+    // Animate when the cut first appears or changes.
+    if (cutCode && cutCode !== prev) {
+      // Avoid synchronous setState in effects (lint): schedule on next tick.
+      const t0 = window.setTimeout(() => setCutPulse(true), 0)
+      const t1 = window.setTimeout(() => setCutPulse(false), 360)
+      return () => {
+        window.clearTimeout(t0)
+        window.clearTimeout(t1)
+      }
+    }
+  }, [cutCode])
 
   async function submitMove(move: Parameters<(typeof api)['moveGame']>[1]) {
     if (!isValidId) return
@@ -661,10 +752,25 @@ export function GamePage() {
                 Total: {peggingTotal} / 31 <span style={{ opacity: 0.75 }}>(need {Math.max(0, 31 - peggingTotal)})</span>
               </div>
             ) : null}
+            {typeof kittyCount === 'number' ? (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ fontWeight: 800 }}>Kitty:</div>
+                <KittyStack count={kittyCount} max={kittyMax} />
+              </div>
+            ) : null}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <div style={{ fontWeight: 800 }}>Cut:</div>
               {state?.cut ? (
-                <CardIcon card={state.cut} disabled title={cardToCode(state.cut)} />
+                <div
+                  style={{
+                    display: 'inline-block',
+                    transform: cutPulse ? 'translateY(-3px) scale(1.06)' : 'translateY(0) scale(1)',
+                    transition: 'transform 260ms ease, filter 260ms ease',
+                    filter: cutPulse ? 'drop-shadow(0 6px 14px rgba(245,158,11,0.45))' : 'none',
+                  }}
+                >
+                  <CardIcon card={state.cut} disabled title={cardToCode(state.cut)} />
+                </div>
               ) : (
                 <div style={{ opacity: 0.8 }}>{stage === 'discard' ? '(not cut yet)' : '(none)'}</div>
               )}
@@ -696,7 +802,7 @@ export function GamePage() {
                   <details style={{ opacity: 0.9 }}>
                     <summary style={{ cursor: 'pointer' }}>?</summary>
                     <div style={{ marginTop: 6, maxWidth: 520 }}>
-                      Score can happen during pegging (15, 31, pairs, runs). GO appears only when you have no legal play.
+                      Score can happen during pegging (15, 31, pairs, runs). If you can’t play without going over 31, you must pass.
                     </div>
                   </details>
                 </div>
@@ -704,7 +810,7 @@ export function GamePage() {
                   {isMyTurn ? 'Your turn — play a card' : `Waiting for ${playerLabel(state?.current_index)}`}
                 </div>
                 <div style={{ marginTop: 4, opacity: 0.9 }}>
-                  {canGo ? 'No legal play — say GO' : 'Play a card without going over 31.'}
+                  {canGo ? 'No legal play — pass' : 'Play a card without going over 31.'}
                 </div>
               </div>
               {peggingCue?.kind === 'score' && typeof peggingCue.delta === 'number' && peggingCue.delta > 0 ? (
@@ -712,11 +818,6 @@ export function GamePage() {
                   <div style={{ fontWeight: 900, color: '#16a34a' }}>+{peggingCue.delta}</div>
                   {peggingCue.card ? <ActionCard label={peggingCue.card} disabled title="Last scoring play" /> : null}
                   <div style={{ opacity: 0.85 }}>Scored during pegging</div>
-                </div>
-              ) : peggingCue?.kind === 'go' ? (
-                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <ActionCard label="GO" disabled accent="primary" title="Player said GO" />
-                  <div style={{ opacity: 0.85 }}>No legal play</div>
                 </div>
               ) : peggingCue?.kind === 'play' ? (
                 <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -806,9 +907,32 @@ export function GamePage() {
                     }
                   }}
                 >
-                  ▶ Next hand
+                  {state?.ready_next_hand?.[myPos ?? -1] ? '✅ Ready (click to unready)' : '▶ Ready for next hand'}
                 </button>
               </div>
+
+              {Array.isArray(state?.ready_next_hand) && state.ready_next_hand.length > 0 && (
+                <div style={{ marginTop: 10, padding: 10, border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc' }}>
+                  <div style={{ fontWeight: 700 }}>Next hand readiness</div>
+                  <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
+                    {snap.players
+                      .slice()
+                      .sort((a, b) => a.position - b.position)
+                      .filter((p) => !p.is_bot)
+                      .map((p) => {
+                        const ready = !!state.ready_next_hand?.[p.position]
+                        return (
+                          <div key={`ready:${p.position}`} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ opacity: 0.9 }}>{playerLabel(p.position)}</div>
+                            <div style={{ fontWeight: 800, color: ready ? '#16a34a' : '#dc2626' }}>
+                              {ready ? 'Ready' : 'Waiting'}
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
 
               {state?.kept_hands && (
                 <div style={{ marginTop: 12 }}>
@@ -851,7 +975,7 @@ export function GamePage() {
               ) : myHand.length === 0 ? (
                 <div style={{ opacity: 0.8 }}>No cards visible (stage={stage}).</div>
               ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
                   {myHand.map((c) => {
                     const code = cardToCode(c)
                     const isSelected = stage === 'discard' && selected.has(code)
@@ -917,6 +1041,18 @@ export function GamePage() {
                       </div>
                     )
                   })}
+                  {/* GO appears as a "card" on the right side of your hand when you truly have no legal play. */}
+                  {stage === 'pegging' && canGo && (
+                    <div style={{ display: 'inline-block', marginLeft: 6 }}>
+                      <ActionCard
+                        label="GO"
+                        accent="primary"
+                        disabled={moveBusy || loading}
+                        onClick={() => submitMove({ type: 'go' })}
+                        title="No legal play — say GO"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -924,7 +1060,7 @@ export function GamePage() {
 
           {stage === 'pegging' && myHand.length > 0 && (
             <div style={{ marginTop: 10, opacity: 0.85 }}>
-              Tip: only playable cards are enabled; “Go” lights up only if you truly have no legal play.
+              Tip: only playable cards are enabled.
             </div>
           )}
 
@@ -944,18 +1080,7 @@ export function GamePage() {
             )}
           </div>
 
-          {/* "Go" is shown as a card when it's truly needed (no legal play). */}
-          {stage === 'pegging' && canGo && (
-            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <ActionCard
-                label="GO"
-                accent="primary"
-                onClick={() => submitMove({ type: 'go' })}
-                title="No legal play — say GO"
-              />
-              <div style={{ opacity: 0.85 }}>No legal play — say GO</div>
-            </div>
-          )}
+          {/* No separate GO action here; GO is rendered as a card in your hand when needed. */}
 
           {stage === 'pegging' && (
             <>

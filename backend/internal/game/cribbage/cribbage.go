@@ -39,6 +39,10 @@ type State struct {
 	Scores []int `json:"scores"`
 	Stage  string `json:"stage"` // dealing|discard|pegging|counting|finished
 
+	// ReadyNextHand is used during the counting stage to "ready up" before dealing
+	// the next hand. This prevents one player from skipping the count screen for the other.
+	ReadyNextHand []bool `json:"ready_next_hand,omitempty"`
+
 	// CountSummary is populated when Stage transitions to "counting".
 	// It allows clients to display a counting breakdown instead of the counting phase being invisible.
 	CountSummary *CountSummary `json:"count_summary,omitempty"`
@@ -114,6 +118,7 @@ func (s *State) Deal() error {
 	s.Crib = s.Crib[:0]
 	s.Cut = nil
 	s.CountSummary = nil
+	s.ReadyNextHand = nil
 	s.Stage = "discard"
 	s.KeptHands = make([][]common.Card, s.Rules.MaxPlayers)
 	s.PeggingPassed = make([]bool, s.Rules.MaxPlayers)
@@ -340,6 +345,7 @@ func (s *State) maybeFinishRound() error {
 
 	s.Stage = "counting"
 	s.CountSummary = &CountSummary{Order: []int{}, Hands: map[int]ScoreBreakdown{}}
+	s.ReadyNextHand = make([]bool, s.Rules.MaxPlayers)
 	if s.Cut == nil {
 		// Should not happen, but avoid panic.
 		s.Stage = "finished"
