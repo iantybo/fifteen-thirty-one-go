@@ -1,6 +1,6 @@
 import { apiBaseUrl } from '../lib/env'
 import { ApiError, apiFetch } from '../lib/http'
-import type { AuthResponse, Game, GameSnapshot, Lobby, User } from './types'
+import type { AuthResponse, Game, GameMove, GameSnapshot, Lobby, User } from './types'
 
 type AuthCredentials = { username: string; password: string }
 export type RegisterRequest = AuthCredentials
@@ -78,6 +78,11 @@ export const api = {
   },
   async getGame(gameId: number) {
     const res = await apiFetch<GameSnapshot>(`${apiBaseUrl()}/api/games/${gameId}`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async listGameMoves(gameId: number) {
+    const res = await apiFetch<{ moves: GameMove[] }>(`${apiBaseUrl()}/api/games/${gameId}/moves`)
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },

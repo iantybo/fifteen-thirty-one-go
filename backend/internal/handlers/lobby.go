@@ -592,6 +592,50 @@ func AddBotToLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
+		// After successfully adding the bot to game_players, increment lobby current_players within the
+		// same transaction (mirrors JoinLobbyTx guarded update). This keeps lobby counts consistent with
+		// game_players and ensures both changes commit atomically.
+		res, err := tx.Exec(
+			`UPDATE lobbies
+			 SET current_players = current_players + 1
+			 WHERE id = ? AND status = 'waiting' AND current_players < max_players`,
+			lobbyID,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		ra, err := res.RowsAffected()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if ra == 0 {
+			// Classify why the guarded increment didn't apply.
+			var status string
+			var currentPlayers int64
+			var maxPlayers int64
+			err := tx.QueryRow(`SELECT status, current_players, max_players FROM lobbies WHERE id = ?`, lobbyID).Scan(&status, &currentPlayers, &maxPlayers)
+			if errors.Is(err, sql.ErrNoRows) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "lobby not found"})
+				return
+			}
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+				return
+			}
+			if status != "waiting" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "lobby not joinable"})
+				return
+			}
+			if currentPlayers >= maxPlayers {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "lobby full"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+
 		// Persist the bot's initial hand from the persisted engine snapshot (lock order DB -> memory).
 		var handJSON string
 		var stateJSON string

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Card, GameSnapshot } from '../api/types'
+import type { Card, GameMove, GameSnapshot } from '../api/types'
 import { useAuth } from '../auth/auth'
 import { WsClient } from '../ws/wsClient'
 
@@ -130,6 +130,282 @@ function CardIcon({
   )
 }
 
+function ActionCard({
+  label,
+  disabled,
+  onClick,
+  title,
+  accent,
+}: {
+  label: string
+  disabled?: boolean
+  onClick?: () => void
+  title?: string
+  accent?: 'primary' | 'danger'
+}) {
+  const bg = accent === 'primary' ? '#2563eb' : accent === 'danger' ? '#dc2626' : '#ffffff'
+  const fg = accent ? '#ffffff' : '#0f172a'
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      title={title}
+      style={{
+        width: 56,
+        height: 72,
+        padding: 0,
+        borderRadius: 10,
+        border: '1px solid #cbd5e1',
+        background: bg,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 900,
+        letterSpacing: 0.8,
+        color: fg,
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function CardBack({ title }: { title?: string }) {
+  return (
+    <div
+      title={title}
+      style={{
+        width: 28,
+        height: 36,
+        borderRadius: 8,
+        border: '1px solid #cbd5e1',
+        background:
+          'repeating-linear-gradient(45deg, #1d4ed8 0px, #1d4ed8 6px, #2563eb 6px, #2563eb 12px)',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
+      }}
+    />
+  )
+}
+
+function safeCountHandJSON(handJSON: string | undefined): number | null {
+  if (!handJSON) return null
+  const s = handJSON.trim()
+  if (!s) return null
+  try {
+    const v: unknown = JSON.parse(s)
+    return Array.isArray(v) ? v.length : null
+  } catch {
+    return null
+  }
+}
+
+function PegTrack({
+  players,
+  scores,
+  highlight,
+}: {
+  players: GameSnapshot['players']
+  scores: number[] | undefined
+  highlight?: { pos: number; delta?: number; kind?: 'score' | 'go' | 'play'; label?: string } | null
+}) {
+  const max = 121
+  const endPad = 18
+  const sorted = players.slice().sort((a, b) => a.position - b.position)
+  const colors = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed']
+
+  const prevScoresRef = useRef<number[] | null>(null)
+  const [deltas, setDeltas] = useState<Record<number, number>>({})
+
+  useEffect(() => {
+    if (!scores || scores.length === 0) return
+    const prev = prevScoresRef.current
+    if (!prev) {
+      prevScoresRef.current = scores.slice()
+      return
+    }
+    const nextDeltas: Record<number, number> = {}
+    for (let i = 0; i < scores.length; i++) {
+      const d = scores[i] - (prev[i] ?? 0)
+      if (d !== 0) nextDeltas[i] = d
+    }
+    prevScoresRef.current = scores.slice()
+    if (Object.keys(nextDeltas).length > 0) {
+      setDeltas(nextDeltas)
+      const t = window.setTimeout(() => setDeltas({}), 1100)
+      return () => window.clearTimeout(t)
+    }
+  }, [scores])
+
+  const posPct = (v: number) => `${Math.max(0, Math.min(max, v)) / max * 100}%`
+
+  return (
+    <div style={{ marginTop: 10, padding: 10, border: '1px solid #e2e8f0', borderRadius: 10 }}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>Peg board</div>
+      <div
+        style={{
+          position: 'relative',
+          height: 34,
+          borderRadius: 999,
+          background: '#f1f5f9',
+          border: '1px solid #e2e8f0',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Endcaps so 0/121 don't feel cramped */}
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: endPad, background: '#eef2ff' }} />
+        <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: endPad, background: '#ecfeff' }} />
+        {/* Finish marker */}
+        <div style={{ position: 'absolute', right: 6, top: 8, fontSize: 12, opacity: 0.8 }} title="Finish">
+          121
+        </div>
+
+        {/* Inner lane where ticks/pegs are positioned (gives padding at the ends) */}
+        <div style={{ position: 'absolute', left: endPad, right: endPad, top: 0, bottom: 0 }}>
+          {/* tick marks */}
+          {Array.from({ length: Math.floor(max / 5) + 1 }).map((_, i) => {
+            const v = i * 5
+            const isTen = v % 10 === 0
+            return (
+              <div
+                key={`tick:${v}`}
+                style={{
+                  position: 'absolute',
+                  left: posPct(v),
+                  top: 0,
+                  bottom: 0,
+                  width: 1,
+                  background: isTen ? '#cbd5e1' : '#e2e8f0',
+                  opacity: isTen ? 1 : 0.75,
+                }}
+                title={String(v)}
+              />
+            )
+          })}
+
+          {sorted.map((p, idx) => {
+            const s = scores?.[p.position] ?? 0
+            const c = colors[idx % colors.length]
+            const showDelta = deltas[p.position]
+            const isHighlight = highlight?.pos === p.position
+            return (
+              <div
+                key={`peg:${p.position}`}
+                style={{
+                  position: 'absolute',
+                  left: posPct(s),
+                  top: 6 + (idx % 2) * 12,
+                  transform: 'translateX(-50%)',
+                  transition: 'left 420ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+                }}
+              >
+                <div style={{ position: 'relative' }}>
+                  <div
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 999,
+                      background: c,
+                      border: isHighlight ? '3px solid #f59e0b' : '2px solid #ffffff',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                    }}
+                    title={`P${p.position}: ${s}`}
+                  />
+                  {/* Always show exact score next to the peg */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: -2,
+                      left: 20,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: '#0f172a',
+                      background: 'rgba(255,255,255,0.9)',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 999,
+                      padding: '0 6px',
+                    }}
+                  >
+                    {s}
+                  </div>
+                  {(typeof showDelta === 'number' && showDelta !== 0) || (isHighlight && highlight?.kind === 'go') ? (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: -26,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        padding: '2px 6px',
+                        borderRadius: 999,
+                        background: highlight?.kind === 'go' && isHighlight ? '#0f172a' : '#16a34a',
+                        color: 'white',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        opacity: 0.95,
+                        transition: 'opacity 250ms ease',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {highlight?.kind === 'go' && isHighlight ? 'GO' : `${showDelta > 0 ? '+' : ''}${showDelta}`}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+      {/* Vertical ruler labels so we can see the whole scale without horizontal crowding */}
+      <div style={{ marginTop: 4, position: 'relative', height: 28, fontSize: 10, opacity: 0.85 }}>
+        <div style={{ position: 'absolute', left: endPad, right: endPad, top: 0, bottom: 0 }}>
+          {Array.from({ length: Math.floor(max / 5) + 1 }).map((_, i) => {
+            const v = i * 5
+            const isTen = v % 10 === 0
+            return (
+              <div
+                key={`label:${v}`}
+                style={{
+                  position: 'absolute',
+                  left: posPct(v),
+                  transform: 'translateX(-50%)',
+                  writingMode: 'vertical-rl',
+                  textOrientation: 'mixed',
+                  lineHeight: 1,
+                  fontWeight: isTen ? 800 : 600,
+                  color: isTen ? '#0f172a' : '#334155',
+                  pointerEvents: 'none',
+                }}
+              >
+                {v}
+              </div>
+            )
+          })}
+          {/* Ensure max is labeled even when it isn't a multiple of 5 */}
+          {max % 5 !== 0 ? (
+            <div
+              style={{
+                position: 'absolute',
+                left: posPct(max),
+                transform: 'translateX(-50%)',
+                writingMode: 'vertical-rl',
+                textOrientation: 'mixed',
+                lineHeight: 1,
+                fontWeight: 800,
+                color: '#0f172a',
+                pointerEvents: 'none',
+              }}
+            >
+              {max}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function BreakdownView({
   title,
   b,
@@ -175,6 +451,8 @@ export function GamePage() {
   const [moveErr, setMoveErr] = useState<string | null>(null)
   const [moveBusy, setMoveBusy] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [moves, setMoves] = useState<GameMove[] | null>(null)
+  const [peggingCue, setPeggingCue] = useState<{ pos: number; kind: 'score' | 'go' | 'play'; delta?: number; card?: string } | null>(null)
 
   useEffect(() => {
     if (!user || !isValidId) return
@@ -193,8 +471,18 @@ export function GamePage() {
       }
     }
 
+    async function fetchMoves() {
+      try {
+        const res = await api.listGameMoves(gameId)
+        if (!cancelled) setMoves(res.moves)
+      } catch {
+        // best-effort (used for visual cues only)
+      }
+    }
+
     // Fetch an initial snapshot immediately so the UI isn't blank until a WS update arrives.
     void fetchSnapshot()
+    void fetchMoves()
 
     ws.connect(`game:${gameId}`)
     const offOpen = ws.on('ws_open', () => setStatus('connected'))
@@ -203,6 +491,7 @@ export function GamePage() {
     // and re-fetch the user-specific snapshot via HTTP so "your hand" stays populated.
     const offUpdate = ws.on('game_update', () => {
       void fetchSnapshot()
+      void fetchMoves()
     })
     return () => {
       cancelled = true
@@ -223,6 +512,35 @@ export function GamePage() {
   const hasLegalPeggingPlay =
     stage === 'pegging' && myHand.some((c) => peggingTotal+cardValue15(c) <= 31)
   const canGo = isMyTurn && stage === 'pegging' && !moveBusy && !loading && !hasLegalPeggingPlay
+
+  function playerLabel(pos: number | undefined): string {
+    if (typeof pos !== 'number' || !snap) return ''
+    const p = snap.players.find((pp) => pp.position === pos)
+    if (!p) return `P${pos}`
+    const isMe = p.user_id === user?.id
+    return `P${pos}${isMe ? ' (you)' : ''}${p.is_bot ? ' 🤖' : ''}`
+  }
+
+  useEffect(() => {
+    if (!moves || !snap || !snap.state || snap.state.stage !== 'pegging') return
+    const latest = moves[0]
+    if (!latest) return
+    const pPos = snap.players.find((p) => p.user_id === latest.player_id)?.position
+    if (typeof pPos !== 'number') return
+
+    if (latest.move_type === 'go') {
+      setPeggingCue({ pos: pPos, kind: 'go' })
+      const t = window.setTimeout(() => setPeggingCue(null), 1000)
+      return () => window.clearTimeout(t)
+    }
+
+    if (latest.move_type === 'play_card') {
+      const delta = latest.score_verified ?? 0
+      setPeggingCue({ pos: pPos, kind: delta > 0 ? 'score' : 'play', delta, card: latest.card_played })
+      const t = window.setTimeout(() => setPeggingCue(null), 1200)
+      return () => window.clearTimeout(t)
+    }
+  }, [moves, snap])
 
   async function submitMove(move: Parameters<(typeof api)['moveGame']>[1]) {
     if (!isValidId) return
@@ -286,6 +604,7 @@ export function GamePage() {
                 const score = state?.scores?.[p.position]
                 const isDealer = state?.dealer_index === p.position
                 const isTurn = stage === 'pegging' && state?.current_index === p.position
+                const handCount = isMe ? null : safeCountHandJSON(p.hand)
                 return (
                   <li key={`${p.game_id}:${p.user_id}`}>
                     <b>
@@ -296,34 +615,115 @@ export function GamePage() {
                     {typeof score === 'number' ? ` — score ${score}` : ''}
                     {isDealer ? ' — dealer ★' : ''}
                     {isTurn ? ' — turn ▶' : ''}
+                    {typeof handCount === 'number' ? (
+                      <span style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ opacity: 0.85 }}>hand</span>
+                        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                          {Array.from({ length: Math.min(12, handCount) }).map((_, i) => (
+                            <CardBack key={`hb:${p.position}:${i}`} title={`${handCount} cards`} />
+                          ))}
+                          {handCount > 12 ? <span style={{ opacity: 0.8 }}>+{handCount - 12}</span> : null}
+                        </span>
+                      </span>
+                    ) : null}
                   </li>
                 )
               })}
           </ul>
 
-          <h2>State</h2>
-          <div>Stage: {stage}</div>
-          <div>Dealer: {state?.dealer_index}</div>
-          <div>Current: {state?.current_index}</div>
-          <div>
-            Pegging total: {state?.pegging_total} {stage === 'pegging' ? `(need ${Math.max(0, 31 - peggingTotal)})` : ''}
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8 }}>
-            <div style={{ minWidth: 40, fontWeight: 600 }}>Cut</div>
-            {state?.cut ? (
-              <CardIcon card={state.cut} disabled title={cardToCode(state.cut)} />
-            ) : (
-              <div style={{ opacity: 0.8 }}>{stage === 'discard' ? '(not cut yet)' : '(none)'}</div>
-            )}
+          <PegTrack
+            players={snap.players}
+            scores={state?.scores}
+            highlight={peggingCue ? { pos: peggingCue.pos, kind: peggingCue.kind, delta: peggingCue.delta } : null}
+          />
+
+          <div
+            style={{
+              marginTop: 14,
+              padding: 10,
+              border: '1px solid #e2e8f0',
+              borderRadius: 10,
+              background: '#f8fafc',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 12,
+              alignItems: 'center',
+            }}
+          >
+            {typeof state?.dealer_index === 'number' ? (
+              <div style={{ fontWeight: 800 }}>Dealer: {playerLabel(state.dealer_index)}</div>
+            ) : null}
+            {stage === 'pegging' && typeof state?.current_index === 'number' ? (
+              <div style={{ fontWeight: 800 }}>{isMyTurn ? 'Your turn' : `Turn: ${playerLabel(state.current_index)}`}</div>
+            ) : null}
+            {stage === 'pegging' ? (
+              <div style={{ fontWeight: 900 }}>
+                Total: {peggingTotal} / 31 <span style={{ opacity: 0.75 }}>(need {Math.max(0, 31 - peggingTotal)})</span>
+              </div>
+            ) : null}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ fontWeight: 800 }}>Cut:</div>
+              {state?.cut ? (
+                <CardIcon card={state.cut} disabled title={cardToCode(state.cut)} />
+              ) : (
+                <div style={{ opacity: 0.8 }}>{stage === 'discard' ? '(not cut yet)' : '(none)'}</div>
+              )}
+            </div>
           </div>
           {stage === 'pegging' && (
             <div style={{ marginTop: 8 }}>
-              <div style={{ fontWeight: 600 }}>Pegging sequence</div>
-              <div style={{ opacity: 0.9 }}>
-                {(state?.pegging_seq ?? []).length === 0
-                  ? '(empty)'
-                  : (state?.pegging_seq ?? []).map(cardToString).join(' , ')}
+              <div style={{ fontWeight: 700 }}>Cards played this count</div>
+              {(state?.pegging_seq ?? []).length === 0 ? (
+                <div style={{ opacity: 0.8, marginTop: 6 }}>(none yet)</div>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                  {(state?.pegging_seq ?? []).map((c, i) => (
+                    <CardIcon key={`pegseq:${i}:${cardToCode(c)}`} card={c} disabled title={cardToCode(c)} />
+                  ))}
+                </div>
+              )}
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  background: '#f8fafc',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+                  <div style={{ fontWeight: 800 }}>Pegging</div>
+                  <details style={{ opacity: 0.9 }}>
+                    <summary style={{ cursor: 'pointer' }}>?</summary>
+                    <div style={{ marginTop: 6, maxWidth: 520 }}>
+                      Score can happen during pegging (15, 31, pairs, runs). GO appears only when you have no legal play.
+                    </div>
+                  </details>
+                </div>
+                <div style={{ marginTop: 6, fontWeight: 800 }}>
+                  {isMyTurn ? 'Your turn — play a card' : `Waiting for ${playerLabel(state?.current_index)}`}
+                </div>
+                <div style={{ marginTop: 4, opacity: 0.9 }}>
+                  {canGo ? 'No legal play — say GO' : 'Play a card without going over 31.'}
+                </div>
               </div>
+              {peggingCue?.kind === 'score' && typeof peggingCue.delta === 'number' && peggingCue.delta > 0 ? (
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ fontWeight: 900, color: '#16a34a' }}>+{peggingCue.delta}</div>
+                  {peggingCue.card ? <ActionCard label={peggingCue.card} disabled title="Last scoring play" /> : null}
+                  <div style={{ opacity: 0.85 }}>Scored during pegging</div>
+                </div>
+              ) : peggingCue?.kind === 'go' ? (
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <ActionCard label="GO" disabled accent="primary" title="Player said GO" />
+                  <div style={{ opacity: 0.85 }}>No legal play</div>
+                </div>
+              ) : peggingCue?.kind === 'play' ? (
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {peggingCue.card ? <ActionCard label={peggingCue.card} disabled title="Last play" /> : null}
+                  <div style={{ opacity: 0.85 }}>Played</div>
+                </div>
+              ) : null}
             </div>
           )}
           {stage === 'finished' && (
@@ -443,53 +843,83 @@ export function GamePage() {
             </div>
           )}
 
-          <h2>Your hand</h2>
-          {typeof myPos !== 'number' ? (
-            <div style={{ opacity: 0.8 }}>You are not listed as a player in this snapshot.</div>
-          ) : myHand.length === 0 ? (
-            <div style={{ opacity: 0.8 }}>No cards visible (stage={stage}).</div>
-          ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {myHand.map((c) => {
-                const code = cardToCode(c)
-                const isSelected = selected.has(code)
-                const canSelect = stage === 'discard'
-                const selectionFull = selected.size >= discardCount
-                const canAdd = !isSelected && (!selectionFull || discardCount <= 0)
-                const canToggle = isSelected || canAdd
-                return (
-                  <div key={code} style={{ display: 'inline-block' }}>
-                    <CardIcon
-                      card={c}
-                      selected={isSelected}
-                      disabled={!canSelect || moveBusy || !canToggle}
-                      onClick={() => {
-                        if (!canSelect) return
-                        setSelected((prev) => {
-                          const next = new Set(prev)
-                          if (next.has(code)) {
-                            next.delete(code)
-                          } else {
-                            if (next.size >= discardCount) return next
-                            next.add(code)
+          {(stage === 'discard' || stage === 'pegging') && (
+            <>
+              <h2>Your hand</h2>
+              {typeof myPos !== 'number' ? (
+                <div style={{ opacity: 0.8 }}>You are not listed as a player in this snapshot.</div>
+              ) : myHand.length === 0 ? (
+                <div style={{ opacity: 0.8 }}>No cards visible (stage={stage}).</div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {myHand.map((c) => {
+                    const code = cardToCode(c)
+                    const isSelected = stage === 'discard' && selected.has(code)
+                    const isDiscard = stage === 'discard'
+                    const isPegging = stage === 'pegging'
+
+                    if (isDiscard) {
+                      const selectionFull = selected.size >= discardCount
+                      const canAdd = !isSelected && (!selectionFull || discardCount <= 0)
+                      const canToggle = isSelected || canAdd
+                      const disabled = moveBusy || !canToggle
+                      return (
+                        <div key={code} style={{ display: 'inline-block' }}>
+                          <CardIcon
+                            card={c}
+                            selected={isSelected}
+                            disabled={disabled}
+                            onClick={() => {
+                              if (disabled) return
+                              setSelected((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(code)) {
+                                  next.delete(code)
+                                } else {
+                                  if (next.size >= discardCount) return next
+                                  next.add(code)
+                                }
+                                return next
+                              })
+                            }}
+                            title={
+                              isSelected
+                                ? 'Click to unselect'
+                                : selected.size >= discardCount
+                                  ? `Select exactly ${discardCount}; unselect a card first`
+                                  : 'Click to select for discard'
+                            }
+                          />
+                        </div>
+                      )
+                    }
+
+                    // Pegging: play directly from the hand (single hand rendering; no duplicate "play" section).
+                    const wouldExceed31 = isPegging && peggingTotal + cardValue15(c) > 31
+                    const canPlay = isPegging && isMyTurn && !moveBusy && !loading && !wouldExceed31
+                    const disabled = !canPlay
+                    return (
+                      <div key={code} style={{ display: 'inline-block' }}>
+                        <CardIcon
+                          card={c}
+                          disabled={disabled}
+                          onClick={canPlay ? () => submitMove({ type: 'play_card', card: code }) : undefined}
+                          title={
+                            !isPegging
+                              ? undefined
+                              : !isMyTurn
+                                ? 'Not your turn'
+                                : wouldExceed31
+                                  ? `Would exceed 31 (total would be ${peggingTotal + cardValue15(c)})`
+                                  : `Play ${code}`
                           }
-                          return next
-                        })
-                      }}
-                      title={
-                        stage === 'discard'
-                          ? isSelected
-                            ? 'Click to unselect'
-                            : selected.size >= discardCount
-                              ? `Select exactly ${discardCount}; unselect a card first`
-                              : 'Click to select for discard'
-                          : undefined
-                      }
-                    />
-                  </div>
-                )
-              })}
-            </div>
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
           )}
 
           {stage === 'pegging' && myHand.length > 0 && (
@@ -502,60 +932,34 @@ export function GamePage() {
           {moveErr && <div style={{ color: 'crimson', marginTop: 8 }}>{moveErr}</div>}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-            <button
-              type="button"
-              disabled={moveBusy || stage !== 'discard' || selected.size !== discardCount}
-              onClick={() => submitMove({ type: 'discard', cards: Array.from(selected) })}
-              title={stage !== 'discard' ? 'Not in discard stage' : `Select exactly ${discardCount} card(s)`}
-            >
-              🗑 Discard ({selected.size}/{discardCount})
-            </button>
-
-            <button
-              type="button"
-              disabled={!canGo}
-              onClick={() => submitMove({ type: 'go' })}
-              title={
-                stage !== 'pegging'
-                  ? 'Not in pegging stage'
-                  : !isMyTurn
-                    ? 'Not your turn'
-                    : hasLegalPeggingPlay
-                      ? 'You have a legal play'
-                      : 'No legal play; go'
-              }
-            >
-              ⏭ Go
-            </button>
+            {stage === 'discard' && (
+              <button
+                type="button"
+                disabled={moveBusy || selected.size !== discardCount}
+                onClick={() => submitMove({ type: 'discard', cards: Array.from(selected) })}
+                title={`Select exactly ${discardCount} card(s)`}
+              >
+                🗑 Discard ({selected.size}/{discardCount})
+              </button>
+            )}
           </div>
+
+          {/* "Go" is shown as a card when it's truly needed (no legal play). */}
+          {stage === 'pegging' && canGo && (
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <ActionCard
+                label="GO"
+                accent="primary"
+                onClick={() => submitMove({ type: 'go' })}
+                title="No legal play — say GO"
+              />
+              <div style={{ opacity: 0.85 }}>No legal play — say GO</div>
+            </div>
+          )}
 
           {stage === 'pegging' && (
             <>
-              <h3 style={{ marginTop: 12 }}>Play a card</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {myHand.map((c) => {
-                  const code = cardToCode(c)
-                  const wouldExceed31 = peggingTotal+cardValue15(c) > 31
-                  const canPlay = isMyTurn && !moveBusy && !loading && !wouldExceed31
-                  return (
-                    <CardIcon
-                      key={`play:${code}`}
-                      card={c}
-                      disabled={!canPlay}
-                      onClick={() => submitMove({ type: 'play_card', card: code })}
-                      title={
-                        stage !== 'pegging'
-                          ? 'Not in pegging stage'
-                          : !isMyTurn
-                            ? 'Not your turn'
-                            : wouldExceed31
-                              ? `Would exceed 31 (total would be ${peggingTotal + cardValue15(c)})`
-                              : `Play ${code}`
-                      }
-                    />
-                  )
-                })}
-              </div>
+              {/* Play is performed by clicking a card directly in "Your hand" above. */}
             </>
           )}
 

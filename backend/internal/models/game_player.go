@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 )
 
 type GamePlayer struct {
@@ -118,23 +117,7 @@ func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 			v := crib.String
 			gp.CribCards = &v
 		}
-		// SQLite boolean handling is driver-dependent: we may see int64(0/1), bool, or string/[]byte.
-		switch v := isBotVal.(type) {
-		case int64:
-			gp.IsBot = v != 0
-		case int:
-			gp.IsBot = v != 0
-		case bool:
-			gp.IsBot = v
-		case []byte:
-			s := strings.TrimSpace(strings.ToLower(string(v)))
-			gp.IsBot = s == "1" || s == "true" || s == "t"
-		case string:
-			s := strings.TrimSpace(strings.ToLower(v))
-			gp.IsBot = s == "1" || s == "true" || s == "t"
-		default:
-			gp.IsBot = false
-		}
+		gp.IsBot = parseSQLiteBool(isBotVal)
 		if botDiff.Valid {
 			v := botDiff.String
 			gp.BotDifficulty = &v

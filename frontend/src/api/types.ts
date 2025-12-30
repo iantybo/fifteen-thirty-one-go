@@ -94,4 +94,16 @@ export type GameSnapshot = {
   state: CribbageState
 }
 
+export type GameMove = {
+  id: number
+  game_id: number
+  player_id: number
+  move_type: string
+  card_played?: string
+  score_claimed?: number
+  score_verified?: number
+  is_corrected: boolean
+  created_at: string
+}
+
 
