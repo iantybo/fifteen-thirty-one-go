@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 
@@ -36,6 +38,20 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 		return nil, err
 	}
 	view := CloneStateForView(st)
+
+	// Best-effort fallback: if the DB hand JSON is missing/empty for the requesting player,
+	// we can recover from the server-authoritative engine state and re-persist it.
+	userPos := int64(-1)
+	for _, gp := range players {
+		if gp.UserID == userID {
+			userPos = gp.Position
+			break
+		}
+	}
+	var fallbackHand []common.Card
+	if userPos >= 0 && int(userPos) < len(st.Hands) {
+		fallbackHand = append([]common.Card(nil), st.Hands[userPos]...)
+	}
 	unlock()
 
 	for _, gp := range players {
@@ -43,6 +59,15 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 			var yourHand []common.Card
 			if err := json.Unmarshal([]byte(gp.Hand), &yourHand); err != nil {
 				return nil, err
+			}
+			if len(yourHand) == 0 && len(fallbackHand) > 0 {
+				// Repair: show the fallback hand and re-persist it to keep DB and runtime aligned.
+				yourHand = fallbackHand
+				if b, err := json.Marshal(fallbackHand); err == nil {
+					if err := models.UpdatePlayerHand(db, gameID, userID, string(b)); err != nil {
+						log.Printf("BuildGameSnapshotForUser: best-effort hand repair persist failed: game_id=%d user_id=%d err=%v", gameID, userID, err)
+					}
+				}
 			}
 			if int(gp.Position) < len(view.Hands) {
 				view.Hands[gp.Position] = yourHand
@@ -106,6 +131,7 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		if err != nil {
 			return nil, err
 		}
+		prevStage := st.Stage
 		baseVersion := st.Version
 
 		working := cloneStateDeep(st)
@@ -196,6 +222,10 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 			return nil, models.ErrUnknownMoveType
 		}
 
+		// If the engine dealt a new round (pegging -> discard), we must persist the new dealt
+		// hands for all players; otherwise clients (and bots) will keep seeing stale/empty hands.
+		dealtNewRound := prevStage == "pegging" && working.Stage == "discard"
+
 		// Copy the computed state and release the per-game lock before DB I/O.
 		unlock()
 
@@ -214,6 +244,21 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 		if handOut != nil {
 			if err := models.UpdatePlayerHandTx(tx, gameID, userID, *handOut); err != nil {
 				return nil, err
+			}
+		}
+		if dealtNewRound {
+			for _, p := range players {
+				posIdx := int(p.Position)
+				if posIdx < 0 || posIdx >= len(working.Hands) {
+					return nil, models.ErrInvalidPlayerPosition
+				}
+				b, err := json.Marshal(working.Hands[posIdx])
+				if err != nil {
+					return nil, err
+				}
+				if err := models.UpdatePlayerHandTx(tx, gameID, p.UserID, string(b)); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if err := models.InsertMoveTx(tx, move); err != nil {
@@ -277,6 +322,134 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 	}
 
 	return nil, models.ErrGameStateConflict
+}
+
+func maybeRunBotTurns(db *sql.DB, gameID int64) error {
+	// Safety: prevent infinite bot loops.
+	const maxSteps = 64
+
+	for step := 0; step < maxSteps; step++ {
+		players, err := models.ListGamePlayersByGame(db, gameID)
+		if err != nil {
+			return err
+		}
+		if len(players) == 0 {
+			return nil
+		}
+
+		st, unlock, err := ensureGameStateLocked(db, gameID, players)
+		if err != nil {
+			// If the game isn't ready (e.g., lobby not full), just stop.
+			return nil
+		}
+
+		stage := st.Stage
+		currentIdx := st.CurrentIndex
+		peggingTotal := st.PeggingTotal
+		peggingSeq := append([]common.Card(nil), st.PeggingSeq...)
+		discardCompleted := append([]bool(nil), st.DiscardCompleted...)
+		maxPlayers := st.Rules.MaxPlayers
+		unlock()
+
+		// Map position -> player row.
+		byPos := make(map[int64]models.GamePlayer, len(players))
+		for _, p := range players {
+			byPos[p.Position] = p
+		}
+
+		switch stage {
+		case "discard":
+			// Let any bots who haven't discarded yet discard their required cards.
+			discardCount := 1
+			if maxPlayers == 2 {
+				discardCount = 2
+			}
+
+			didOne := false
+			for _, p := range players {
+				if !p.IsBot {
+					continue
+				}
+				pos := int(p.Position)
+				if pos < 0 || pos >= len(discardCompleted) {
+					continue
+				}
+				if discardCompleted[pos] {
+					continue
+				}
+				var hand []common.Card
+				if err := json.Unmarshal([]byte(p.Hand), &hand); err != nil {
+					return err
+				}
+				diff := cribbage.BotEasy
+				if p.BotDifficulty != nil {
+					diff = cribbage.BotDifficulty(*p.BotDifficulty)
+				}
+				discards, err := cribbage.ChooseDiscardN(hand, discardCount, diff)
+				if err != nil {
+					return err
+				}
+				var out []string
+				for _, c := range discards {
+					out = append(out, c.String())
+				}
+				_, err = ApplyMove(db, gameID, p.UserID, moveRequest{Type: "discard", Cards: out})
+				if err != nil {
+					return err
+				}
+				didOne = true
+				break
+			}
+			if didOne {
+				continue
+			}
+			return nil
+
+		case "pegging":
+			gp, ok := byPos[int64(currentIdx)]
+			if !ok || !gp.IsBot {
+				return nil
+			}
+			var hand []common.Card
+			if err := json.Unmarshal([]byte(gp.Hand), &hand); err != nil {
+				return err
+			}
+			diff := cribbage.BotEasy
+			if gp.BotDifficulty != nil {
+				diff = cribbage.BotDifficulty(*gp.BotDifficulty)
+			}
+			card, goPlay := cribbage.ChoosePeggingPlay(hand, peggingTotal, peggingSeq, diff)
+			var mr moveRequest
+			if goPlay {
+				mr = moveRequest{Type: "go"}
+			} else {
+				mr = moveRequest{Type: "play_card", Card: card.String()}
+			}
+			if _, err := ApplyMove(db, gameID, gp.UserID, mr); err != nil {
+				return err
+			}
+			continue
+
+		default:
+			return nil
+		}
+	}
+	return fmt.Errorf("bot loop exceeded max steps (game_id=%d)", gameID)
+}
+
+func randSuffix(n int) (string, error) {
+	if n <= 0 {
+		return "", nil
+	}
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return string(b), nil
 }
 
 func ensureGameStateLocked(db *sql.DB, gameID int64, players []models.GamePlayer) (*cribbage.State, func(), error) {

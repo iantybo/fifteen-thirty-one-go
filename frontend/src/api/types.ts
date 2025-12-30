@@ -34,16 +34,76 @@ export type GamePlayer = {
   position: number
   score: number
   hand: string
-  crib_cards?: string | null
+  crib_cards?: string
   is_bot: boolean
-  bot_difficulty?: string | null
+  bot_difficulty?: string
+}
+
+export type Card = {
+  rank: number
+  suit: 'S' | 'H' | 'D' | 'C'
+}
+
+export type CribbageRules = {
+  max_players: number
+}
+
+export type CribbageStage = 'dealing' | 'discard' | 'pegging' | 'counting' | 'finished'
+
+export type CribbageState = {
+  rules: CribbageRules
+  dealer_index: number
+  current_index: number
+  last_play_index: number
+  cut?: Card
+  hands: Card[][] // other players are [] (hidden); your hand is populated
+  kept_hands?: Card[][] // revealed during counting/finished
+  crib?: Card[] // revealed during counting/finished
+  pegging_total: number
+  pegging_seq: Card[]
+  pegging_passed: boolean[]
+  discard_completed: boolean[]
+  scores: number[]
+  stage: CribbageStage
+  count_summary?: {
+    order: number[]
+    hands?: Record<
+      string,
+      { total: number; fifteens: number; pairs: number; runs: number; flush: number; nobs: number; reasons?: Record<string, number> }
+    >
+    crib?: { total: number; fifteens: number; pairs: number; runs: number; flush: number; nobs: number; reasons?: Record<string, number> }
+  }
+
+  history?: Array<{
+    round: number
+    dealer_index: number
+    cut?: Card
+    hands?: Record<
+      string,
+      { total: number; fifteens: number; pairs: number; runs: number; flush: number; nobs: number; reasons?: Record<string, number> }
+    >
+    crib?: { total: number; fifteens: number; pairs: number; runs: number; flush: number; nobs: number; reasons?: Record<string, number> }
+    scores_before?: number[]
+    scores_after?: number[]
+  }>
 }
 
 export type GameSnapshot = {
   game: Game
   players: GamePlayer[]
-  // Backend sends a cribbage state object; keep as unknown until we model it.
-  state: unknown
+  state: CribbageState
+}
+
+export type GameMove = {
+  id: number
+  game_id: number
+  player_id: number
+  move_type: string
+  card_played?: string
+  score_claimed?: number
+  score_verified?: number
+  is_corrected: boolean
+  created_at: string
 }
 
 

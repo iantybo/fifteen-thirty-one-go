@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Lobby } from '../api/types'
 import { useAuth } from '../auth/auth'
 
 export function LobbiesPage() {
   const { user, clearAuth } = useAuth()
+  const nav = useNavigate()
   const [lobbies, setLobbies] = useState<Lobby[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [quickBusy, setQuickBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -31,12 +33,33 @@ export function LobbiesPage() {
     }
   }, [user])
 
+  async function playVsBot() {
+    if (!user) {
+      setErr('You must be logged in')
+      return
+    }
+    setErr(null)
+    setQuickBusy(true)
+    try {
+      const created = await api.createLobby({ name: 'Vs Computer', max_players: 2 })
+      await api.addBotToLobby(created.lobby.id, { difficulty: 'easy' })
+      nav(`/games/${created.game.id}`, { replace: true })
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'failed to start vs bot')
+    } finally {
+      setQuickBusy(false)
+    }
+  }
+
   return (
     <div style={{ maxWidth: 800, margin: '24px auto', padding: '0 16px' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h1>Lobbies</h1>
         <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
           <Link to="/lobbies/new">Create</Link>
+          <button onClick={playVsBot} disabled={quickBusy} title="Create a 2-player lobby and add a bot">
+            {quickBusy ? 'Starting…' : 'Play vs Computer'}
+          </button>
           <button onClick={clearAuth}>Logout</button>
         </div>
       </header>

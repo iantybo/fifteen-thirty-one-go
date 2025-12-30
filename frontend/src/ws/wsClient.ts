@@ -28,6 +28,15 @@ export class WsClient {
 
     ws.onopen = () => {
       this.emit('ws_open', undefined)
+      // Also send an explicit join_room message for robustness (some proxies/cache layers
+      // can behave oddly with query-parameter room routing; this makes room membership explicit).
+      if (room) {
+        try {
+          ws.send(JSON.stringify({ type: 'join_room', payload: { room } }))
+        } catch {
+          // ignore
+        }
+      }
     }
     ws.onerror = (evt) => {
       this.emit('ws_error', evt)
