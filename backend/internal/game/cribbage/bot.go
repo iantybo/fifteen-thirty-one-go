@@ -22,7 +22,14 @@ var botRandMu sync.Mutex
 var botRand = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func ChooseDiscard(hand []common.Card, difficulty BotDifficulty) ([]common.Card, error) {
-	if len(hand) < 2 {
+	return ChooseDiscardN(hand, 2, difficulty)
+}
+
+func ChooseDiscardN(hand []common.Card, discardCount int, difficulty BotDifficulty) ([]common.Card, error) {
+	if discardCount <= 0 {
+		return nil, errors.New("invalid discard count")
+	}
+	if len(hand) < discardCount {
 		return nil, errors.New("hand too small")
 	}
 
@@ -34,7 +41,7 @@ func ChooseDiscard(hand []common.Card, difficulty BotDifficulty) ([]common.Card,
 		botRandMu.Lock()
 		botRand.Shuffle(len(cards), func(i, j int) { cards[i], cards[j] = cards[j], cards[i] })
 		botRandMu.Unlock()
-		return cards[:2], nil
+		return cards[:discardCount], nil
 	case BotMedium, BotHard:
 		// Simple heuristic: discard two lowest Value15 cards, breaking ties by rank.
 		sort.Slice(cards, func(i, j int) bool {
@@ -47,9 +54,9 @@ func ChooseDiscard(hand []common.Card, difficulty BotDifficulty) ([]common.Card,
 			}
 			return cards[i].Suit < cards[j].Suit
 		})
-		return cards[:2], nil
+		return cards[:discardCount], nil
 	default:
-		return ChooseDiscard(hand, BotEasy)
+		return ChooseDiscardN(hand, discardCount, BotEasy)
 	}
 }
 

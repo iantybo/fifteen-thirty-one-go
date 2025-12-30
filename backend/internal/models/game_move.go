@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -46,11 +47,11 @@ func GetMoveByID(db *sql.DB, id int64) (*GameMove, error) {
 	var card sql.NullString
 	var sc sql.NullInt64
 	var sv sql.NullInt64
-	var isCorrInt int
+	var isCorrVal any
 	err := db.QueryRow(
 		`SELECT id, game_id, player_id, move_type, card_played, score_claimed, score_verified, is_corrected, created_at FROM game_moves WHERE id = ?`,
 		id,
-	).Scan(&m.ID, &m.GameID, &m.PlayerID, &m.MoveType, &card, &sc, &sv, &isCorrInt, &m.CreatedAt)
+	).Scan(&m.ID, &m.GameID, &m.PlayerID, &m.MoveType, &card, &sc, &sv, &isCorrVal, &m.CreatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -69,7 +70,7 @@ func GetMoveByID(db *sql.DB, id int64) (*GameMove, error) {
 		v := sv.Int64
 		m.ScoreVerified = &v
 	}
-	m.IsCorrected = isCorrInt != 0
+	m.IsCorrected = parseSQLiteBool(isCorrVal)
 	return &m, nil
 }
 
@@ -93,8 +94,8 @@ func ListMovesByGame(db *sql.DB, gameID int64, limit int64) ([]GameMove, error) 
 		var card sql.NullString
 		var sc sql.NullInt64
 		var sv sql.NullInt64
-		var isCorrInt int
-		if err := rows.Scan(&m.ID, &m.GameID, &m.PlayerID, &m.MoveType, &card, &sc, &sv, &isCorrInt, &m.CreatedAt); err != nil {
+		var isCorrVal any
+		if err := rows.Scan(&m.ID, &m.GameID, &m.PlayerID, &m.MoveType, &card, &sc, &sv, &isCorrVal, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		if card.Valid {
@@ -109,10 +110,30 @@ func ListMovesByGame(db *sql.DB, gameID int64, limit int64) ([]GameMove, error) 
 			v := sv.Int64
 			m.ScoreVerified = &v
 		}
-		m.IsCorrected = isCorrInt != 0
+		m.IsCorrected = parseSQLiteBool(isCorrVal)
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+func parseSQLiteBool(v any) bool {
+	// SQLite boolean handling is driver-dependent: we may see int64(0/1), bool, or string/[]byte.
+	switch x := v.(type) {
+	case int64:
+		return x != 0
+	case int:
+		return x != 0
+	case bool:
+		return x
+	case []byte:
+		s := strings.TrimSpace(strings.ToLower(string(x)))
+		return s == "1" || s == "true" || s == "t"
+	case string:
+		s := strings.TrimSpace(strings.ToLower(x))
+		return s == "1" || s == "true" || s == "t"
+	default:
+		return false
+	}
 }
 
 // HasUncorrectedMoveType returns true if there exists a move for the given game/player/type
