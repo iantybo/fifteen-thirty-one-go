@@ -1,5 +1,6 @@
 stages:
   - lint
+  - test
 
 frontend:eslint:
   stage: lint
@@ -24,5 +25,30 @@ frontend:eslint:
     - cd frontend
     - npm ci --no-audit --no-fund
     - npm run lint
+
+backend:test:
+  stage: test
+  image: golang:1.25.5
+  rules:
+    # Run on merge request pipelines when backend changed
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - backend/**/*
+    # Run on default-branch pipelines when backend changed (post-merge)
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - backend/**/*
+    - when: never
+  variables:
+    GOPATH: "$CI_PROJECT_DIR/.go"
+  cache:
+    key: "go-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - .go/pkg/mod/
+  script:
+    - cd backend
+    - go mod download
+    - go test -v ./...
+    - go test -race -v ./...
 
 

@@ -160,4 +160,22 @@ func DecrementLobbyCurrentPlayers(db *sql.DB, lobbyID int64) error {
 	return err
 }
 
+func SetLobbyStatus(db *sql.DB, lobbyID int64, status string) error {
+	if status != "waiting" && status != "in_progress" && status != "finished" {
+		return errors.New("invalid status")
+	}
+	res, err := db.Exec(`UPDATE lobbies SET status = ? WHERE id = ?`, status, lobbyID)
+	if err != nil {
+		return err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 

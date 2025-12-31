@@ -108,16 +108,16 @@ func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 	for rows.Next() {
 		var gp GamePlayer
 		var crib sql.NullString
-		var isBotInt int
+		var isBotVal any
 		var botDiff sql.NullString
-		if err := rows.Scan(&gp.GameID, &gp.UserID, &gp.Position, &gp.Score, &gp.Hand, &crib, &isBotInt, &botDiff); err != nil {
+		if err := rows.Scan(&gp.GameID, &gp.UserID, &gp.Position, &gp.Score, &gp.Hand, &crib, &isBotVal, &botDiff); err != nil {
 			return nil, err
 		}
 		if crib.Valid {
 			v := crib.String
 			gp.CribCards = &v
 		}
-		gp.IsBot = isBotInt != 0
+		gp.IsBot = parseSQLiteBool(isBotVal)
 		if botDiff.Valid {
 			v := botDiff.String
 			gp.BotDifficulty = &v
