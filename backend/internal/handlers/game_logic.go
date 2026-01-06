@@ -75,6 +75,32 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 		}
 	}
 
+	// Do NOT leak opponent hand contents to the client. Provide hand_count for all players,
+	// and blank out Hand for non-requesting players.
+	//
+	// We use the server-authoritative runtime hand lengths as the source of truth.
+	st2, unlock2, err := ensureGameStateLocked(db, gameID, players)
+	if err == nil {
+		for i := range players {
+			pos := int(players[i].Position)
+			if pos >= 0 && pos < len(st2.Hands) {
+				n := int64(len(st2.Hands[pos]))
+				players[i].HandCount = &n
+			}
+			if players[i].UserID != userID {
+				players[i].Hand = "[]"
+			}
+		}
+		unlock2()
+	} else {
+		// If runtime state isn't available, still blank opponent hand contents (best-effort).
+		for i := range players {
+			if players[i].UserID != userID {
+				players[i].Hand = "[]"
+			}
+		}
+	}
+
 	return &GameSnapshot{
 		Game:    g,
 		Players: players,

@@ -12,6 +12,7 @@ type GamePlayer struct {
 	Position      int64   `json:"position"`
 	Score         int64   `json:"score"`
 	Hand          string  `json:"hand"` // JSON array string
+	HandCount     *int64  `json:"hand_count,omitempty"` // exposed count only; used to avoid leaking opponent hand contents
 	CribCards     *string `json:"crib_cards,omitempty"`
 	IsBot         bool    `json:"is_bot"`
 	BotDifficulty *string `json:"bot_difficulty,omitempty"`

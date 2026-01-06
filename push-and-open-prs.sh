@@ -51,7 +51,7 @@ for remote in "${REMOTES[@]}"; do
                 # HTTPS format: https://github.com/user/repo.git
                 REPO_PATH=$(echo "$REMOTE_URL" | sed -e 's#https://github.com/##' -e 's/\.git$//')
             fi
-            PR_URL="https://github.com/$REPO_PATH/compare/$BASE_BRANCH...$CURRENT_BRANCH"
+            PR_URL="https://github.com/$REPO_PATH/compare/$BASE_BRANCH...$CURRENT_BRANCH?expand=1"
             PR_URLS+=("$PR_URL")
 
         # GitLab (cloud)

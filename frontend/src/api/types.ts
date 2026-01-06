@@ -34,6 +34,7 @@ export type GamePlayer = {
   position: number
   score: number
   hand: string
+  hand_count?: number
   crib_cards?: string
   is_bot: boolean
   bot_difficulty?: string

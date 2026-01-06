@@ -61,6 +61,7 @@ func ListLobbies(db *sql.DB, limit, offset int64) ([]Lobby, error) {
 	rows, err := db.Query(
 		`SELECT id, name, host_id, max_players, current_players, status, created_at
 		 FROM lobbies
+		 WHERE status != 'finished'
 		 ORDER BY created_at DESC
 		 LIMIT ? OFFSET ?`,
 		limit, offset,
