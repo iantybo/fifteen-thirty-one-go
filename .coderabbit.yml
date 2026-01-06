@@ -50,7 +50,19 @@ reviews:
 
   # Path filtering and instructions
   path_filters: []
-  path_instructions: []
+  path_instructions:
+    # Go-specific instructions
+    - path: "**/*.go"
+      instructions: |
+        Review Go code following these standards:
+        - Use proper error handling with error wrapping using fmt.Errorf with %w verb
+        - Ensure all public functions have godoc comments
+        - Follow Go naming conventions (exported names start with capital letter)
+        - Use context.Context for cancellation and timeouts in long-running operations
+        - Prefer explicit error returns over panic
+        - Use defer for cleanup operations
+        - Validate input parameters and return descriptive errors
+        - Consider concurrency safety for shared state
 
   # Auto review settings
   auto_review:
