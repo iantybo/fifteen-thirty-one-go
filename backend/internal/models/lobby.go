@@ -174,9 +174,43 @@ func SetLobbyStatus(db *sql.DB, lobbyID int64, status string) error {
 		return err
 	}
 	if ra == 0 {
-		return ErrNotFound
+		// Disambiguate "no rows affected": lobby may not exist, or values were already set.
+		var one int
+		if err := db.QueryRow(`SELECT 1 FROM lobbies WHERE id = ?`, lobbyID).Scan(&one); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		return nil
 	}
 	return nil
 }
 
-
+// SetLobbyStatusTx updates a lobby's status within the provided transaction.
+// Valid status values are "waiting", "in_progress", and "finished".
+// Returns ErrNotFound if the lobby does not exist.
+func SetLobbyStatusTx(tx *sql.Tx, lobbyID int64, status string) error {
+	if status != "waiting" && status != "in_progress" && status != "finished" {
+		return errors.New("invalid status")
+	}
+	res, err := tx.Exec(`UPDATE lobbies SET status = ? WHERE id = ?`, status, lobbyID)
+	if err != nil {
+		return err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		var one int
+		if err := tx.QueryRow(`SELECT 1 FROM lobbies WHERE id = ?`, lobbyID).Scan(&one); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		return nil
+	}
+	return nil
+}

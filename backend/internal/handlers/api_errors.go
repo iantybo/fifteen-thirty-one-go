@@ -93,5 +93,3 @@ func writeAPIError(c *gin.Context, err error) {
 	log.Printf("internal error: %v", err)
 	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 }
-
-

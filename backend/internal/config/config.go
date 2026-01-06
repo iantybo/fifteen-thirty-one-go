@@ -16,9 +16,9 @@ type Config struct {
 	JWTIssuer string
 	JWTTTL    time.Duration
 
-	AppEnv           string
-	WSAllowedOrigins []string
-	WSAllowQueryTokens bool
+	AppEnv                string
+	WSAllowedOrigins      []string
+	WSAllowQueryTokens    bool
 	DevWebSocketsAllowAll bool
 }
 
@@ -138,5 +138,3 @@ func LoadFromEnv() (Config, error) {
 
 	return cfg, nil
 }
-
-

@@ -244,5 +244,3 @@ func isRun(cards []common.Card) bool {
 	}
 	return true
 }
-
-

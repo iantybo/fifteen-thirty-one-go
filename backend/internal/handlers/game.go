@@ -83,6 +83,10 @@ func MoveHandler(db *sql.DB) gin.HandlerFunc {
 		if err := maybeRunBotTurns(db, gameID); err != nil {
 			log.Printf("maybeRunBotTurns failed: game_id=%d err=%v", gameID, err)
 		}
+		// If the move (or any bot response) ended the game, persist results exactly once.
+		if err := maybeFinalizeGame(db, gameID); err != nil {
+			log.Printf("maybeFinalizeGame failed: game_id=%d err=%v", gameID, err)
+		}
 		// Realtime: notify all connected clients that the game changed.
 		broadcastGameUpdate(db, gameID)
 		c.JSON(http.StatusOK, resp)
@@ -90,9 +94,9 @@ func MoveHandler(db *sql.DB) gin.HandlerFunc {
 }
 
 type countRequest struct {
-	Kind   string `json:"kind"` // hand|crib
-	Claim  int64  `json:"claim"`
-	Final  bool   `json:"final"`
+	Kind  string `json:"kind"` // hand|crib
+	Claim int64  `json:"claim"`
+	Final bool   `json:"final"`
 }
 
 func CountHandler(db *sql.DB) gin.HandlerFunc {
@@ -413,7 +417,7 @@ func NextHandHandler(db *sql.DB) gin.HandlerFunc {
 }
 
 type correctRequest struct {
-	MoveID int64 `json:"move_id"`
+	MoveID   int64 `json:"move_id"`
 	NewClaim int64 `json:"new_claim"`
 }
 
@@ -520,4 +524,3 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"verified": verified})
 	}
 }
-

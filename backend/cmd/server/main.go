@@ -128,5 +128,3 @@ func main() {
 		log.Printf("server shutdown error: %v", err)
 	}
 }
-
-

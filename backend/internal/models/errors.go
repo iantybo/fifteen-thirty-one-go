@@ -20,5 +20,3 @@ func IsUniqueConstraint(err error) bool {
 	// If ExtendedCode is unavailable (or indicates a different constraint), this returns false.
 	return se.ExtendedCode == sqlite3.ErrConstraintUnique
 }
-
-

@@ -58,5 +58,3 @@ func PutPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, prefs)
 	}
 }
-
-

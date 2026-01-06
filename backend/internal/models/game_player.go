@@ -9,9 +9,10 @@ import (
 type GamePlayer struct {
 	GameID        int64   `json:"game_id"`
 	UserID        int64   `json:"user_id"`
+	Username      string  `json:"username"`
 	Position      int64   `json:"position"`
 	Score         int64   `json:"score"`
-	Hand          string  `json:"hand"` // JSON array string
+	Hand          string  `json:"hand"`                 // JSON array string
 	HandCount     *int64  `json:"hand_count,omitempty"` // exposed count only; used to avoid leaking opponent hand contents
 	CribCards     *string `json:"crib_cards,omitempty"`
 	IsBot         bool    `json:"is_bot"`
@@ -95,9 +96,14 @@ func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID, maxPlayers int64, i
 	return pos, nil
 }
 
+// ListGamePlayersByGame returns all players for the given game ID ordered by position.
+// It joins the users table to populate usernames and returns an error on query or scan failure.
 func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 	rows, err := db.Query(
-		`SELECT game_id, user_id, position, score, hand, crib_cards, is_bot, bot_difficulty FROM game_players WHERE game_id = ? ORDER BY position ASC`,
+		`SELECT gp.game_id, gp.user_id, u.username, gp.position, gp.score, gp.hand, gp.crib_cards, gp.is_bot, gp.bot_difficulty
+		 FROM game_players gp
+		 JOIN users u ON u.id = gp.user_id
+		 WHERE gp.game_id = ? ORDER BY gp.position ASC`,
 		gameID,
 	)
 	if err != nil {
@@ -111,7 +117,7 @@ func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 		var crib sql.NullString
 		var isBotVal any
 		var botDiff sql.NullString
-		if err := rows.Scan(&gp.GameID, &gp.UserID, &gp.Position, &gp.Score, &gp.Hand, &crib, &isBotVal, &botDiff); err != nil {
+		if err := rows.Scan(&gp.GameID, &gp.UserID, &gp.Username, &gp.Position, &gp.Score, &gp.Hand, &crib, &isBotVal, &botDiff); err != nil {
 			return nil, err
 		}
 		if crib.Valid {
@@ -205,5 +211,3 @@ func boolToInt(b bool) int {
 	}
 	return 0
 }
-
-

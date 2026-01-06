@@ -4,5 +4,3 @@ package game
 type Game interface {
 	Type() string
 }
-
-

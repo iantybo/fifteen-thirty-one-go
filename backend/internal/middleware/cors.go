@@ -50,5 +50,3 @@ func DevCORS(cfg config.Config) gin.HandlerFunc {
 		c.Next()
 	}
 }
-
-

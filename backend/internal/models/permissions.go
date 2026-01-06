@@ -19,5 +19,3 @@ func IsUserInGame(db *sql.DB, userID int64, gameID int64) (bool, error) {
 	}
 	return true, nil
 }
-
-

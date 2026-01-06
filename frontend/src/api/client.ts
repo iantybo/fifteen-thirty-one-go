@@ -1,6 +1,6 @@
 import { apiBaseUrl } from '../lib/env'
 import { ApiError, apiFetch } from '../lib/http'
-import type { AuthResponse, Game, GameMove, GameSnapshot, Lobby, User } from './types'
+import type { AuthResponse, Game, GameMove, GameSnapshot, LeaderboardResponse, Lobby, User, UserStats } from './types'
 
 type AuthCredentials = { username: string; password: string }
 export type RegisterRequest = AuthCredentials
@@ -81,6 +81,18 @@ export const api = {
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
+  async getUserStats(userId: number) {
+    const res = await apiFetch<UserStats>(`${apiBaseUrl()}/api/scoreboard/${userId}`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async getLeaderboard(days = 30) {
+    const qs = new URLSearchParams()
+    qs.set('days', String(days))
+    const res = await apiFetch<LeaderboardResponse>(`${apiBaseUrl()}/api/leaderboard?${qs.toString()}`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
   async listGameMoves(gameId: number) {
     const res = await apiFetch<{ moves: GameMove[] }>(`${apiBaseUrl()}/api/games/${gameId}/moves`)
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
@@ -102,5 +114,4 @@ export const api = {
     return res
   },
 }
-
 

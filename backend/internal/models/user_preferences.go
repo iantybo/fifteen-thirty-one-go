@@ -83,5 +83,3 @@ func SetUserAutoCountModeAndGetPreferencesTx(db *sql.DB, userID int64, mode stri
 	}
 	return &p, nil
 }
-
-

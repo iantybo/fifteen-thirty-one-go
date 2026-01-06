@@ -7,6 +7,7 @@ import { LobbiesPage } from './pages/LobbiesPage'
 import { CreateLobbyPage } from './pages/CreateLobbyPage'
 import { LobbyDetailPage } from './pages/LobbyDetailPage'
 import { GamePage } from './pages/GamePage'
+import { LeaderboardPage } from './pages/LeaderboardPage'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="/" element={<Navigate to="/lobbies" replace />} />
         <Route path="/lobbies" element={<LobbiesPage />} />
         <Route path="/lobbies/new" element={<CreateLobbyPage />} />
+        <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/lobbies/:id" element={<LobbyDetailPage />} />
         <Route path="/games/:id" element={<GamePage />} />
       </Route>

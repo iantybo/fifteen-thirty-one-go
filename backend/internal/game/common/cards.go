@@ -85,5 +85,3 @@ func (c Card) Value15() int {
 	}
 	return int(c.Rank)
 }
-
-

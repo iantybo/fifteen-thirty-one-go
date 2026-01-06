@@ -49,5 +49,3 @@ func GameMovesHandler(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"moves": moves})
 	}
 }
-
-

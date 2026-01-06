@@ -59,5 +59,3 @@ func GetUserByUsername(db *sql.DB, username string) (*User, error) {
 	}
 	return &u, nil
 }
-
-

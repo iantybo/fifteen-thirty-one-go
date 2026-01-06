@@ -59,5 +59,3 @@ func ParseAndValidateToken(tokenString string, cfg config.Config) (*Claims, erro
 	}
 	return claims, nil
 }
-
-

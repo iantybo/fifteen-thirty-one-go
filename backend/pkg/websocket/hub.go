@@ -183,5 +183,3 @@ func (h *Hub) broadcastToRoom(room, typ string, payload any) {
 		h.removeClient(c)
 	}
 }
-
-

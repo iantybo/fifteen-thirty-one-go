@@ -40,5 +40,3 @@ func (r Rules) DiscardCount() int {
 func (r Rules) CribSize() int {
 	return 4
 }
-
-

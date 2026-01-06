@@ -32,9 +32,9 @@ func IsPasswordValidationError(err error) bool {
 // HashPassword hashes a plaintext password using bcrypt.
 //
 // Validation:
-// - Must be at least minPasswordChars characters.
-// - Must be <= bcryptMaxPasswordBytes bytes when encoded as UTF-8.
-//   (bcrypt truncates inputs beyond 72 bytes.)
+//   - Must be at least minPasswordChars characters.
+//   - Must be <= bcryptMaxPasswordBytes bytes when encoded as UTF-8.
+//     (bcrypt truncates inputs beyond 72 bytes.)
 func HashPassword(plain string) (string, error) {
 	if plain == "" {
 		return "", PasswordValidationError{msg: "password required"}
@@ -58,5 +58,3 @@ func ComparePasswordHash(hash string, plain string) error {
 	}
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plain))
 }
-
-

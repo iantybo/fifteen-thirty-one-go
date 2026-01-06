@@ -51,5 +51,3 @@ func tokenFromRequest(c *gin.Context) string {
 	}
 	return ""
 }
-
-

@@ -611,5 +611,3 @@ func cloneStateDeep(st *cribbage.State) cribbage.State {
 	}
 	return out
 }
-
-

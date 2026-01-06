@@ -647,6 +647,3 @@ func AddBotToLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"game_id": gameID, "bot_user_id": botID, "bot_username": botName})
 	}
 }
-
-
-

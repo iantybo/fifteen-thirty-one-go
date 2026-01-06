@@ -18,8 +18,8 @@ type State struct {
 
 	Rules Rules `json:"rules"`
 
-	DealerIndex  int `json:"dealer_index"`
-	CurrentIndex int `json:"current_index"`
+	DealerIndex   int `json:"dealer_index"`
+	CurrentIndex  int `json:"current_index"`
 	LastPlayIndex int `json:"last_play_index"`
 
 	// Deck is persisted for crash/restart recovery but never exposed to clients
@@ -27,16 +27,16 @@ type State struct {
 	Deck []common.Card `json:"deck"`
 	Cut  *common.Card  `json:"cut,omitempty"`
 
-	Hands [][]common.Card `json:"hands"` // per player
+	Hands     [][]common.Card `json:"hands"`      // per player
 	KeptHands [][]common.Card `json:"kept_hands"` // 4-card hands used for counting (set after discards)
-	Crib  []common.Card   `json:"crib"`
+	Crib      []common.Card   `json:"crib"`
 
-	PeggingTotal int           `json:"pegging_total"`
-	PeggingSeq   []common.Card `json:"pegging_seq"`
-	PeggingPassed []bool       `json:"pegging_passed"`
-	DiscardCompleted []bool    `json:"discard_completed"`
+	PeggingTotal     int           `json:"pegging_total"`
+	PeggingSeq       []common.Card `json:"pegging_seq"`
+	PeggingPassed    []bool        `json:"pegging_passed"`
+	DiscardCompleted []bool        `json:"discard_completed"`
 
-	Scores []int `json:"scores"`
+	Scores []int  `json:"scores"`
 	Stage  string `json:"stage"` // dealing|discard|pegging|counting|finished
 
 	// ReadyNextHand is used during the counting stage to "ready up" before dealing
@@ -55,33 +55,33 @@ type State struct {
 type CountSummary struct {
 	// Order is the order in which hands are counted (player indices), excluding the crib which is separate.
 	// Official order is: left of dealer up to dealer, then dealer, then crib.
-	Order []int `json:"order"`
+	Order []int                  `json:"order"`
 	Hands map[int]ScoreBreakdown `json:"hands,omitempty"` // playerIndex -> breakdown
 	Crib  *ScoreBreakdown        `json:"crib,omitempty"`
 }
 
 type RoundSummary struct {
-	Round      int              `json:"round"`
-	DealerIndex int             `json:"dealer_index"`
-	Cut        *common.Card     `json:"cut,omitempty"`
-	Hands      map[int]ScoreBreakdown `json:"hands,omitempty"` // playerIndex -> breakdown
-	Crib       *ScoreBreakdown  `json:"crib,omitempty"`
-	ScoresBefore []int          `json:"scores_before,omitempty"`
-	ScoresAfter  []int          `json:"scores_after,omitempty"`
+	Round        int                    `json:"round"`
+	DealerIndex  int                    `json:"dealer_index"`
+	Cut          *common.Card           `json:"cut,omitempty"`
+	Hands        map[int]ScoreBreakdown `json:"hands,omitempty"` // playerIndex -> breakdown
+	Crib         *ScoreBreakdown        `json:"crib,omitempty"`
+	ScoresBefore []int                  `json:"scores_before,omitempty"`
+	ScoresAfter  []int                  `json:"scores_after,omitempty"`
 }
 
 func NewState(players int) *State {
 	r := DefaultRules(players)
 	st := &State{
-		Rules:        r,
-		DealerIndex:  0,
-		CurrentIndex: 0,
+		Rules:         r,
+		DealerIndex:   0,
+		CurrentIndex:  0,
 		LastPlayIndex: -1,
-		Hands:        make([][]common.Card, r.MaxPlayers),
-		KeptHands:    make([][]common.Card, r.MaxPlayers),
-		Crib:         []common.Card{},
-		Scores:       make([]int, r.MaxPlayers),
-		Stage:        "dealing",
+		Hands:         make([][]common.Card, r.MaxPlayers),
+		KeptHands:     make([][]common.Card, r.MaxPlayers),
+		Crib:          []common.Card{},
+		Scores:        make([]int, r.MaxPlayers),
+		Stage:         "dealing",
 	}
 	st.DiscardCompleted = make([]bool, st.Rules.MaxPlayers)
 	return st
@@ -446,5 +446,3 @@ func (s *State) pop() (common.Card, error) {
 	s.Deck = s.Deck[1:]
 	return c, nil
 }
-
-

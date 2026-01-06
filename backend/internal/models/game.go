@@ -73,7 +73,15 @@ func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 			return err
 		}
 		if ra == 0 {
-			return ErrNotFound
+			// Disambiguate "no rows affected": game may not exist, or values were already set.
+			var one int
+			if err := db.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return ErrNotFound
+				}
+				return err
+			}
+			return nil
 		}
 		return nil
 	}
@@ -86,7 +94,64 @@ func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 		return err
 	}
 	if ra == 0 {
-		return ErrNotFound
+		var one int
+		if err := db.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		return nil
+	}
+	return nil
+}
+
+// SetGameStatusTx updates a game's status within the provided transaction.
+// Valid status values are "waiting", "playing", and "finished".
+// When status is "finished", it also sets finished_at to CURRENT_TIMESTAMP.
+// Returns ErrNotFound if the game does not exist.
+func SetGameStatusTx(tx *sql.Tx, gameID int64, status string) error {
+	if status != "waiting" && status != "playing" && status != "finished" {
+		return errors.New("invalid status")
+	}
+	if status == "finished" {
+		res, err := tx.Exec(`UPDATE games SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, gameID)
+		if err != nil {
+			return err
+		}
+		ra, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if ra == 0 {
+			var one int
+			if err := tx.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return ErrNotFound
+				}
+				return err
+			}
+			return nil
+		}
+		return nil
+	}
+	res, err := tx.Exec(`UPDATE games SET status = ? WHERE id = ?`, status, gameID)
+	if err != nil {
+		return err
+	}
+	ra, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if ra == 0 {
+		var one int
+		if err := tx.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		return nil
 	}
 	return nil
 }
@@ -213,5 +278,3 @@ func UpdateGameStateTxCAS(tx *sql.Tx, gameID int64, expectedVersion int64, state
 	}
 	return nil
 }
-
-

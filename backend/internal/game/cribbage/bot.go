@@ -119,5 +119,3 @@ func bestImmediatePegging(legal []common.Card, peggingTotal int, peggingSeq []co
 	pick := legal[bestIdx]
 	return &pick, false
 }
-
-

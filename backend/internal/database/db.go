@@ -370,5 +370,3 @@ func splitSQLStatements(s string) []string {
 	}
 	return out
 }
-
-

@@ -205,5 +205,3 @@ func tokenFromHeaderOrCookie(c *gin.Context) string {
 	}
 	return ""
 }
-
-

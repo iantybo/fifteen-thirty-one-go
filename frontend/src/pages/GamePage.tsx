@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Card, GameMove, GameSnapshot } from '../api/types'
+import type { Card, GameMove, GameSnapshot, UserStats } from '../api/types'
 import { useAuth } from '../auth/auth'
 import { WsClient } from '../ws/wsClient'
 import type React from 'react'
@@ -21,6 +21,12 @@ type ScoreBreakdown = {
   reasons?: Record<string, number>
 }
 
+type PlayerProfileState = {
+  loading: boolean
+  stats?: UserStats
+  error?: string
+}
+
 function ScoreBreakdownLine({ b }: { b: ScoreBreakdown | undefined }) {
   if (!b) return <span style={{ opacity: 0.8 }}>(no breakdown)</span>
   const parts: Array<[string, number]> = (
@@ -37,6 +43,181 @@ function ScoreBreakdownLine({ b }: { b: ScoreBreakdown | undefined }) {
       <span style={{ fontWeight: 900 }}>+{b.total}</span>
       {parts.length > 0 ? <span style={{ opacity: 0.9 }}> ({parts.map(([k, v]) => `${k} ${v}`).join(' · ')})</span> : null}
     </span>
+  )
+}
+
+function playerInitials(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) return '?'
+  const parts = trimmed.split(/\s+/).slice(0, 2)
+  const letters = parts.map((p) => p[0]).join('')
+  return letters.toUpperCase()
+}
+
+function profilePalette(slot: number) {
+  const palettes = [
+    { bg1: '#fef3c7', bg2: '#fde68a', accent: '#b45309', border: '#f59e0b' },
+    { bg1: '#dbeafe', bg2: '#bfdbfe', accent: '#1d4ed8', border: '#60a5fa' },
+    { bg1: '#dcfce7', bg2: '#bbf7d0', accent: '#15803d', border: '#4ade80' },
+    { bg1: '#fee2e2', bg2: '#fecaca', accent: '#b91c1c', border: '#f87171' },
+  ]
+  return palettes[Math.abs(slot) % palettes.length]
+}
+
+function PlayerProfileCard({
+  player,
+  profile,
+  isDealer,
+  isYou,
+}: {
+  player: GameSnapshot['players'][number]
+  profile: PlayerProfileState | undefined
+  isDealer: boolean
+  isYou: boolean
+}) {
+  const palette = profilePalette(player.position)
+  const stats = profile?.stats
+  const gamesPlayed = stats?.games_played ?? 0
+  const wins = stats?.games_won ?? 0
+  const losses = Math.max(0, gamesPlayed - wins)
+  const winRate = gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : null
+  const rank =
+    gamesPlayed >= 20 ? (winRate !== null && winRate >= 60 ? 'Ace' : winRate !== null && winRate >= 45 ? 'Pro' : 'Regular') : 'Rookie'
+
+  return (
+    <div
+      style={{
+        padding: 12,
+        borderRadius: 16,
+        border: `1px solid ${palette.border}`,
+        background: `linear-gradient(145deg, ${palette.bg1}, ${palette.bg2})`,
+        boxShadow: '0 12px 24px rgba(15, 23, 42, 0.15)',
+        position: 'relative',
+        overflow: 'hidden',
+        minHeight: 150,
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          right: -20,
+          top: -20,
+          width: 80,
+          height: 80,
+          borderRadius: 999,
+          background: 'rgba(255,255,255,0.35)',
+        }}
+      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 999,
+            background: 'rgba(15,23,42,0.88)',
+            color: '#f8fafc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 900,
+            letterSpacing: 0.6,
+            boxShadow: '0 6px 14px rgba(15,23,42,0.22)',
+            textTransform: 'uppercase',
+          }}
+        >
+          {playerInitials(player.username)}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 900, fontSize: 16, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {player.username} {player.is_bot ? '🤖' : ''}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: 0.6,
+                textTransform: 'uppercase',
+                padding: '2px 6px',
+                borderRadius: 999,
+                background: 'rgba(15,23,42,0.08)',
+                color: '#0f172a',
+              }}
+            >
+              P{player.position}
+            </span>
+            {isYou ? (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: 0.6,
+                  textTransform: 'uppercase',
+                  padding: '2px 6px',
+                  borderRadius: 999,
+                  background: 'rgba(14,116,144,0.18)',
+                  color: '#0e7490',
+                }}
+              >
+                You
+              </span>
+            ) : null}
+            {isDealer ? (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: 0.6,
+                  textTransform: 'uppercase',
+                  padding: '2px 6px',
+                  borderRadius: 999,
+                  background: 'rgba(250,204,21,0.25)',
+                  color: '#92400e',
+                }}
+              >
+                Dealer
+              </span>
+            ) : null}
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: 0.6,
+                textTransform: 'uppercase',
+                padding: '2px 6px',
+                borderRadius: 999,
+                background: 'rgba(255,255,255,0.75)',
+                color: palette.accent,
+              }}
+            >
+              {rank}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        {profile?.loading ? (
+          <div style={{ fontWeight: 700, opacity: 0.75 }}>Loading stats...</div>
+        ) : profile?.error ? (
+          <div style={{ fontWeight: 700, color: '#b91c1c' }}>Stats unavailable</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+            <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Wins</div>
+              <div style={{ fontSize: 16, fontWeight: 900 }}>{wins}</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Losses</div>
+              <div style={{ fontSize: 16, fontWeight: 900 }}>{losses}</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Win %</div>
+              <div style={{ fontSize: 16, fontWeight: 900 }}>{winRate === null ? '—' : `${winRate}%`}</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -480,6 +661,8 @@ export function GamePage() {
   const [moves, setMoves] = useState<GameMove[] | null>(null)
   const [peggingCue, setPeggingCue] = useState<{ pos: number; kind: 'play'; delta?: number; card?: string } | null>(null)
   const [cutPulse, setCutPulse] = useState(false)
+  const [profilesByUserId, setProfilesByUserId] = useState<Record<number, PlayerProfileState>>({})
+  const profileFetchRef = useRef<Set<number>>(new Set())
   const lastCueMoveIDRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -529,6 +712,30 @@ export function GamePage() {
       ws.disconnect()
     }
   }, [user, gameId, isValidId, ws])
+
+  useEffect(() => {
+    setProfilesByUserId({})
+    profileFetchRef.current = new Set()
+  }, [gameId])
+
+  useEffect(() => {
+    if (!snap) return
+    for (const player of snap.players) {
+      const userId = player.user_id
+      if (profileFetchRef.current.has(userId)) continue
+      profileFetchRef.current.add(userId)
+      setProfilesByUserId((prev) => ({ ...prev, [userId]: { loading: true } }))
+      api
+        .getUserStats(userId)
+        .then((stats) => {
+          setProfilesByUserId((prev) => ({ ...prev, [userId]: { loading: false, stats } }))
+        })
+        .catch((e: unknown) => {
+          const msg = e instanceof Error ? e.message : 'failed to load stats'
+          setProfilesByUserId((prev) => ({ ...prev, [userId]: { loading: false, error: msg } }))
+        })
+    }
+  }, [snap])
 
   const myPos = snap?.players.find((p) => p.user_id === user?.id)?.position
   const state = snap?.state
@@ -644,6 +851,23 @@ export function GamePage() {
         <div style={{ marginTop: 16, opacity: 0.8 }}>{loading ? 'Loading…' : 'No snapshot yet.'}</div>
       ) : (
         <div style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8, opacity: 0.95 }}>Player profiles</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              {snap.players
+                .slice()
+                .sort((a, b) => a.position - b.position)
+                .map((p) => (
+                  <PlayerProfileCard
+                    key={`profile:${p.user_id}`}
+                    player={p}
+                    profile={profilesByUserId[p.user_id]}
+                    isDealer={p.position === state?.dealer_index}
+                    isYou={p.user_id === user?.id}
+                  />
+                ))}
+            </div>
+          </div>
           {(() => {
             const sortedPlayers = snap.players.slice().sort((a, b) => a.position - b.position)
             const opp = sortedPlayers.find((p) => p.user_id !== user?.id) ?? sortedPlayers[0]

@@ -30,5 +30,3 @@ func Shuffle(cards []Card) error {
 	}
 	return nil
 }
-
-

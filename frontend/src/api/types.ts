@@ -31,6 +31,7 @@ export type Game = {
 export type GamePlayer = {
   game_id: number
   user_id: number
+  username: string
   position: number
   score: number
   hand: string
@@ -38,6 +39,33 @@ export type GamePlayer = {
   crib_cards?: string
   is_bot: boolean
   bot_difficulty?: string
+}
+
+export type UserStats = {
+  user_id: number
+  games_played: number
+  games_won: number
+}
+
+export type LeaderboardDayPoint = {
+  date: string // YYYY-MM-DD
+  games_played: number
+  games_won: number
+  win_rate: number // cumulative within the window [0..1]
+}
+
+export type LeaderboardPlayer = {
+  user_id: number
+  username: string
+  games_played: number
+  games_won: number
+  win_rate: number // all-time [0..1]
+  series: LeaderboardDayPoint[]
+}
+
+export type LeaderboardResponse = {
+  days: number
+  items: LeaderboardPlayer[]
 }
 
 export type Card = {
@@ -107,5 +135,4 @@ export type GameMove = {
   is_corrected: boolean
   created_at: string
 }
-
 

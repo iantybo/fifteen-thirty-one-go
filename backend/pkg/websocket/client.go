@@ -20,21 +20,21 @@ type Client struct {
 	Conn *websocket.Conn
 	Hub  *Hub
 
-	Room string
+	Room   string
 	UserID int64
 
-	CloseOnce sync.Once
+	CloseOnce     sync.Once
 	SendCloseOnce sync.Once
-	Send chan []byte
+	Send          chan []byte
 }
 
 func NewClient(conn *websocket.Conn, hub *Hub, room string, userID int64) *Client {
 	return &Client{
-		Conn:  conn,
-		Hub:   hub,
-		Room:  room,
+		Conn:   conn,
+		Hub:    hub,
+		Room:   room,
 		UserID: userID,
-		Send:  make(chan []byte, 256),
+		Send:   make(chan []byte, 256),
 	}
 }
 
@@ -108,5 +108,3 @@ func (c *Client) WritePump() {
 		}
 	}
 }
-
-

@@ -115,5 +115,3 @@ func (m *GameManager) GetOrCreateLocked(gameID int64, createFn func() (*cribbage
 }
 
 var defaultGameManager = NewGameManager()
-
-

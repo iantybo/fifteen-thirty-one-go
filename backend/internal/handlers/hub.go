@@ -28,5 +28,3 @@ func broadcastGameUpdate(db *sql.DB, gameID int64) {
 	}
 	hub.Broadcast("game:"+strconv.FormatInt(gameID, 10), "game_update", snap)
 }
-
-

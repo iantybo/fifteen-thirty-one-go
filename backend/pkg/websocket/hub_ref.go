@@ -23,5 +23,3 @@ func (r *HubRef) Get() (*Hub, bool) {
 func (r *HubRef) Set(h *Hub) {
 	r.v.Store(h)
 }
-
-

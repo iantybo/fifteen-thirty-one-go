@@ -37,5 +37,3 @@ func (r *Registry) New(gameType string) (Game, bool) {
 	}
 	return f(), true
 }
-
-

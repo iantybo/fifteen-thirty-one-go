@@ -45,5 +45,3 @@ func UserStatsHandler(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, stats)
 	}
 }
-
-

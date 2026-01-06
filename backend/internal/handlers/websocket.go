@@ -201,7 +201,7 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 		}
 	case "move":
 		var p struct {
-			GameID int64      `json:"game_id"`
+			GameID int64       `json:"game_id"`
 			Move   moveRequest `json:"move"`
 		}
 		if err := json.Unmarshal(in.Payload, &p); err != nil || p.GameID <= 0 {
@@ -283,5 +283,3 @@ func tokenFromHeaderOrQuery(c *gin.Context, cfg config.Config) string {
 	}
 	return ""
 }
-
-

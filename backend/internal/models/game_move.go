@@ -8,15 +8,15 @@ import (
 )
 
 type GameMove struct {
-	ID            int64      `json:"id"`
-	GameID        int64      `json:"game_id"`
-	PlayerID      int64      `json:"player_id"`
-	MoveType      string     `json:"move_type"`
-	CardPlayed    *string    `json:"card_played,omitempty"`
-	ScoreClaimed  *int64     `json:"score_claimed,omitempty"`
-	ScoreVerified *int64     `json:"score_verified,omitempty"`
-	IsCorrected   bool       `json:"is_corrected"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID            int64     `json:"id"`
+	GameID        int64     `json:"game_id"`
+	PlayerID      int64     `json:"player_id"`
+	MoveType      string    `json:"move_type"`
+	CardPlayed    *string   `json:"card_played,omitempty"`
+	ScoreClaimed  *int64    `json:"score_claimed,omitempty"`
+	ScoreVerified *int64    `json:"score_verified,omitempty"`
+	IsCorrected   bool      `json:"is_corrected"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 func InsertMove(db *sql.DB, m GameMove) (*GameMove, error) {
@@ -185,5 +185,3 @@ func MarkMoveAsCorrectedTx(tx *sql.Tx, moveID int64) error {
 	}
 	return nil
 }
-
-

@@ -85,5 +85,3 @@ func cloneStateForView(st *cribbage.State) cribbage.State {
 func CloneStateForView(st *cribbage.State) cribbage.State {
 	return cloneStateForView(st)
 }
-
-

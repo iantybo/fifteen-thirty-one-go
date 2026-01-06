@@ -78,5 +78,3 @@ func GetUserStats(db *sql.DB, userID int64) (*UserStats, error) {
 	}
 	return &s, nil
 }
-
-
