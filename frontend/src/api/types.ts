@@ -47,6 +47,32 @@ export type UserStats = {
   games_won: number
 }
 
+export type LobbyChatMessage = {
+  id: number
+  lobby_id: number
+  user_id?: number | null
+  username: string
+  message: string
+  message_type: 'chat' | 'system' | 'join' | 'leave'
+  created_at: string
+}
+
+export type SpectatorInfo = {
+  user_id: number
+  username: string
+  joined_at: string
+  avatar_url?: string
+}
+
+export type PresenceStatus = {
+  user_id: number
+  username: string
+  status: 'online' | 'away' | 'in_game' | 'offline'
+  last_active: string
+  current_lobby_id?: number
+  avatar_url?: string
+}
+
 export type LeaderboardDayPoint = {
   date: string // YYYY-MM-DD
   games_played: number

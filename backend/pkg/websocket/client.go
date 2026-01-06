@@ -28,6 +28,7 @@ type Client struct {
 	Send          chan []byte
 }
 
+// NewClient creates a new websocket Client for the given connection, hub, room, and user.
 func NewClient(conn *websocket.Conn, hub *Hub, room string, userID int64) *Client {
 	return &Client{
 		Conn:   conn,

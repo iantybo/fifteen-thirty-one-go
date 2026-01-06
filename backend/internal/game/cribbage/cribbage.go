@@ -52,6 +52,9 @@ type State struct {
 	History []RoundSummary `json:"history,omitempty"`
 }
 
+// CountSummary summarizes scoring results for the counting phase of a cribbage round.
+// Order is the sequence of player indices whose hands are counted (excluding the crib),
+// Hands maps player index to their ScoreBreakdown, and Crib is the optional crib ScoreBreakdown.
 type CountSummary struct {
 	// Order is the order in which hands are counted (player indices), excluding the crib which is separate.
 	// Official order is: left of dealer up to dealer, then dealer, then crib.
@@ -60,6 +63,8 @@ type CountSummary struct {
 	Crib  *ScoreBreakdown        `json:"crib,omitempty"`
 }
 
+// RoundSummary is an append-only record of a completed counting phase.
+// It contains only information that is no longer secret (past kept hands, crib, cut, score breakdown).
 type RoundSummary struct {
 	Round        int                    `json:"round"`
 	DealerIndex  int                    `json:"dealer_index"`

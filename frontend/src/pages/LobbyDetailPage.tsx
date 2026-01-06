@@ -35,17 +35,37 @@ export function LobbyDetailPage() {
   }
 
   return (
-    <div style={{ maxWidth: 700, margin: '24px auto', padding: '0 16px' }}>
-      <h1>Lobby {isValidId ? lobbyId : 'Invalid ID'}</h1>
-      <button
-        disabled={!canJoin}
-        aria-disabled={!canJoin}
-        title={!user ? 'Log in to join this lobby' : !isValidId ? 'Invalid lobby id' : undefined}
-        onClick={join}
-      >
-        {busy ? 'Joining…' : 'Join lobby'}
-      </button>
-      {err && <div style={{ color: 'crimson', marginTop: 8 }}>{err}</div>}
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--color-lobby-bg)',
+      padding: '24px 16px'
+    }}>
+      <div style={{
+        maxWidth: 700,
+        margin: '0 auto',
+        background: 'var(--color-lobby-card)',
+        borderRadius: '16px',
+        padding: '32px',
+        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+      }}>
+        <h1 style={{ marginTop: 0 }}>Lobby {isValidId ? lobbyId : 'Invalid ID'}</h1>
+        <button
+          disabled={!canJoin}
+          aria-disabled={!canJoin}
+          title={!user ? 'Log in to join this lobby' : !isValidId ? 'Invalid lobby id' : undefined}
+          onClick={join}
+          style={{
+            background: canJoin ? 'var(--color-primary)' : undefined,
+            color: canJoin ? 'white' : undefined,
+            border: canJoin ? 'none' : undefined,
+            fontSize: '16px',
+            padding: '12px 24px'
+          }}
+        >
+          {busy ? 'Joining…' : 'Join lobby'}
+        </button>
+        {err && <div style={{ color: 'crimson', marginTop: 12 }}>{err}</div>}
+      </div>
     </div>
   )
 }

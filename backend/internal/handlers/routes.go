@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"fifteen-thirty-one-go/backend/internal/config"
+	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,6 +22,28 @@ func RegisterLobbyRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.POST("/lobbies", CreateLobbyHandler(db))
 	rg.POST("/lobbies/:id/join", JoinLobbyHandler(db))
 	rg.POST("/lobbies/:id/add_bot", AddBotToLobbyHandler(db))
+
+	// Lobby chat (Yahoo Games inspired)
+	rg.GET("/lobbies/:id/chat", GetLobbyChatHistory(db))
+	rg.POST("/lobbies/:id/chat", SendLobbyChatMessage(db, getHubProvider))
+
+	// Spectator mode
+	rg.POST("/lobbies/:id/spectate", JoinAsSpectator(db, getHubProvider))
+	rg.DELETE("/lobbies/:id/spectate", LeaveAsSpectator(db, getHubProvider))
+	rg.GET("/lobbies/:id/spectators", GetSpectators(db))
+
+	// User presence
+	rg.PUT("/users/presence", UpdatePresence(db, getHubProvider))
+	rg.POST("/users/presence/heartbeat", HeartbeatPresence(db))
+	rg.GET("/users/:id/presence", GetPresence(db))
+}
+
+// getHubProvider returns the global hubProvider function
+func getHubProvider() (*ws.Hub, bool) {
+	if hubProvider == nil {
+		return nil, false
+	}
+	return hubProvider()
 }
 
 // RegisterGameRoutes wires game endpoints. Implemented fully in Phase 3/5.

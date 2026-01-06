@@ -237,6 +237,8 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 		} else {
 			log.Printf("BuildGameSnapshotPublic failed: game_id=%d err=%v", p.GameID, err)
 		}
+	case "lobby:send_message":
+		handleLobbyChatWS(hub, client, db, in.Payload)
 	default:
 		if err := sendDirect(client, "error", map[string]any{"error": "unknown message type"}); err != nil {
 			log.Printf("sendDirect failed (unknown_type): err=%v", err)

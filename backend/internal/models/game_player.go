@@ -100,9 +100,9 @@ func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID, maxPlayers int64, i
 // It joins the users table to populate usernames and returns an error on query or scan failure.
 func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 	rows, err := db.Query(
-		`SELECT gp.game_id, gp.user_id, u.username, gp.position, gp.score, gp.hand, gp.crib_cards, gp.is_bot, gp.bot_difficulty
+		`SELECT gp.game_id, gp.user_id, COALESCE(u.username, '') AS username, gp.position, gp.score, gp.hand, gp.crib_cards, gp.is_bot, gp.bot_difficulty
 		 FROM game_players gp
-		 JOIN users u ON u.id = gp.user_id
+		 LEFT JOIN users u ON u.id = gp.user_id
 		 WHERE gp.game_id = ? ORDER BY gp.position ASC`,
 		gameID,
 	)
@@ -118,7 +118,7 @@ func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
 		var isBotVal any
 		var botDiff sql.NullString
 		if err := rows.Scan(&gp.GameID, &gp.UserID, &gp.Username, &gp.Position, &gp.Score, &gp.Hand, &crib, &isBotVal, &botDiff); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("ListGamePlayersByGame: scan game player (game_id=%d): %w", gameID, err)
 		}
 		if crib.Valid {
 			v := crib.String

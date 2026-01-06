@@ -720,20 +720,33 @@ export function GamePage() {
 
   useEffect(() => {
     if (!snap) return
+    let cancelled = false
+    const pending = new Set<number>()
     for (const player of snap.players) {
       const userId = player.user_id
       if (profileFetchRef.current.has(userId)) continue
       profileFetchRef.current.add(userId)
+      pending.add(userId)
       setProfilesByUserId((prev) => ({ ...prev, [userId]: { loading: true } }))
       api
         .getUserStats(userId)
         .then((stats) => {
+          pending.delete(userId)
+          if (cancelled) return
           setProfilesByUserId((prev) => ({ ...prev, [userId]: { loading: false, stats } }))
         })
         .catch((e: unknown) => {
+          pending.delete(userId)
+          if (cancelled) return
           const msg = e instanceof Error ? e.message : 'failed to load stats'
           setProfilesByUserId((prev) => ({ ...prev, [userId]: { loading: false, error: msg } }))
         })
+    }
+    return () => {
+      cancelled = true
+      for (const id of pending) {
+        profileFetchRef.current.delete(id)
+      }
     }
   }, [snap])
 

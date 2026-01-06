@@ -1,6 +1,18 @@
 import { apiBaseUrl } from '../lib/env'
 import { ApiError, apiFetch } from '../lib/http'
-import type { AuthResponse, Game, GameMove, GameSnapshot, LeaderboardResponse, Lobby, User, UserStats } from './types'
+import type {
+  AuthResponse,
+  Game,
+  GameMove,
+  GameSnapshot,
+  LeaderboardResponse,
+  Lobby,
+  LobbyChatMessage,
+  PresenceStatus,
+  SpectatorInfo,
+  User,
+  UserStats,
+} from './types'
 
 type AuthCredentials = { username: string; password: string }
 export type RegisterRequest = AuthCredentials
@@ -11,6 +23,8 @@ export type GameMoveRequest =
   | { type: 'play_card'; card: string }
   | { type: 'go' }
 export type AddBotRequest = { difficulty?: 'easy' | 'medium' | 'hard' }
+export type SendChatMessageRequest = { message: string }
+export type UpdatePresenceRequest = { status: 'online' | 'away' | 'in_game' | 'offline' }
 
 const UNEXPECTED_EMPTY_RESPONSE_STATUS = 599
 
@@ -111,6 +125,62 @@ export const api = {
       body: move,
     })
     if (res === undefined) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+
+  // Lobby chat
+  async getLobbyChatHistory(lobbyId: number, limit = 100) {
+    const res = await apiFetch<{ messages: LobbyChatMessage[] }>(`${apiBaseUrl()}/api/lobbies/${lobbyId}/chat?limit=${limit}`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async sendLobbyChatMessage(lobbyId: number, req: SendChatMessageRequest) {
+    const res = await apiFetch<LobbyChatMessage>(`${apiBaseUrl()}/api/lobbies/${lobbyId}/chat`, {
+      method: 'POST',
+      body: req,
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+
+  // Spectators
+  async joinAsSpectator(lobbyId: number) {
+    const res = await apiFetch<{ success: boolean; spectator: SpectatorInfo }>(`${apiBaseUrl()}/api/lobbies/${lobbyId}/spectate`, {
+      method: 'POST',
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async leaveAsSpectator(lobbyId: number) {
+    const res = await apiFetch<{ success: boolean }>(`${apiBaseUrl()}/api/lobbies/${lobbyId}/spectate`, {
+      method: 'DELETE',
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async getSpectators(lobbyId: number) {
+    const res = await apiFetch<{ spectators: SpectatorInfo[] }>(`${apiBaseUrl()}/api/lobbies/${lobbyId}/spectators`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+
+  // User presence
+  async updatePresence(req: UpdatePresenceRequest) {
+    const res = await apiFetch<PresenceStatus>(`${apiBaseUrl()}/api/users/presence`, {
+      method: 'PUT',
+      body: req,
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async presenceHeartbeat() {
+    await apiFetch<{ success: boolean }>(`${apiBaseUrl()}/api/users/presence/heartbeat`, {
+      method: 'POST',
+    })
+  },
+  async getUserPresence(userId: number) {
+    const res = await apiFetch<PresenceStatus>(`${apiBaseUrl()}/api/users/${userId}/presence`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
 }

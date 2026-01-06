@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -180,7 +181,7 @@ func SetLobbyStatus(db *sql.DB, lobbyID int64, status string) error {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound
 			}
-			return err
+			return fmt.Errorf("SetLobbyStatus: checking lobby existence (lobby_id=%d): %w", lobbyID, err)
 		}
 		return nil
 	}
@@ -208,7 +209,7 @@ func SetLobbyStatusTx(tx *sql.Tx, lobbyID int64, status string) error {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound
 			}
-			return err
+			return fmt.Errorf("SetLobbyStatusTx: checking lobby existence (lobby_id=%d): %w", lobbyID, err)
 		}
 		return nil
 	}

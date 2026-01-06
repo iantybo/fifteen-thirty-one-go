@@ -8,13 +8,13 @@ import (
 	"time"
 )
 
-// LeaderboardDayPoint represents a single day's cumulative statistics for a player
-// within the leaderboard time window.
+// LeaderboardDayPoint represents a single day's statistics for a player within the leaderboard
+// time window. GamesPlayed and GamesWon are per-day counts; WinRate is cumulative within the window.
 type LeaderboardDayPoint struct {
-	Date        string  `json:"date"` // YYYY-MM-DD
-	GamesPlayed int64   `json:"games_played"`
-	GamesWon    int64   `json:"games_won"`
-	WinRate     float64 `json:"win_rate"` // cumulative within the window [0..1]
+	Date        string  `json:"date"`         // YYYY-MM-DD
+	GamesPlayed int64   `json:"games_played"` // games played on this day
+	GamesWon    int64   `json:"games_won"`    // games won on this day
+	WinRate     float64 `json:"win_rate"`     // cumulative within the window [0..1]
 }
 
 // LeaderboardPlayer represents a player's all-time statistics and daily performance series
@@ -139,8 +139,13 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 		}
 	}
 
-	// Build the date list (oldest -> newest) as YYYY-MM-DD in local time.
-	start := time.Now().AddDate(0, 0, -int(days)+1)
+	// Respect cancellations before expensive in-memory processing.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("BuildLeaderboard: context cancelled: %w", err)
+	}
+
+	// Build the date list (oldest -> newest) as YYYY-MM-DD in UTC to match SQLite DATE('now', ...).
+	start := time.Now().UTC().AddDate(0, 0, -int(days)+1)
 	dates := make([]string, 0, days)
 	for i := int64(0); i < days; i++ {
 		d := start.AddDate(0, 0, int(i))
@@ -149,6 +154,9 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 
 	out := make([]LeaderboardPlayer, 0, len(users))
 	for _, usr := range users {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("BuildLeaderboard: context cancelled: %w", err)
+		}
 		t := byUserTotals[usr.id]
 		var allTimeRate float64
 		if t.played > 0 {
@@ -160,6 +168,9 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 		cumWon := int64(0)
 		dayMap := byUserDay[usr.id]
 		for _, day := range dates {
+			if err := ctx.Err(); err != nil {
+				return nil, fmt.Errorf("BuildLeaderboard: context cancelled: %w", err)
+			}
 			da := dayAgg{}
 			if dayMap != nil {
 				da = dayMap[day]

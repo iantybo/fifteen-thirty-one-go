@@ -11,6 +11,12 @@
   --color-bg: #ffffff;
   --color-bg-button: #f8fafc;
   --color-bg-button-hover: #e2e8f0;
+  --color-lobby-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --color-lobby-card: rgba(255, 255, 255, 0.95);
+  --color-online: #10b981;
+  --color-away: #f59e0b;
+  --color-in-game: #3b82f6;
+  --color-offline: #6b7280;
 }
 
 body {
