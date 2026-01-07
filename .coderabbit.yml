@@ -14,7 +14,21 @@ enable_free_tier: true
 reviews:
   # Review profile and behavior
   profile: "chill"
-  request_changes_workflow: false
+  request_changes_workflow: true
+
+  pre_merge_checks:
+    custom_checks:
+      - mode: error
+        name: ensure JIRA ticket
+        instructions: >-
+          Make sure there is a Jira ticket linked in the issue AND that it satisfies the text of
+          that JIRA ticket
+
+      - mode: error
+        name: ensure Linear ticket
+        instructions: >-
+          Make sure there is a Linear ticket linked in the issue AND that it satisfies the text of
+          that Linear ticket
 
   # High-level summary settings
   high_level_summary: true
@@ -154,9 +168,9 @@ chat:
   auto_reply: true
   integrations:
     jira:
-      usage: "auto"
+      usage: "enabled"
     linear:
-      usage: "auto"
+      usage: "enabled"
 
 knowledge_base:
   opt_out: false
@@ -166,20 +180,24 @@ knowledge_base:
     enabled: true
     filePatterns: []
   learnings:
-    scope: "auto"
+    scope: "global"
   issues:
-    scope: "auto"
+    scope: "global"
   jira:
-    usage: "auto"
+    usage: "enabled"
     project_keys: []
   linear:
-    usage: "auto"
+    usage: "enabled"
     team_keys: []
   pull_requests:
-    scope: "auto"
+    scope: "global"
   mcp:
-    usage: "auto"
+    usage: "enabled"
     disabled_servers: []
+
+issue_enrichment:
+  auto_enrich:
+    enabled: true
 
 code_generation:
   docstrings:

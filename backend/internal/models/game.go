@@ -285,3 +285,109 @@ func UpdateGameStateTxCAS(tx *sql.Tx, gameID int64, expectedVersion int64, state
 	}
 	return nil
 }
+
+// ActiveGameInfo represents a game in progress with player details for the global scoreboard
+type ActiveGameInfo struct {
+	GameID    int64              `json:"game_id"`
+	CreatedAt time.Time          `json:"created_at"`
+	Stage     string             `json:"stage"` // extracted from state_json
+	Players   []ActiveGamePlayer `json:"players"`
+}
+
+// ActiveGamePlayer represents a player in an active game
+type ActiveGamePlayer struct {
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+	Position int64  `json:"position"`
+	Score    int64  `json:"score"`
+	IsBot    bool   `json:"is_bot"`
+}
+
+// ListActiveGames returns all games with status="playing" along with their player information.
+// This is used for the global scoreboard to show all games currently in progress.
+func ListActiveGames(db *sql.DB) ([]ActiveGameInfo, error) {
+	// First, get all active games
+	rows, err := db.Query(`
+		SELECT id, created_at, state_json
+		FROM games
+		WHERE status = 'playing'
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var games []ActiveGameInfo
+	for rows.Next() {
+		var gameID int64
+		var createdAt time.Time
+		var stateJSON sql.NullString
+
+		if err := rows.Scan(&gameID, &createdAt, &stateJSON); err != nil {
+			return nil, err
+		}
+
+		// Extract stage from state_json if available
+		stage := "unknown"
+		if stateJSON.Valid && stateJSON.String != "" {
+			// Simple extraction of stage field from JSON
+			// This is a basic approach - could be improved with proper JSON parsing
+			stage = extractStageFromJSON(stateJSON.String)
+		}
+
+		// Get players for this game
+		playerRows, err := db.Query(`
+			SELECT gp.user_id, COALESCE(u.username, '') AS username, gp.position, gp.score, gp.is_bot
+			FROM game_players gp
+			LEFT JOIN users u ON u.id = gp.user_id
+			WHERE gp.game_id = ?
+			ORDER BY gp.position ASC
+		`, gameID)
+		if err != nil {
+			return nil, err
+		}
+
+		var players []ActiveGamePlayer
+		for playerRows.Next() {
+			var player ActiveGamePlayer
+			var isBotVal any
+			if err := playerRows.Scan(&player.UserID, &player.Username, &player.Position, &player.Score, &isBotVal); err != nil {
+				playerRows.Close()
+				return nil, err
+			}
+			player.IsBot = parseSQLiteBool(isBotVal)
+			players = append(players, player)
+		}
+		playerRows.Close()
+
+		if err := playerRows.Err(); err != nil {
+			return nil, err
+		}
+
+		games = append(games, ActiveGameInfo{
+			GameID:    gameID,
+			CreatedAt: createdAt,
+			Stage:     stage,
+			Players:   players,
+		})
+	}
+
+	return games, rows.Err()
+}
+
+// extractStageFromJSON extracts the "Stage" field from a cribbage state JSON string.
+// This is a simple string-based extraction to avoid full JSON parsing overhead.
+func extractStageFromJSON(jsonStr string) string {
+	// Look for "Stage":"value" pattern
+	stageStart := strings.Index(jsonStr, `"Stage":"`)
+	if stageStart == -1 {
+		return "unknown"
+	}
+	stageStart += len(`"Stage":"`)
+	stageEnd := strings.Index(jsonStr[stageStart:], `"`)
+	if stageEnd == -1 {
+		return "unknown"
+	}
+	return jsonStr[stageStart : stageStart+stageEnd]
+}
