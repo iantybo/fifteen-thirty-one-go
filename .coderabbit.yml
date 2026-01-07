@@ -24,6 +24,12 @@ reviews:
           Make sure there is a Jira ticket linked in the issue AND that it satisfies the text of
           that JIRA ticket
 
+      - mode: error
+        name: ensure Linear ticket
+        instructions: >-
+          Make sure there is a Linear ticket linked in the issue AND that it satisfies the text of
+          that Linear ticket
+
   # High-level summary settings
   high_level_summary: true
   high_level_summary_instructions: "In the high level summary, give a description of the langauges used, the frameworks and code patterns used, and then a brief description in 50 words or less."
