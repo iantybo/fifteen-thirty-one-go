@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SpectatorInfo represents a spectator in a lobby
+// SpectatorInfo represents a user spectating a lobby.
 type SpectatorInfo struct {
 	UserID    int64     `json:"user_id"`
 	Username  string    `json:"username"`
@@ -21,7 +21,7 @@ type SpectatorInfo struct {
 	AvatarURL *string   `json:"avatar_url,omitempty"`
 }
 
-// JoinAsSpectator handles POST /api/lobbies/:id/spectate
+// JoinAsSpectator handles POST /api/lobbies/:id/spectate and adds the authenticated user as a spectator.
 func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromContext(c)
@@ -61,8 +61,13 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 			return
 		}
 		if err != nil {
-			log.Printf("Error checking lobby: %v", err)
+			wrappedErr := fmt.Errorf("JoinAsSpectator: checking lobby (lobby_id=%d): %w", lobbyID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
+		if lobbyStatus == "finished" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot spectate a finished lobby"})
 			return
 		}
 
@@ -111,10 +116,13 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 			return
 		}
 
-		joinedAt := time.Now()
+		var joinedAt time.Time
 		// If the spectator already existed (ON CONFLICT DO NOTHING), use the stored joined_at.
+		// If this read fails unexpectedly, surface it rather than masking DB issues.
 		if err := db.QueryRowContext(ctx, `SELECT joined_at FROM lobby_spectators WHERE lobby_id = ? AND user_id = ?`, lobbyID, userID).Scan(&joinedAt); err != nil {
-			joinedAt = time.Now()
+			log.Printf("Error retrieving spectator joined_at (lobby_id=%d user_id=%d): %v", lobbyID, userID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
 		}
 
 		spectator := SpectatorInfo{
@@ -139,7 +147,7 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 	}
 }
 
-// LeaveAsSpectator handles DELETE /api/lobbies/:id/spectate
+// LeaveAsSpectator handles DELETE /api/lobbies/:id/spectate and removes the authenticated user from spectators.
 func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromContext(c)
@@ -207,7 +215,7 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 	}
 }
 
-// GetSpectators handles GET /api/lobbies/:id/spectators
+// GetSpectators handles GET /api/lobbies/:id/spectators and returns the lobby's current spectator list.
 func GetSpectators(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		lobbyIDStr := c.Param("id")

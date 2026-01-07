@@ -145,7 +145,20 @@ func WebSocketHandler(hubProvider func() (*ws.Hub, bool), db *sql.DB, cfg config
 			}
 			return
 		}
-		client := ws.NewClient(conn, hub, room, claims.UserID)
+		client, err := ws.NewClient(conn, hub, room, claims.UserID)
+		if err != nil {
+			log.Printf("WebSocketHandler: NewClient failed: user_id=%d room=%q err=%v", claims.UserID, room, err)
+			// Best-effort: send a close control message so the peer sees a clean disconnect.
+			if closeErr := conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "client initialization failed"),
+				time.Now().Add(1*time.Second),
+			); closeErr != nil {
+				log.Printf("WebSocketHandler close control write failed: user_id=%d room=%q err=%v", claims.UserID, room, closeErr)
+			}
+			_ = conn.Close()
+			return
+		}
 		hub.Register(client)
 
 		go client.WritePump()

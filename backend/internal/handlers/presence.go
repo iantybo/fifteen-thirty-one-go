@@ -12,17 +12,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// PresenceStatus represents user presence information
+// PresenceStatus represents a user's presence information (status, last active timestamp, and optional current lobby).
 type PresenceStatus struct {
 	UserID         int64     `json:"user_id"`
 	Username       string    `json:"username"`
-	Status         string    `json:"status"` // online, away, in_game, offline
+	Status         string    `json:"status"` // online|away|in_game|offline
 	LastActive     time.Time `json:"last_active"`
 	CurrentLobbyID *int64    `json:"current_lobby_id,omitempty"`
 	AvatarURL      *string   `json:"avatar_url,omitempty"`
 }
 
-// UpdatePresence handles PUT /api/users/presence
+// UpdatePresence handles PUT /api/users/presence requests to update the authenticated user's
+// presence status. It validates the status value, performs an upsert, and broadcasts the change
+// to the global websocket lobby when available.
 func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromContext(c)
@@ -69,7 +71,8 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 				last_active = CURRENT_TIMESTAMP
 		`, userID, req.Status)
 		if err != nil {
-			log.Printf("Error updating presence: %v", err)
+			wrappedErr := fmt.Errorf("UpdatePresence: update presence (user_id=%d status=%q): %w", userID, req.Status, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -89,7 +92,8 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 			WHERE u.id = ?
 		`, userID).Scan(&presence.UserID, &username, &avatarURL, &presence.Status, &presence.LastActive, &currentLobbyID)
 		if err != nil {
-			log.Printf("Error getting presence: %v", err)
+			wrappedErr := fmt.Errorf("UpdatePresence: query presence (user_id=%d): %w", userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -112,7 +116,8 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 	}
 }
 
-// GetPresence handles GET /api/users/:id/presence
+// GetPresence handles GET /api/users/:id/presence requests to retrieve the current presence
+// information for a specific user. If the user has no presence record, defaults are returned.
 func GetPresence(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userIDStr := c.Param("id")
@@ -137,7 +142,8 @@ func GetPresence(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			log.Printf("Error getting presence: %v", err)
+			wrappedErr := fmt.Errorf("GetPresence: query presence (user_id=%d): %w", userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -154,7 +160,9 @@ func GetPresence(db *sql.DB) gin.HandlerFunc {
 	}
 }
 
-// HeartbeatPresence handles POST /api/users/presence/heartbeat
+// HeartbeatPresence handles POST /api/users/presence/heartbeat requests to update last_active for
+// the authenticated user. If the user was offline, it transitions them to online; otherwise it
+// preserves their current status.
 func HeartbeatPresence(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := userIDFromContext(c)
@@ -180,7 +188,8 @@ func HeartbeatPresence(db *sql.DB) gin.HandlerFunc {
 				status = CASE WHEN user_presence.status = 'offline' THEN 'online' ELSE user_presence.status END
 		`, userID)
 		if err != nil {
-			log.Printf("Error updating presence heartbeat: %v", err)
+			wrappedErr := fmt.Errorf("HeartbeatPresence: update presence heartbeat (user_id=%d): %w", userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}

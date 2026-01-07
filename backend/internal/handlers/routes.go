@@ -38,7 +38,8 @@ func RegisterLobbyRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/users/:id/presence", GetPresence(db))
 }
 
-// getHubProvider returns the global hubProvider function
+// getHubProvider returns the current websocket hub and a boolean indicating whether a hub provider
+// is configured. When hubProvider is nil, it returns (nil, false).
 func getHubProvider() (*ws.Hub, bool) {
 	if hubProvider == nil {
 		return nil, false

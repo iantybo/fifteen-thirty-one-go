@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -99,7 +100,14 @@ func AddGamePlayerAutoPositionTx(tx *sql.Tx, gameID, userID, maxPlayers int64, i
 // ListGamePlayersByGame returns all players for the given game ID ordered by position.
 // It joins the users table to populate usernames and returns an error on query or scan failure.
 func ListGamePlayersByGame(db *sql.DB, gameID int64) ([]GamePlayer, error) {
-	rows, err := db.Query(
+	return ListGamePlayersByGameContext(context.Background(), db, gameID)
+}
+
+// ListGamePlayersByGameContext returns all players for the given game ID ordered by position.
+// It joins the users table to populate usernames and returns an error on query or scan failure.
+func ListGamePlayersByGameContext(ctx context.Context, db *sql.DB, gameID int64) ([]GamePlayer, error) {
+	rows, err := db.QueryContext(
+		ctx,
 		`SELECT gp.game_id, gp.user_id, COALESCE(u.username, '') AS username, gp.position, gp.score, gp.hand, gp.crib_cards, gp.is_bot, gp.bot_difficulty
 		 FROM game_players gp
 		 LEFT JOIN users u ON u.id = gp.user_id

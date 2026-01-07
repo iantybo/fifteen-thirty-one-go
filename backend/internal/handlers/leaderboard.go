@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -31,7 +32,8 @@ func LeaderboardHandler(db *sql.DB) gin.HandlerFunc {
 
 		resp, err := models.BuildLeaderboard(ctx, db, days)
 		if err != nil {
-			log.Printf("LeaderboardHandler: BuildLeaderboard failed: %v", err)
+			wrappedErr := fmt.Errorf("BuildLeaderboard failed for days=%d: %w", days, err)
+			log.Printf("LeaderboardHandler: %v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}

@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -29,14 +30,27 @@ type Client struct {
 }
 
 // NewClient creates a new websocket Client for the given connection, hub, room, and user.
-func NewClient(conn *websocket.Conn, hub *Hub, room string, userID int64) *Client {
+// Returns an error if required parameters are invalid.
+func NewClient(conn *websocket.Conn, hub *Hub, room string, userID int64) (*Client, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("NewClient: conn cannot be nil")
+	}
+	if hub == nil {
+		return nil, fmt.Errorf("NewClient: hub cannot be nil")
+	}
+	if room == "" {
+		return nil, fmt.Errorf("NewClient: room cannot be empty")
+	}
+	if userID <= 0 {
+		return nil, fmt.Errorf("NewClient: userID must be positive")
+	}
 	return &Client{
 		Conn:   conn,
 		Hub:    hub,
 		Room:   room,
 		UserID: userID,
 		Send:   make(chan []byte, 256),
-	}
+	}, nil
 }
 
 func (c *Client) Close() {

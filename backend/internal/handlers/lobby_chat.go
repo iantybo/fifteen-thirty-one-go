@@ -71,7 +71,8 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 		var username string
 		err = db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", userID).Scan(&username)
 		if err != nil {
-			log.Printf("Error getting username for user %d: %v", userID, err)
+			wrappedErr := fmt.Errorf("SendLobbyChatMessage: get username (user_id=%d): %w", userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -85,7 +86,8 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 			WHERE g.lobby_id = ? AND gp.user_id = ? AND g.status IN ('waiting', 'in_progress')
 		`, lobbyID, userID).Scan(&playerCount)
 		if err != nil {
-			log.Printf("Error checking lobby membership for user %d in lobby %d: %v", userID, lobbyID, err)
+			wrappedErr := fmt.Errorf("SendLobbyChatMessage: check membership (lobby_id=%d user_id=%d): %w", lobbyID, userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -100,12 +102,17 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 			VALUES (?, ?, ?, ?, 'chat')
 		`, lobbyID, userID, username, message)
 		if err != nil {
-			log.Printf("Error inserting chat message for user %d in lobby %d: %v", userID, lobbyID, err)
+			wrappedErr := fmt.Errorf("SendLobbyChatMessage: insert message (lobby_id=%d user_id=%d): %w", lobbyID, userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
 
-		msgID, _ := result.LastInsertId()
+		msgID, idErr := result.LastInsertId()
+		if idErr != nil {
+			log.Printf("SendLobbyChatMessage: warning: LastInsertId failed (lobby_id=%d user_id=%d): %v", lobbyID, userID, fmt.Errorf("%w", idErr))
+			msgID = 0
+		}
 
 		uid := userID
 		chatMsg := LobbyChatMessage{
@@ -168,7 +175,8 @@ func GetLobbyChatHistory(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			log.Printf("Error checking lobby authorization for user %d in lobby %d: %v", userID, lobbyID, err)
+			wrappedErr := fmt.Errorf("GetLobbyChatHistory: check authorization (lobby_id=%d user_id=%d): %w", lobbyID, userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -189,25 +197,36 @@ func GetLobbyChatHistory(db *sql.DB) gin.HandlerFunc {
 			LIMIT ?
 		`, lobbyID, limit)
 		if err != nil {
-			log.Printf("Error querying chat messages for lobby %d: %v", lobbyID, err)
+			wrappedErr := fmt.Errorf("GetLobbyChatHistory: query messages (lobby_id=%d limit=%d): %w", lobbyID, limit, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
 		defer rows.Close()
 
 		messages := []LobbyChatMessage{}
+		scanErrors := 0
 		for rows.Next() {
 			var msg LobbyChatMessage
-			var userID sql.NullInt64
-			err := rows.Scan(&msg.ID, &msg.LobbyID, &userID, &msg.Username, &msg.Message, &msg.MessageType, &msg.CreatedAt)
+			var nullUserID sql.NullInt64
+			err := rows.Scan(&msg.ID, &msg.LobbyID, &nullUserID, &msg.Username, &msg.Message, &msg.MessageType, &msg.CreatedAt)
 			if err != nil {
-				log.Printf("Error scanning chat message for lobby %d: %v", lobbyID, err)
+				scanErrors++
+				log.Printf("Error scanning chat message for lobby %d (row skipped): %v", lobbyID, err)
 				continue
 			}
-			if userID.Valid {
-				msg.UserID = &userID.Int64
+			if nullUserID.Valid {
+				msg.UserID = &nullUserID.Int64
 			}
 			messages = append(messages, msg)
+		}
+		if scanErrors > 0 {
+			log.Printf("Warning: %d chat messages failed to scan for lobby %d", scanErrors, lobbyID)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("Error iterating chat messages for lobby %d: %v", lobbyID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
 		}
 
 		// Reverse to get chronological order
@@ -250,7 +269,8 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 	var username string
 	err := db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", client.UserID).Scan(&username)
 	if err != nil {
-		log.Printf("Error getting username for user %d: %v", client.UserID, err)
+		wrappedErr := fmt.Errorf("handleLobbyChatWS: get username (user_id=%d): %w", client.UserID, err)
+		log.Printf("%v", wrappedErr)
 		if err := sendDirect(client, "error", map[string]any{"error": "internal error"}); err != nil {
 			log.Printf("sendDirect failed (username_error): err=%v", err)
 			client.Close()
@@ -267,6 +287,10 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 		WHERE g.lobby_id = ? AND gp.user_id = ? AND g.status IN ('waiting', 'in_progress')
 	`, req.LobbyID, client.UserID).Scan(&playerCount)
 	if err != nil || playerCount == 0 {
+		if err != nil {
+			wrappedErr := fmt.Errorf("handleLobbyChatWS: check membership (lobby_id=%d user_id=%d): %w", req.LobbyID, client.UserID, err)
+			log.Printf("%v", wrappedErr)
+		}
 		if err := sendDirect(client, "error", map[string]any{"error": "not in lobby"}); err != nil {
 			log.Printf("sendDirect failed (not_in_lobby): err=%v", err)
 			client.Close()
@@ -280,7 +304,8 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 		VALUES (?, ?, ?, ?, 'chat')
 	`, req.LobbyID, client.UserID, username, message)
 	if err != nil {
-		log.Printf("Error inserting chat message: %v", err)
+		wrappedErr := fmt.Errorf("handleLobbyChatWS: insert message (lobby_id=%d user_id=%d): %w", req.LobbyID, client.UserID, err)
+		log.Printf("%v", wrappedErr)
 		if err := sendDirect(client, "error", map[string]any{"error": "internal error"}); err != nil {
 			log.Printf("sendDirect failed (insert_error): err=%v", err)
 			client.Close()
@@ -288,7 +313,11 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 		return
 	}
 
-	msgID, _ := result.LastInsertId()
+	msgID, idErr := result.LastInsertId()
+	if idErr != nil {
+		log.Printf("handleLobbyChatWS: warning: LastInsertId failed (lobby_id=%d user_id=%d): %v", req.LobbyID, client.UserID, fmt.Errorf("%w", idErr))
+		msgID = 0
+	}
 
 	chatMsg := LobbyChatMessage{
 		ID:          msgID,
@@ -304,7 +333,8 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 	hub.Broadcast(fmt.Sprintf("lobby:%d", req.LobbyID), "lobby:chat", chatMsg)
 }
 
-// SendSystemMessage sends a system message to a lobby
+// SendSystemMessage inserts a system message into the lobby chat and broadcasts it via WebSocket if hub is provided.
+// messageType defaults to "system" when empty.
 func SendSystemMessage(ctx context.Context, db *sql.DB, hub *ws.Hub, lobbyID int64, message string, messageType string) error {
 	if messageType == "" {
 		messageType = "system"
@@ -318,7 +348,11 @@ func SendSystemMessage(ctx context.Context, db *sql.DB, hub *ws.Hub, lobbyID int
 		return fmt.Errorf("failed to insert system message: %w", err)
 	}
 
-	msgID, _ := result.LastInsertId()
+	msgID, idErr := result.LastInsertId()
+	if idErr != nil {
+		log.Printf("SendSystemMessage: warning: LastInsertId failed (lobby_id=%d): %v", lobbyID, fmt.Errorf("%w", idErr))
+		msgID = 0
+	}
 
 	chatMsg := LobbyChatMessage{
 		ID:          msgID,

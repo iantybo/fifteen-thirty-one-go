@@ -20,15 +20,19 @@ export const LobbyChat = forwardRef<LobbyChatHandle, LobbyChatProps>(function Lo
 
   // Load chat history on mount
   useEffect(() => {
+    let cancelled = false
     async function loadHistory() {
       try {
         const res = await api.getLobbyChatHistory(lobbyId)
-        setMessages(res.messages)
+        if (!cancelled) setMessages(res.messages)
       } catch (err) {
-        console.error('Failed to load chat history:', err)
+        if (!cancelled) console.error('Failed to load chat history:', err)
       }
     }
-    loadHistory()
+    void loadHistory()
+    return () => {
+      cancelled = true
+    }
   }, [lobbyId])
 
   // Auto-scroll to bottom when new messages arrive
@@ -59,8 +63,8 @@ export const LobbyChat = forwardRef<LobbyChatHandle, LobbyChatProps>(function Lo
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
       e.preventDefault()
       handleSend()
     }
@@ -154,7 +158,7 @@ export const LobbyChat = forwardRef<LobbyChatHandle, LobbyChatProps>(function Lo
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             disabled={isSending}
             style={{
@@ -186,26 +190,6 @@ export const LobbyChat = forwardRef<LobbyChatHandle, LobbyChatProps>(function Lo
   )
 })
 
-// Hook to expose addMessage method for WebSocket integration
-export function useLobbyChatIntegration(
-  _lobbyId: number,
-  wsMessage: any
-): [(message: LobbyChatMessage) => void, React.FC<Omit<LobbyChatProps, never>>] {
-  const localChatRef = useRef<LobbyChatHandle | null>(null)
+// Note: If you need websocket-driven lobby chat, prefer rendering <LobbyChat ref={...} />
+// and calling ref.current.addMessage(...) from the websocket handler.
 
-  useEffect(() => {
-    if (wsMessage && wsMessage.type === 'lobby:chat' && localChatRef.current) {
-      localChatRef.current.addMessage(wsMessage.payload)
-    }
-  }, [wsMessage])
-
-  const addMessage = (message: LobbyChatMessage) => {
-    localChatRef.current?.addMessage(message)
-  }
-
-  const LobbyChatComponent: React.FC<Omit<LobbyChatProps, never>> = (props) => {
-    return <LobbyChat {...props} ref={localChatRef} />
-  }
-
-  return [addMessage, LobbyChatComponent]
-}

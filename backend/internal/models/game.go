@@ -3,9 +3,12 @@ package models
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
+
+var ErrInvalidGameStatus = errors.New("invalid game status")
 
 type Game struct {
 	ID              int64      `json:"id"`
@@ -61,7 +64,7 @@ func GetGameByID(db *sql.DB, id int64) (*Game, error) {
 
 func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 	if status != "waiting" && status != "playing" && status != "finished" {
-		return errors.New("invalid status")
+		return fmt.Errorf("invalid game status %q: %w", status, ErrInvalidGameStatus)
 	}
 	if status == "finished" {
 		res, err := db.Exec(`UPDATE games SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, gameID)
@@ -112,7 +115,7 @@ func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 // Returns ErrGameNotFound if the game does not exist.
 func SetGameStatusTx(tx *sql.Tx, gameID int64, status string) error {
 	if status != "waiting" && status != "playing" && status != "finished" {
-		return errors.New("invalid status")
+		return fmt.Errorf("invalid game status %q: %w", status, ErrInvalidGameStatus)
 	}
 	if status == "finished" {
 		res, err := tx.Exec(`UPDATE games SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, gameID)

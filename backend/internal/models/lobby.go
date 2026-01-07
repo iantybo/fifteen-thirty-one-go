@@ -164,15 +164,15 @@ func DecrementLobbyCurrentPlayers(db *sql.DB, lobbyID int64) error {
 
 func SetLobbyStatus(db *sql.DB, lobbyID int64, status string) error {
 	if status != "waiting" && status != "in_progress" && status != "finished" {
-		return errors.New("invalid status")
+		return fmt.Errorf("invalid status: %s", status)
 	}
 	res, err := db.Exec(`UPDATE lobbies SET status = ? WHERE id = ?`, status, lobbyID)
 	if err != nil {
-		return err
+		return fmt.Errorf("SetLobbyStatus: update exec (lobby_id=%d): %w", lobbyID, err)
 	}
 	ra, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("SetLobbyStatus: rows affected (lobby_id=%d): %w", lobbyID, err)
 	}
 	if ra == 0 {
 		// Disambiguate "no rows affected": lobby may not exist, or values were already set.
@@ -193,15 +193,15 @@ func SetLobbyStatus(db *sql.DB, lobbyID int64, status string) error {
 // Returns ErrNotFound if the lobby does not exist.
 func SetLobbyStatusTx(tx *sql.Tx, lobbyID int64, status string) error {
 	if status != "waiting" && status != "in_progress" && status != "finished" {
-		return errors.New("invalid status")
+		return fmt.Errorf("invalid status: %s", status)
 	}
 	res, err := tx.Exec(`UPDATE lobbies SET status = ? WHERE id = ?`, status, lobbyID)
 	if err != nil {
-		return err
+		return fmt.Errorf("SetLobbyStatusTx: update exec (lobby_id=%d): %w", lobbyID, err)
 	}
 	ra, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("SetLobbyStatusTx: rows affected (lobby_id=%d): %w", lobbyID, err)
 	}
 	if ra == 0 {
 		var one int

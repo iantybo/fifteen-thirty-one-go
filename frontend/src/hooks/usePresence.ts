@@ -38,6 +38,9 @@ export function usePresence() {
     ws.on('player:presence_changed', (payload) => {
       const presence = payload as PresenceStatus
       setOnlineUsers((prev) => {
+        if (presence.status === 'offline') {
+          return prev.filter((p) => p.user_id !== presence.user_id)
+        }
         const existing = prev.findIndex((p) => p.user_id === presence.user_id)
         if (existing !== -1) {
           const updated = [...prev]
@@ -62,7 +65,9 @@ export function usePresence() {
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current)
       }
-      updatePresence('offline')
+      updatePresence('offline').catch((err) => {
+        console.error('Failed to set offline status:', err)
+      })
       ws.disconnect()
     }
   }, [updatePresence])

@@ -84,7 +84,7 @@ func MoveHandler(db *sql.DB) gin.HandlerFunc {
 			log.Printf("maybeRunBotTurns failed: game_id=%d err=%v", gameID, err)
 		}
 		// If the move (or any bot response) ended the game, persist results exactly once.
-		if err := maybeFinalizeGame(db, gameID); err != nil {
+		if err := maybeFinalizeGame(c.Request.Context(), db, gameID); err != nil {
 			log.Printf("maybeFinalizeGame failed: game_id=%d err=%v", gameID, err)
 		}
 		// Realtime: notify all connected clients that the game changed.

@@ -174,9 +174,11 @@ export const api = {
     return res
   },
   async presenceHeartbeat() {
-    await apiFetch<{ success: boolean }>(`${apiBaseUrl()}/api/users/presence/heartbeat`, {
+    const res = await apiFetch<{ success: boolean }>(`${apiBaseUrl()}/api/users/presence/heartbeat`, {
       method: 'POST',
     })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
   },
   async getUserPresence(userId: number) {
     const res = await apiFetch<PresenceStatus>(`${apiBaseUrl()}/api/users/${userId}/presence`)
