@@ -154,9 +154,9 @@ chat:
   auto_reply: true
   integrations:
     jira:
-      usage: "auto"
+      usage: "global"
     linear:
-      usage: "auto"
+      usage: "global"
 
 knowledge_base:
   opt_out: false
@@ -166,20 +166,24 @@ knowledge_base:
     enabled: true
     filePatterns: []
   learnings:
-    scope: "auto"
+    scope: "global"
   issues:
-    scope: "auto"
+    scope: "global"
   jira:
-    usage: "auto"
+    usage: "global"
     project_keys: []
   linear:
-    usage: "auto"
+    usage: "global"
     team_keys: []
   pull_requests:
-    scope: "auto"
+    scope: "global"
   mcp:
-    usage: "auto"
+    usage: "global"
     disabled_servers: []
+
+issue_enrichment:
+  auto_enrich:
+    enabled: true
 
 code_generation:
   docstrings:
