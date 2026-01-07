@@ -1,4 +1,6 @@
-image: node:20
+definitions:
+  caches:
+    gomod: backend/.go/pkg/mod
 
 clone:
   depth: full
@@ -8,6 +10,7 @@ pipelines:
     "**":
       - step:
           name: frontend eslint
+          image: node:20
           caches:
             - node
           condition:
@@ -19,10 +22,56 @@ pipelines:
             - npm ci --no-audit --no-fund
             - npm run lint
 
+      - step:
+          name: backend go checks
+          image: golang:1.25.5
+          caches:
+            - gomod
+          condition:
+            changesets:
+              includePaths:
+                - "backend/**"
+          script:
+            - cd backend
+            - export GOPATH=/opt/atlassian/pipelines/agent/build/.go
+            - export PATH=$PATH:$GOPATH/bin
+            - go mod download
+            - go mod verify
+            - echo "Checking code formatting..."
+            - |
+              if [ -n "$(gofmt -l .)" ]; then
+                echo "Go code is not formatted:"
+                gofmt -d .
+                exit 1
+              fi
+            - echo "Running go vet..."
+            - go vet ./...
+            - echo "Installing and running staticcheck..."
+            - go install honnef.co/go/tools/cmd/staticcheck@latest
+            - staticcheck ./...
+            - echo "Installing and running golangci-lint..."
+            - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOPATH/bin
+            - golangci-lint run ./...
+            - echo "Building project..."
+            - go build -v ./...
+            - echo "Running tests..."
+            - go test -v ./...
+            - echo "Running tests with race detector..."
+            - go test -race -v ./...
+            - echo "Running tests with coverage..."
+            - go test -coverprofile=coverage.out -covermode=atomic ./...
+            - go tool cover -func=coverage.out
+            - echo "Running vulnerability check..."
+            - go install golang.org/x/vuln/cmd/govulncheck@latest
+            - govulncheck ./...
+          artifacts:
+            - backend/coverage.out
+
   branches:
     main:
       - step:
           name: frontend eslint
+          image: node:20
           caches:
             - node
           condition:
@@ -33,5 +82,50 @@ pipelines:
             - cd frontend
             - npm ci --no-audit --no-fund
             - npm run lint
+
+      - step:
+          name: backend go checks
+          image: golang:1.25.5
+          caches:
+            - gomod
+          condition:
+            changesets:
+              includePaths:
+                - "backend/**"
+          script:
+            - cd backend
+            - export GOPATH=/opt/atlassian/pipelines/agent/build/.go
+            - export PATH=$PATH:$GOPATH/bin
+            - go mod download
+            - go mod verify
+            - echo "Checking code formatting..."
+            - |
+              if [ -n "$(gofmt -l .)" ]; then
+                echo "Go code is not formatted:"
+                gofmt -d .
+                exit 1
+              fi
+            - echo "Running go vet..."
+            - go vet ./...
+            - echo "Installing and running staticcheck..."
+            - go install honnef.co/go/tools/cmd/staticcheck@latest
+            - staticcheck ./...
+            - echo "Installing and running golangci-lint..."
+            - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOPATH/bin
+            - golangci-lint run ./...
+            - echo "Building project..."
+            - go build -v ./...
+            - echo "Running tests..."
+            - go test -v ./...
+            - echo "Running tests with race detector..."
+            - go test -race -v ./...
+            - echo "Running tests with coverage..."
+            - go test -coverprofile=coverage.out -covermode=atomic ./...
+            - go tool cover -func=coverage.out
+            - echo "Running vulnerability check..."
+            - go install golang.org/x/vuln/cmd/govulncheck@latest
+            - govulncheck ./...
+          artifacts:
+            - backend/coverage.out
 
 

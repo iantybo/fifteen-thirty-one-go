@@ -48,7 +48,41 @@ backend:test:
   script:
     - cd backend
     - go mod download
+    - go mod verify
+    - echo "Checking code formatting..."
+    - |
+      if [ -n "$(gofmt -l .)" ]; then
+        echo "Go code is not formatted:"
+        gofmt -d .
+        exit 1
+      fi
+    - echo "Running go vet..."
+    - go vet ./...
+    - echo "Installing and running staticcheck..."
+    - go install honnef.co/go/tools/cmd/staticcheck@latest
+    - $GOPATH/bin/staticcheck ./...
+    - echo "Installing and running golangci-lint..."
+    - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+    - $GOPATH/bin/golangci-lint run ./...
+    - echo "Building project..."
+    - go build -v ./...
+    - echo "Running tests..."
     - go test -v ./...
+    - echo "Running tests with race detector..."
     - go test -race -v ./...
+    - echo "Running tests with coverage..."
+    - go test -coverprofile=coverage.out -covermode=atomic ./...
+    - go tool cover -func=coverage.out
+    - echo "Running vulnerability check..."
+    - go install golang.org/x/vuln/cmd/govulncheck@latest
+    - $GOPATH/bin/govulncheck ./...
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: backend/coverage.out
+    paths:
+      - backend/coverage.out
+    expire_in: 1 week
 
 

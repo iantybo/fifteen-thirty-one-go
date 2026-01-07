@@ -1,0 +1,124 @@
+version: 2.1
+
+orbs:
+  go: circleci/go@1.11.0
+  node: circleci/node@5.2.0
+
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - frontend-eslint:
+          filters:
+            branches:
+              only: /.*/
+      - backend-go-checks:
+          filters:
+            branches:
+              only: /.*/
+
+jobs:
+  frontend-eslint:
+    docker:
+      - image: cimg/node:20.18
+    working_directory: ~/project
+    steps:
+      - checkout
+      - node/install-packages:
+          pkg-manager: npm
+          app-dir: ~/project/frontend
+          cache-path: ~/project/frontend/node_modules
+          override-ci-command: npm ci --no-audit --no-fund
+      - run:
+          name: Run ESLint
+          command: npm run lint
+          working_directory: ~/project/frontend
+
+  backend-go-checks:
+    docker:
+      - image: cimg/go:1.25.5
+    working_directory: ~/project/backend
+    steps:
+      - checkout:
+          path: ~/project
+
+      - restore_cache:
+          keys:
+            - go-mod-v1-{{ checksum "go.sum" }}
+            - go-mod-v1-
+
+      - run:
+          name: Download dependencies
+          command: go mod download
+
+      - run:
+          name: Verify dependencies
+          command: go mod verify
+
+      - save_cache:
+          key: go-mod-v1-{{ checksum "go.sum" }}
+          paths:
+            - "/go/pkg/mod"
+
+      - run:
+          name: Check code formatting
+          command: |
+            if [ -n "$(gofmt -l .)" ]; then
+              echo "Go code is not formatted:"
+              gofmt -d .
+              exit 1
+            fi
+
+      - run:
+          name: Run go vet
+          command: go vet ./...
+
+      - run:
+          name: Install staticcheck
+          command: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - run:
+          name: Run staticcheck
+          command: staticcheck ./...
+
+      - run:
+          name: Install golangci-lint
+          command: |
+            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+
+      - run:
+          name: Run golangci-lint
+          command: golangci-lint run ./...
+
+      - run:
+          name: Build
+          command: go build -v ./...
+
+      - run:
+          name: Run tests
+          command: go test -v ./...
+
+      - run:
+          name: Run tests with race detector
+          command: go test -race -v ./...
+
+      - run:
+          name: Run tests with coverage
+          command: |
+            go test -coverprofile=coverage.out -covermode=atomic ./...
+            go tool cover -func=coverage.out
+
+      - run:
+          name: Install govulncheck
+          command: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - run:
+          name: Run vulnerability check
+          command: govulncheck ./...
+
+      - store_artifacts:
+          path: coverage.out
+          destination: coverage
+
+      - store_test_results:
+          path: /tmp/test-results

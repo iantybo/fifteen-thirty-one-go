@@ -2,47 +2,150 @@ trigger:
   branches:
     include:
       - main
-  paths:
-    include:
-      - frontend/*
-      - frontend/**
 
 pr:
   branches:
     include:
       - "*"
-  paths:
-    include:
-      - frontend/*
-      - frontend/**
 
 pool:
   vmImage: ubuntu-latest
 
-steps:
-  - checkout: self
+stages:
+  - stage: Frontend
+    displayName: "Frontend Pipeline"
+    condition: |
+      or(
+        contains(variables['System.PullRequest.SourceBranch'], 'frontend'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      )
+    jobs:
+      - job: ESLint
+        displayName: "Frontend ESLint"
+        steps:
+          - checkout: self
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: "20.x"
-    displayName: "Use Node.js 20.x"
+          - task: NodeTool@0
+            inputs:
+              versionSpec: "20.x"
+            displayName: "Use Node.js 20.x"
 
-  - task: Cache@2
-    inputs:
-      key: 'npm | "$(Agent.OS)" | frontend/package-lock.json'
-      restoreKeys: |
-        npm | "$(Agent.OS)"
-      path: $(Pipeline.Workspace)/.npm
-    displayName: "Cache npm"
+          - task: Cache@2
+            inputs:
+              key: 'npm | "$(Agent.OS)" | frontend/package-lock.json'
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(Pipeline.Workspace)/.npm
+            displayName: "Cache npm"
 
-  - script: |
-      npm ci --no-audit --no-fund --cache $(Pipeline.Workspace)/.npm
-    workingDirectory: frontend
-    displayName: "Install (frontend)"
+          - script: |
+              npm ci --no-audit --no-fund --cache $(Pipeline.Workspace)/.npm
+            workingDirectory: frontend
+            displayName: "Install (frontend)"
 
-  - script: |
-      npm run lint
-    workingDirectory: frontend
-    displayName: "Lint (frontend)"
+          - script: |
+              npm run lint
+            workingDirectory: frontend
+            displayName: "Lint (frontend)"
+
+  - stage: Backend
+    displayName: "Backend Pipeline"
+    condition: |
+      or(
+        contains(variables['System.PullRequest.SourceBranch'], 'backend'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/main')
+      )
+    jobs:
+      - job: GoChecks
+        displayName: "Go Quality Checks"
+        steps:
+          - checkout: self
+
+          - task: GoTool@0
+            inputs:
+              version: "1.25.5"
+            displayName: "Install Go 1.25.5"
+
+          - task: Cache@2
+            inputs:
+              key: 'go | "$(Agent.OS)" | backend/go.sum'
+              restoreKeys: |
+                go | "$(Agent.OS)"
+              path: $(Pipeline.Workspace)/.go
+            displayName: "Cache Go modules"
+
+          - script: |
+              export GOPATH=$(Pipeline.Workspace)/.go
+              export PATH=$PATH:$GOPATH/bin
+              go mod download
+              go mod verify
+            workingDirectory: backend
+            displayName: "Download and verify dependencies"
+
+          - script: |
+              if [ -n "$(gofmt -l .)" ]; then
+                echo "Go code is not formatted:"
+                gofmt -d .
+                exit 1
+              fi
+            workingDirectory: backend
+            displayName: "Check formatting"
+
+          - script: |
+              go vet ./...
+            workingDirectory: backend
+            displayName: "Run go vet"
+
+          - script: |
+              export GOPATH=$(Pipeline.Workspace)/.go
+              export PATH=$PATH:$GOPATH/bin
+              go install honnef.co/go/tools/cmd/staticcheck@latest
+              staticcheck ./...
+            workingDirectory: backend
+            displayName: "Run staticcheck"
+
+          - script: |
+              export GOPATH=$(Pipeline.Workspace)/.go
+              export PATH=$PATH:$GOPATH/bin
+              curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOPATH/bin
+              golangci-lint run ./...
+            workingDirectory: backend
+            displayName: "Run golangci-lint"
+
+          - script: |
+              go build -v ./...
+            workingDirectory: backend
+            displayName: "Build"
+
+          - script: |
+              go test -v ./...
+            workingDirectory: backend
+            displayName: "Run tests"
+
+          - script: |
+              go test -race -v ./...
+            workingDirectory: backend
+            displayName: "Run tests with race detector"
+
+          - script: |
+              go test -coverprofile=coverage.out -covermode=atomic ./...
+              go tool cover -func=coverage.out
+            workingDirectory: backend
+            displayName: "Run tests with coverage"
+
+          - script: |
+              export GOPATH=$(Pipeline.Workspace)/.go
+              export PATH=$PATH:$GOPATH/bin
+              go install golang.org/x/vuln/cmd/govulncheck@latest
+              govulncheck ./...
+            workingDirectory: backend
+            displayName: "Run vulnerability check"
+
+          - task: PublishCodeCoverageResults@1
+            inputs:
+              codeCoverageTool: "Cobertura"
+              summaryFileLocation: "backend/coverage.out"
+            displayName: "Publish coverage results"
+            condition: succeededOrFailed()
 
 
