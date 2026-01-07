@@ -14,7 +14,15 @@ enable_free_tier: true
 reviews:
   # Review profile and behavior
   profile: "chill"
-  request_changes_workflow: false
+  request_changes_workflow: true
+
+  pre_merge_checks:
+    custom_checks:
+      - mode: error
+        name: ensure JIRA ticket
+        instructions: >-
+          Make sure there is a Jira ticket linked in the issue AND that it satisfies the text of
+          that JIRA ticket
 
   # High-level summary settings
   high_level_summary: true
