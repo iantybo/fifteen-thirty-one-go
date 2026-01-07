@@ -12,6 +12,7 @@ import (
 	"fifteen-thirty-one-go/backend/internal/game/common"
 	"fifteen-thirty-one-go/backend/internal/game/cribbage"
 	"fifteen-thirty-one-go/backend/internal/models"
+	"fifteen-thirty-one-go/backend/internal/tracing"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,6 +28,9 @@ type moveRequest struct {
 
 func GetGameHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.GetGameHandler")
+		defer span.End()
+
 		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
@@ -57,6 +61,9 @@ func GetGameHandler(db *sql.DB) gin.HandlerFunc {
 
 func MoveHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.MoveHandler")
+		defer span.End()
+
 		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
@@ -101,6 +108,9 @@ type countRequest struct {
 
 func CountHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.CountHandler")
+		defer span.End()
+
 		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
@@ -226,6 +236,9 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 
 func QuitGameHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.QuitGameHandler")
+		defer span.End()
+
 		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil || gameID <= 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
@@ -271,6 +284,9 @@ func QuitGameHandler(db *sql.DB) gin.HandlerFunc {
 
 func NextHandHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.NextHandHandler")
+		defer span.End()
+
 		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil || gameID <= 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
@@ -423,6 +439,9 @@ type correctRequest struct {
 
 func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.CorrectHandler")
+		defer span.End()
+
 		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})

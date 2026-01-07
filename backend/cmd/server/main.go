@@ -15,9 +15,11 @@ import (
 	"fifteen-thirty-one-go/backend/internal/database"
 	"fifteen-thirty-one-go/backend/internal/handlers"
 	"fifteen-thirty-one-go/backend/internal/middleware"
+	"fifteen-thirty-one-go/backend/internal/tracing"
 	"fifteen-thirty-one-go/backend/pkg/websocket"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func main() {
@@ -25,6 +27,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+
+	// Initialize OpenTelemetry tracing
+	shutdown := tracing.InitTracer("fifteen-thirty-one-go")
+	defer shutdown()
 
 	db, err := database.OpenAndMigrate(cfg.DatabasePath)
 	if err != nil {
@@ -75,6 +81,7 @@ func main() {
 	handlers.SetHubProvider(hubRef.Get)
 
 	r := gin.Default()
+	r.Use(otelgin.Middleware("fifteen-thirty-one-go"))
 	r.Use(middleware.DevCORS(cfg))
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 

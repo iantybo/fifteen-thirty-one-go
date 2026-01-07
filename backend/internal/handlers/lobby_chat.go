@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"fifteen-thirty-one-go/backend/internal/tracing"
 	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,9 @@ type LobbyChatMessage struct {
 // and broadcasts it to the lobby room via WebSocket.
 func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.SendLobbyChatMessage")
+		defer span.End()
+
 		userID, ok := userIDFromContext(c)
 		if !ok || userID <= 0 {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -139,6 +143,9 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 // It validates the requester is authorized (lobby participant or spectator) and returns recent messages.
 func GetLobbyChatHistory(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.GetLobbyChatHistory")
+		defer span.End()
+
 		userID, ok := userIDFromContext(c)
 		if !ok || userID <= 0 {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})

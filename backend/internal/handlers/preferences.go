@@ -7,12 +7,16 @@ import (
 	"net/http"
 
 	"fifteen-thirty-one-go/backend/internal/models"
+	"fifteen-thirty-one-go/backend/internal/tracing"
 
 	"github.com/gin-gonic/gin"
 )
 
 func GetPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.GetPreferencesHandler")
+		defer span.End()
+
 		userID, ok := userIDFromContext(c)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -33,6 +37,9 @@ type putPreferencesRequest struct {
 
 func PutPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.PutPreferencesHandler")
+		defer span.End()
+
 		userID, ok := userIDFromContext(c)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})

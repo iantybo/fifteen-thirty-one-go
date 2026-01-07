@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"fifteen-thirty-one-go/backend/internal/tracing"
 	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +26,9 @@ type SpectatorInfo struct {
 // JoinAsSpectator handles POST /api/lobbies/:id/spectate and adds the authenticated user as a spectator.
 func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.JoinAsSpectator")
+		defer span.End()
+
 		userID, ok := userIDFromContext(c)
 		if !ok {
 			// Backwards compatible: some middleware sets "user_id".
@@ -155,6 +159,9 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 // LeaveAsSpectator handles DELETE /api/lobbies/:id/spectate and removes the authenticated user from spectators.
 func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.LeaveAsSpectator")
+		defer span.End()
+
 		userID, ok := userIDFromContext(c)
 		if !ok {
 			if v, exists := c.Get("user_id"); exists && v != nil {
@@ -225,6 +232,9 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 // GetSpectators handles GET /api/lobbies/:id/spectators and returns the lobby's current spectator list.
 func GetSpectators(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.GetSpectators")
+		defer span.End()
+
 		lobbyIDStr := c.Param("id")
 		lobbyID, err := strconv.ParseInt(lobbyIDStr, 10, 64)
 		if err != nil || lobbyID <= 0 {

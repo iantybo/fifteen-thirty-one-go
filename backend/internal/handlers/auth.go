@@ -11,6 +11,7 @@ import (
 	"fifteen-thirty-one-go/backend/internal/auth"
 	"fifteen-thirty-one-go/backend/internal/config"
 	"fifteen-thirty-one-go/backend/internal/models"
+	"fifteen-thirty-one-go/backend/internal/tracing"
 
 	"github.com/gin-gonic/gin"
 )
@@ -35,6 +36,9 @@ const fakeHash = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8lvZ9i8a9kaI0s5momkGLumZ5qX6e."
 
 func RegisterHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.RegisterHandler")
+		defer span.End()
+
 		var req authRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
@@ -96,6 +100,9 @@ func RegisterHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 
 func LoginHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.LoginHandler")
+		defer span.End()
+
 		var req authRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
@@ -143,6 +150,9 @@ func LoginHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 
 func MeHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.MeHandler")
+		defer span.End()
+
 		token := tokenFromHeaderOrCookie(c)
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
@@ -168,6 +178,9 @@ func MeHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 
 func LogoutHandler(cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.LogoutHandler")
+		defer span.End()
+
 		// Clear cookie regardless of auth status.
 		clearAuthCookie(c, cfg)
 		c.Status(http.StatusNoContent)

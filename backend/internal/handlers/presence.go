@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"fifteen-thirty-one-go/backend/internal/tracing"
 	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,9 @@ type PresenceStatus struct {
 // to the global websocket lobby when available.
 func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.UpdatePresence")
+		defer span.End()
+
 		userID, ok := userIDFromContext(c)
 		if !ok {
 			// Backwards compatible: some middleware sets "user_id".
@@ -120,6 +124,9 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 // information for a specific user. If the user has no presence record, defaults are returned.
 func GetPresence(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.GetPresence")
+		defer span.End()
+
 		userIDStr := c.Param("id")
 		var userID int64
 		if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil || userID <= 0 {
@@ -165,6 +172,9 @@ func GetPresence(db *sql.DB) gin.HandlerFunc {
 // preserves their current status.
 func HeartbeatPresence(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.HeartbeatPresence")
+		defer span.End()
+
 		userID, ok := userIDFromContext(c)
 		if !ok {
 			if v, exists := c.Get("user_id"); exists && v != nil {

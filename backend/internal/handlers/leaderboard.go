@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"fifteen-thirty-one-go/backend/internal/models"
+	"fifteen-thirty-one-go/backend/internal/tracing"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,7 +17,8 @@ import (
 // Accepts optional query parameter 'days' (default 30, clamped to [1, 365]).
 func LeaderboardHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
+		ctx, span := tracing.StartSpan(c.Request.Context(), "handlers.LeaderboardHandler")
+		defer span.End()
 		days := int64(30)
 		if s := c.Query("days"); s != "" {
 			if v, err := strconv.ParseInt(s, 10, 64); err == nil {

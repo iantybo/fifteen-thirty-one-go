@@ -14,6 +14,7 @@ import (
 
 	"fifteen-thirty-one-go/backend/internal/auth"
 	"fifteen-thirty-one-go/backend/internal/config"
+	"fifteen-thirty-one-go/backend/internal/tracing"
 	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 
 	"github.com/gin-gonic/gin"
@@ -88,6 +89,9 @@ func isLocalhostOrigin(origin string) bool {
 // Full message routing is implemented in Phase 4.
 func WebSocketHandler(hubProvider func() (*ws.Hub, bool), db *sql.DB, cfg config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.WebSocketHandler")
+		defer span.End()
+
 		token := tokenFromHeaderOrQuery(c, cfg)
 		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})

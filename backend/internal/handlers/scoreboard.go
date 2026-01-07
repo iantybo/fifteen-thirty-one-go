@@ -7,12 +7,16 @@ import (
 	"strconv"
 
 	"fifteen-thirty-one-go/backend/internal/models"
+	"fifteen-thirty-one-go/backend/internal/tracing"
 
 	"github.com/gin-gonic/gin"
 )
 
 func ScoreboardHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.ScoreboardHandler")
+		defer span.End()
+
 		items, err := models.ListScoreboard(db, 50)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
@@ -24,6 +28,9 @@ func ScoreboardHandler(db *sql.DB) gin.HandlerFunc {
 
 func UserStatsHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.UserStatsHandler")
+		defer span.End()
+
 		userID, err := strconv.ParseInt(c.Param("userId"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})

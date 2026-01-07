@@ -14,6 +14,7 @@ import (
 	"fifteen-thirty-one-go/backend/internal/game/common"
 	"fifteen-thirty-one-go/backend/internal/game/cribbage"
 	"fifteen-thirty-one-go/backend/internal/models"
+	"fifteen-thirty-one-go/backend/internal/tracing"
 
 	"github.com/gin-gonic/gin"
 )
@@ -119,6 +120,9 @@ type createLobbyResponse struct {
 
 func ListLobbiesHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.ListLobbiesHandler")
+		defer span.End()
+
 		// Keep handler defaults consistent with models.ListLobbies, and avoid the
 		// common "LIMIT 0 returns empty set" pitfall.
 		limit := int64(50)
@@ -158,6 +162,9 @@ func ListLobbiesHandler(db *sql.DB) gin.HandlerFunc {
 
 func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.CreateLobbyHandler")
+		defer span.End()
+
 		var req createLobbyRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
@@ -275,6 +282,9 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 
 func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.JoinLobbyHandler")
+		defer span.End()
+
 		lobbyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lobby id"})
@@ -488,6 +498,9 @@ type addBotRequest struct {
 
 func AddBotToLobbyHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.AddBotToLobbyHandler")
+		defer span.End()
+
 		lobbyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil || lobbyID <= 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lobby id"})
