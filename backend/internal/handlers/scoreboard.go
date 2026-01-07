@@ -52,3 +52,20 @@ func UserStatsHandler(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, stats)
 	}
 }
+
+// ActiveGamesHandler returns all games currently in progress with player information.
+// This endpoint is used for the global scoreboard to show all active games.
+func ActiveGamesHandler(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.ActiveGamesHandler")
+		defer span.End()
+
+		games, err := models.ListActiveGames(db)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch active games"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"games": games})
+	}
+}
