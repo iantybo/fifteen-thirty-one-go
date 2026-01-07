@@ -136,7 +136,8 @@ Player joins game room
 - `backend/internal/handlers/hub.go` - Broadcasting coordinator
 - `backend/pkg/websocket/hub.go` - Hub implementation (rooms, clients)
 - `backend/pkg/websocket/client.go` - Client pumps (read/write loops)
-- `backend/internal/database/migrations/001_init.sql` - Schema, triggers
+- `backend/internal/database/migrations/001_init.sql` - Base schema, triggers
+- `backend/internal/database/migrations/006_lobby_improvements.sql` - Lobby enhancements (chat, spectators, presence)
 
 ### Frontend
 - `frontend/src/pages/LobbiesPage.tsx` - Main lobby list page

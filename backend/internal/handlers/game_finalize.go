@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -64,7 +65,7 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 
 	var lobbyID int64
 	if err := db.QueryRowContext(ctx, `SELECT lobby_id FROM games WHERE id = ?`, gameID).Scan(&lobbyID); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return models.ErrGameNotFound
 		}
 		return fmt.Errorf("maybeFinalizeGame: query lobby_id (game_id=%d): %w", gameID, err)

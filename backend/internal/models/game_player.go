@@ -126,7 +126,7 @@ func ListGamePlayersByGameContext(ctx context.Context, db *sql.DB, gameID int64)
 		var isBotVal any
 		var botDiff sql.NullString
 		if err := rows.Scan(&gp.GameID, &gp.UserID, &gp.Username, &gp.Position, &gp.Score, &gp.Hand, &crib, &isBotVal, &botDiff); err != nil {
-			return nil, fmt.Errorf("ListGamePlayersByGame: scan game player (game_id=%d): %w", gameID, err)
+			return nil, fmt.Errorf("ListGamePlayersByGameContext: scan game player (game_id=%d): %w", gameID, err)
 		}
 		if crib.Valid {
 			v := crib.String

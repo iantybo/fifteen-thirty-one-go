@@ -62,6 +62,10 @@ func GetGameByID(db *sql.DB, id int64) (*Game, error) {
 	return &g, nil
 }
 
+// SetGameStatus updates a game's status to the specified value.
+// Valid status values are "waiting", "playing", and "finished".
+// When status is "finished", it also sets finished_at to CURRENT_TIMESTAMP.
+// Returns ErrGameNotFound if the game does not exist, or ErrInvalidGameStatus for invalid status values.
 func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 	if status != "waiting" && status != "playing" && status != "finished" {
 		return fmt.Errorf("invalid game status %q: %w", status, ErrInvalidGameStatus)

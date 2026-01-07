@@ -162,13 +162,14 @@ ALTER TABLE users ADD COLUMN bio TEXT;
 - Rate limiting on chat messages (5 msgs/10 sec)
 - Profanity filter
 - Report/block functionality
-- Password hashing for private rooms
+- Password hashing for private rooms (store only a hash; never plaintext). Prefer bcrypt (cost ≥ 12) or Argon2id (time/memory tuned for server limits) with a per-password salt; rehash when parameters increase.
+- XSS protections for chat: sanitize/strip HTML on submission, always output-encode when rendering messages, and enforce a strict Content Security Policy (CSP).
 - Spectator permissions (can't access player hands)
 - CSRF protection on all endpoints
 
 ### 6. Performance Optimizations
 
-- Chat message pagination (last 50 messages)
+- Chat history pagination (default 100 messages)
 - Lobby list caching (Redis)
 - WebSocket connection pooling
 - Database indexes on new tables

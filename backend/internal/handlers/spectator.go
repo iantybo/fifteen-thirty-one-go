@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -56,7 +57,7 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 			FROM lobbies
 			WHERE id = ?
 		`, lobbyID).Scan(&allowSpectators, &lobbyStatus)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "lobby not found"})
 			return
 		}
@@ -85,7 +86,8 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 			WHERE g.lobby_id = ? AND gp.user_id = ? AND g.status IN ('waiting', 'in_progress')
 		`, lobbyID, userID).Scan(&playerCount)
 		if err != nil {
-			log.Printf("Error checking player status: %v", err)
+			wrappedErr := fmt.Errorf("JoinAsSpectator: checking player status (lobby_id=%d user_id=%d): %w", lobbyID, userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -99,7 +101,8 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 		var avatarURL sql.NullString
 		err = db.QueryRowContext(ctx, "SELECT username, avatar_url FROM users WHERE id = ?", userID).Scan(&username, &avatarURL)
 		if err != nil {
-			log.Printf("Error getting user info: %v", err)
+			wrappedErr := fmt.Errorf("JoinAsSpectator: get user info (user_id=%d): %w", userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -111,7 +114,8 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 			ON CONFLICT(lobby_id, user_id) DO NOTHING
 		`, lobbyID, userID)
 		if err != nil {
-			log.Printf("Error inserting spectator: %v", err)
+			wrappedErr := fmt.Errorf("JoinAsSpectator: insert spectator (lobby_id=%d user_id=%d): %w", lobbyID, userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -120,7 +124,8 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 		// If the spectator already existed (ON CONFLICT DO NOTHING), use the stored joined_at.
 		// If this read fails unexpectedly, surface it rather than masking DB issues.
 		if err := db.QueryRowContext(ctx, `SELECT joined_at FROM lobby_spectators WHERE lobby_id = ? AND user_id = ?`, lobbyID, userID).Scan(&joinedAt); err != nil {
-			log.Printf("Error retrieving spectator joined_at (lobby_id=%d user_id=%d): %v", lobbyID, userID, err)
+			wrappedErr := fmt.Errorf("JoinAsSpectator: retrieve joined_at (lobby_id=%d user_id=%d): %w", lobbyID, userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -177,7 +182,8 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 		var username string
 		err = db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", userID).Scan(&username)
 		if err != nil {
-			log.Printf("Error getting username: %v", err)
+			wrappedErr := fmt.Errorf("LeaveAsSpectator: get username (user_id=%d): %w", userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -188,7 +194,8 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 			WHERE lobby_id = ? AND user_id = ?
 		`, lobbyID, userID)
 		if err != nil {
-			log.Printf("Error removing spectator: %v", err)
+			wrappedErr := fmt.Errorf("LeaveAsSpectator: delete spectator (lobby_id=%d user_id=%d): %w", lobbyID, userID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -234,7 +241,8 @@ func GetSpectators(db *sql.DB) gin.HandlerFunc {
 			ORDER BY ls.joined_at ASC
 		`, lobbyID)
 		if err != nil {
-			log.Printf("Error querying spectators: %v", err)
+			wrappedErr := fmt.Errorf("GetSpectators: query spectators (lobby_id=%d): %w", lobbyID, err)
+			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
@@ -246,13 +254,21 @@ func GetSpectators(db *sql.DB) gin.HandlerFunc {
 			var avatarURL sql.NullString
 			err := rows.Scan(&spec.UserID, &spec.Username, &spec.JoinedAt, &avatarURL)
 			if err != nil {
-				log.Printf("Error scanning spectator: %v", err)
-				continue
+				wrappedErr := fmt.Errorf("GetSpectators: scan spectator (lobby_id=%d): %w", lobbyID, err)
+				log.Printf("%v", wrappedErr)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+				return
 			}
 			if avatarURL.Valid {
 				spec.AvatarURL = &avatarURL.String
 			}
 			spectators = append(spectators, spec)
+		}
+		if err := rows.Err(); err != nil {
+			wrappedErr := fmt.Errorf("GetSpectators: iterating spectators (lobby_id=%d): %w", lobbyID, err)
+			log.Printf("%v", wrappedErr)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{"spectators": spectators})

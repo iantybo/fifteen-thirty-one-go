@@ -147,7 +147,8 @@ func WebSocketHandler(hubProvider func() (*ws.Hub, bool), db *sql.DB, cfg config
 		}
 		client, err := ws.NewClient(conn, hub, room, claims.UserID)
 		if err != nil {
-			log.Printf("WebSocketHandler: NewClient failed: user_id=%d room=%q err=%v", claims.UserID, room, err)
+			wrappedErr := fmt.Errorf("ws.NewClient failed (user_id=%d room=%q): %w", claims.UserID, room, err)
+			log.Printf("WebSocketHandler: %v", wrappedErr)
 			// Best-effort: send a close control message so the peer sees a clean disconnect.
 			if closeErr := conn.WriteControl(
 				websocket.CloseMessage,
