@@ -1,0 +1,18 @@
+---
+description: "After every code generation/edit cycle, run CodeRabbit review and address findings."
+---
+
+## CodeRabbit after codegen/edit cycles
+
+Whenever you make **any code changes** (create/update/delete files), you must run CodeRabbit CLI **before concluding the cycle**:
+
+```bash
+coderabbit review --plain --no-color --type all --base main
+```
+
+Then:
+- Apply the findings (code changes, docs updates, refactors as needed).
+- Re-run the command until there are **no findings**.
+
+If you did not change code in the cycle, you can skip CodeRabbit.
+

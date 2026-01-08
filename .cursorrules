@@ -1,0 +1,12 @@
+This repo uses Cursor rules in `.cursor/rules/*.mdc`.
+
+Key workflow rule:
+- After every code generation/edit cycle that changes code, run:
+
+```bash
+coderabbit review --plain --no-color --type all --base main
+```
+
+and iterate on findings until there are no findings.
+
+
