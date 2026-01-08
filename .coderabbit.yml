@@ -164,7 +164,7 @@ knowledge_base:
     enabled: true
   code_guidelines:
     enabled: true
-    filePatterns: []
+    filePatterns: ["cribbage_game_platform_c9968539.plan.md"]
   learnings:
     scope: "auto"
   issues:
