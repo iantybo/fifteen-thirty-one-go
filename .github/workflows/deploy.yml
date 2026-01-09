@@ -1,0 +1,46 @@
+name: Deploy Application
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy based on environment
+        run: |
+          #!/bin/bash
+          set -e
+
+          ENVIRONMENT="${{ github.ref_name }}"
+
+          echo "Deploying to environment: $ENVIRONMENT"
+
+          case $ENVIRONMENT in
+            main)
+              echo "Deploying to production..."
+              echo "Running production deployment script"
+              ;;
+            staging)
+              echo "Deploying to staging..."
+              echo "Running staging deployment script"
+            development)
+              echo "Deploying to development..."
+              echo "Running development deployment script"
+              ;;
+            *)
+              echo "Unknown environment: $ENVIRONMENT"
+              exit 1
+              ;;
+          esac
+
+          echo "Deployment complete!"
