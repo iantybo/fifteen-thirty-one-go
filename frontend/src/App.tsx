@@ -8,24 +8,28 @@ import { CreateLobbyPage } from './pages/CreateLobbyPage'
 import { LobbyDetailPage } from './pages/LobbyDetailPage'
 import { GamePage } from './pages/GamePage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
+import { ThemeToggle } from './components/ThemeToggle'
 
 function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+    <>
+      <ThemeToggle />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
 
-      <Route element={<RequireAuth />}>
-        <Route path="/" element={<Navigate to="/lobbies" replace />} />
-        <Route path="/lobbies" element={<LobbiesPage />} />
-        <Route path="/lobbies/new" element={<CreateLobbyPage />} />
-        <Route path="/leaderboard" element={<LeaderboardPage />} />
-        <Route path="/lobbies/:id" element={<LobbyDetailPage />} />
-        <Route path="/games/:id" element={<GamePage />} />
-      </Route>
+        <Route element={<RequireAuth />}>
+          <Route path="/" element={<Navigate to="/lobbies" replace />} />
+          <Route path="/lobbies" element={<LobbiesPage />} />
+          <Route path="/lobbies/new" element={<CreateLobbyPage />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
+          <Route path="/lobbies/:id" element={<LobbyDetailPage />} />
+          <Route path="/games/:id" element={<GamePage />} />
+        </Route>
 
-      <Route path="*" element={<Navigate to="/lobbies" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/lobbies" replace />} />
+      </Routes>
+    </>
   )
 }
 

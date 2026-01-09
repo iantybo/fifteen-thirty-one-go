@@ -23,14 +23,29 @@ import (
 )
 
 func main() {
+	const serviceName = "fifteen-thirty-one-go"
+
 	cfg, err := config.LoadFromEnv()
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
 
 	// Initialize OpenTelemetry tracing
-	shutdown := tracing.InitTracer("fifteen-thirty-one-go")
-	defer shutdown()
+	tracerShutdown, err := tracing.InitTracer(context.Background(), tracing.Config{
+		ServiceName: serviceName,
+		Environment: cfg.AppEnv,
+		PrettyPrint: cfg.AppEnv == "development",
+	})
+	if err != nil {
+		log.Fatalf("tracing init: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tracerShutdown(ctx); err != nil {
+			log.Printf("tracing shutdown error: %v", err)
+		}
+	}()
 
 	db, err := database.OpenAndMigrate(cfg.DatabasePath)
 	if err != nil {
@@ -81,7 +96,7 @@ func main() {
 	handlers.SetHubProvider(hubRef.Get)
 
 	r := gin.Default()
-	r.Use(otelgin.Middleware("fifteen-thirty-one-go"))
+	r.Use(otelgin.Middleware(serviceName))
 	r.Use(middleware.DevCORS(cfg))
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
