@@ -13,7 +13,8 @@ enable_free_tier: true
 
 reviews:
   # Review profile and behavior
-  profile: "chill"
+#  profile: "chill"
+  profile: "assertive"
 
   # Make CodeRabbit block merges
   request_changes_workflow: true
