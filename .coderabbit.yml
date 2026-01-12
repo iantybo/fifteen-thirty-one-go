@@ -14,7 +14,32 @@ enable_free_tier: true
 reviews:
   # Review profile and behavior
   profile: "chill"
-  request_changes_workflow: false
+
+  # Make CodeRabbit block merges
+  request_changes_workflow: true
+
+  pre_merge_checks:
+    custom_checks:
+      - mode: error
+        name: ensure JIRA ticket
+        instructions: >-
+          Make sure there is a Jira ticket linked in the PR/MR AND that it satisfies the text of
+          that JIRA ticket
+      - mode: error
+        name: ensure Linear ticket
+        instructions: >-
+          Make sure there is a Linear ticket linked in the PR/MR AND that it satisfies the text of
+          that Linear ticket
+      - mode: error
+        name: ensure GitHub ticket
+        instructions: >-
+          Make sure there is a GitHub ticket linked in the PR/MR AND that it satisfies the text of
+          that GitHub ticket
+      - mode: error
+        name: ensure GitLab ticket
+        instructions: >-
+          Make sure there is a GitLab ticket linked in the PR/MR AND that it satisfies the text of
+          that GitLab ticket
 
   # High-level summary settings
   high_level_summary: true
@@ -149,14 +174,20 @@ reviews:
       enabled: true
       timeout_ms: 90000
 
+issue_enrichment:
+  auto_enrich:
+    enabled: true
+  labeling:
+    auto_apply_labels: true
+
 chat:
   art: true
   auto_reply: true
   integrations:
     jira:
-      usage: "auto"
+      usage: "enabled"
     linear:
-      usage: "auto"
+      usage: "enabled"
 
 knowledge_base:
   opt_out: false
@@ -166,19 +197,19 @@ knowledge_base:
     enabled: true
     filePatterns: []
   learnings:
-    scope: "auto"
+    scope: "global"
   issues:
-    scope: "auto"
+    scope: "global"
   jira:
-    usage: "auto"
+    usage: "enabled"
     project_keys: []
   linear:
-    usage: "auto"
+    usage: "enabled"
     team_keys: []
   pull_requests:
-    scope: "auto"
+    scope: "global"
   mcp:
-    usage: "auto"
+    usage: "enabled"
     disabled_servers: []
 
 code_generation:
