@@ -2,6 +2,8 @@ import { apiBaseUrl } from '../lib/env'
 import { ApiError, apiFetch } from '../lib/http'
 import type {
   AuthResponse,
+  ChatbotRequest,
+  ChatbotResponse,
   Game,
   GameMove,
   GameSnapshot,
@@ -182,6 +184,16 @@ export const api = {
   },
   async getUserPresence(userId: number) {
     const res = await apiFetch<PresenceStatus>(`${apiBaseUrl()}/api/users/${userId}/presence`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+
+  // Chatbot for games with bot opponents
+  async sendChatbotMessage(gameId: number, req: ChatbotRequest) {
+    const res = await apiFetch<ChatbotResponse>(`${apiBaseUrl()}/api/games/${gameId}/chatbot`, {
+      method: 'POST',
+      body: req,
+    })
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
