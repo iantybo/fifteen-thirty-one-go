@@ -4,6 +4,93 @@ export type User = {
   created_at?: string
 }
 
+// Payment and Subscription Types
+
+export type SubscriptionPlan = {
+  id: string
+  name: string
+  display_name: string
+  description: string
+  price_cents: number
+  currency: string
+  billing_period: 'month' | 'year'
+  stripe_price_id?: string
+  features: string[]
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type UserSubscription = {
+  id: string
+  user_id: number
+  plan_id: string
+  stripe_subscription_id?: string
+  stripe_customer_id?: string
+  status: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete'
+  current_period_start: string
+  current_period_end: string
+  cancel_at_period_end: boolean
+  canceled_at?: string
+  trial_end?: string
+  created_at: string
+  updated_at: string
+}
+
+export type UserSubscriptionWithPlan = UserSubscription & {
+  plan?: SubscriptionPlan
+}
+
+export type PaymentMethod = {
+  id: string
+  user_id: number
+  stripe_payment_method_id: string
+  stripe_customer_id: string
+  type: 'card' | 'bank_account'
+  card_brand?: string
+  card_last4?: string
+  card_exp_month?: number
+  card_exp_year?: number
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type PaymentTransaction = {
+  id: string
+  user_id: number
+  subscription_id?: string
+  stripe_payment_intent_id?: string
+  stripe_invoice_id?: string
+  amount_cents: number
+  currency: string
+  status: 'succeeded' | 'pending' | 'failed' | 'refunded'
+  description?: string
+  failure_code?: string
+  failure_message?: string
+  receipt_url?: string
+  created_at: string
+  updated_at: string
+}
+
+export type CreateSubscriptionRequest = {
+  plan_id: string
+  payment_method_id: string
+}
+
+export type UpdatePaymentMethodRequest = {
+  payment_method_id: string
+}
+
+export type CancelSubscriptionRequest = {
+  cancel_at_period_end: boolean
+}
+
+export type SetupIntentResponse = {
+  client_secret: string
+  customer_id: string
+}
+
 export type AuthResponse = {
   user: User
 }
@@ -160,5 +247,27 @@ export type GameMove = {
   score_verified?: number
   is_corrected: boolean
   created_at: string
+}
+
+export type ChatbotMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+export type ChatbotRequest = {
+  message: string
+  game_context?: {
+    game_id: number
+    stage: string
+    scores: number[]
+    hand_size: number
+  }
+}
+
+export type ChatbotResponse = {
+  message: string
+  timestamp: string
 }
 

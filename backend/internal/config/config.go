@@ -20,6 +20,9 @@ type Config struct {
 	WSAllowedOrigins      []string
 	WSAllowQueryTokens    bool
 	DevWebSocketsAllowAll bool
+
+	StripeSecretKey  string
+	StripeWebhookSecret string
 }
 
 func isJWTSecretPlaceholder(secret string) bool {
@@ -64,6 +67,8 @@ func LoadFromEnv() (Config, error) {
 		JWTIssuer:    issuer,
 		JWTTTL:       time.Duration(ttlMinutes) * time.Minute,
 		AppEnv:       strings.TrimSpace(os.Getenv("APP_ENV")),
+		StripeSecretKey:  strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")),
+		StripeWebhookSecret: strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")),
 	}
 	if cfg.AppEnv == "" {
 		cfg.AppEnv = "development"
