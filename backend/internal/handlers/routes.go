@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"fifteen-thirty-one-go/backend/internal/config"
+	"fifteen-thirty-one-go/backend/internal/services"
 	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 	"github.com/gin-gonic/gin"
 )
@@ -66,4 +67,23 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 
 	// Chatbot for games with bot opponents
 	rg.POST("/games/:id/chatbot", ChatbotHandler(db))
+}
+
+// RegisterPaymentRoutes wires payment and subscription endpoints
+func RegisterPaymentRoutes(rg *gin.RouterGroup, paymentService *services.PaymentService) {
+	paymentHandler := NewPaymentHandler(paymentService)
+
+	// Public endpoints (no auth required)
+	rg.GET("/payments/plans", paymentHandler.GetPlans)
+
+	// Webhook endpoint (Stripe will call this)
+	rg.POST("/payments/webhook", paymentHandler.HandleWebhook)
+
+	// Protected endpoints (require auth)
+	rg.GET("/payments/subscription", paymentHandler.GetSubscription)
+	rg.POST("/payments/setup-intent", paymentHandler.CreateSetupIntent)
+	rg.POST("/payments/subscription", paymentHandler.CreateSubscription)
+	rg.DELETE("/payments/subscription", paymentHandler.CancelSubscription)
+	rg.GET("/payments/methods", paymentHandler.GetPaymentMethods)
+	rg.PUT("/payments/methods", paymentHandler.UpdatePaymentMethod)
 }

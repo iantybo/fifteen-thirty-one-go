@@ -94,12 +94,21 @@ public class ChallengeGenerator {
         Card starter = null;
         int score = 0;
         int attempts = 0;
+        int maxAttempts = 10; // 10 attempts * 5 cards = 50 cards (within 52 card deck)
 
-        while ((score < 10 || score > 24) && attempts < 100) {
-            hand = fullDeck.subList(attempts * 5, attempts * 5 + 4);
-            starter = fullDeck.get(attempts * 5 + 4);
+        while ((score < 10 || score > 24) && attempts < maxAttempts) {
+            int startIdx = attempts * 5;
+            hand = fullDeck.subList(startIdx, startIdx + 4);
+            starter = fullDeck.get(startIdx + 4);
             score = scorer.scoreHand(hand, starter, false);
             attempts++;
+        }
+
+        // If we didn't find a good hand, just use the last one
+        if (hand == null) {
+            hand = fullDeck.subList(0, 4);
+            starter = fullDeck.get(4);
+            score = scorer.scoreHand(hand, starter, false);
         }
 
         String challengeId = "MS-" + date.toString();

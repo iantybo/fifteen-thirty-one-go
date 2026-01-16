@@ -15,6 +15,7 @@ import (
 	"fifteen-thirty-one-go/backend/internal/database"
 	"fifteen-thirty-one-go/backend/internal/handlers"
 	"fifteen-thirty-one-go/backend/internal/middleware"
+	"fifteen-thirty-one-go/backend/internal/services"
 	"fifteen-thirty-one-go/backend/internal/tracing"
 	"fifteen-thirty-one-go/backend/pkg/websocket"
 
@@ -85,13 +86,30 @@ func main() {
 	r.Use(middleware.DevCORS(cfg))
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
+	// Initialize payment service if Stripe is configured
+	var paymentService *services.PaymentService
+	if cfg.StripeSecretKey != "" {
+		paymentService = services.NewPaymentService(db, cfg.StripeSecretKey, cfg.StripeWebhookSecret)
+	}
+
 	api := r.Group("/api")
 	handlers.RegisterAuthRoutes(api, db, cfg)
+
+	// Register payment routes (some protected, some public)
+	if paymentService != nil {
+		// Public endpoints (plans, webhook)
+		handlers.RegisterPaymentRoutes(api, paymentService)
+	}
 
 	protected := api.Group("")
 	protected.Use(middleware.RequireAuth(cfg))
 	handlers.RegisterLobbyRoutes(protected, db)
 	handlers.RegisterGameRoutes(protected, db)
+
+	// Protected payment endpoints
+	if paymentService != nil {
+		handlers.RegisterPaymentRoutes(protected, paymentService)
+	}
 
 	// WebSocket endpoint is auth-gated via token query param or Authorization header.
 	r.GET("/ws", handlers.WebSocketHandler(hubRef.Get, db, cfg))
