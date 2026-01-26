@@ -25,3 +25,14 @@ frontend/.vite/
 *.log
 
 
+
+# Maven build output
+target/
+
+# Gradle build output
+build/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
