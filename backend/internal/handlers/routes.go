@@ -64,3 +64,15 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/scoreboard/:userId", UserStatsHandler(db))
 	rg.GET("/leaderboard", LeaderboardHandler(db))
 }
+
+// RegisterPremiumRoutes wires premium subscription and avatar endpoints.
+func RegisterPremiumRoutes(rg *gin.RouterGroup, db *sql.DB, cfg config.Config) {
+	rg.POST("/premium/checkout", CreateCheckoutSessionHandler(db, cfg))
+	rg.GET("/premium/status", GetPremiumStatusHandler(db))
+	rg.PUT("/premium/avatar", UpdateAvatarHandler(db))
+}
+
+// RegisterPremiumWebhookRoutes wires Stripe webhook endpoints (public, no auth required).
+func RegisterPremiumWebhookRoutes(rg *gin.RouterGroup, db *sql.DB, cfg config.Config) {
+	rg.POST("/premium/webhook", StripeWebhookHandler(db, cfg))
+}

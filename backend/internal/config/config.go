@@ -20,6 +20,11 @@ type Config struct {
 	WSAllowedOrigins      []string
 	WSAllowQueryTokens    bool
 	DevWebSocketsAllowAll bool
+
+	StripeSecretKey      string
+	StripePublishableKey string
+	StripePriceID        string
+	FrontendURL          string
 }
 
 func isJWTSecretPlaceholder(secret string) bool {
@@ -134,6 +139,15 @@ func LoadFromEnv() (Config, error) {
 	}
 	if len(missing) > 0 {
 		return Config{}, fmt.Errorf("missing/invalid env: %s", strings.Join(missing, ", "))
+	}
+
+	// Stripe configuration (optional - only required if premium features are enabled)
+	cfg.StripeSecretKey = strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
+	cfg.StripePublishableKey = strings.TrimSpace(os.Getenv("STRIPE_PUBLISHABLE_KEY"))
+	cfg.StripePriceID = strings.TrimSpace(os.Getenv("STRIPE_PRICE_ID"))
+	cfg.FrontendURL = strings.TrimSpace(os.Getenv("FRONTEND_URL"))
+	if cfg.FrontendURL == "" {
+		cfg.FrontendURL = "http://localhost:5173" // Default for development
 	}
 
 	return cfg, nil

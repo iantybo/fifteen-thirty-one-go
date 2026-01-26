@@ -13,6 +13,8 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 	GamesPlayed  int64     `json:"games_played"`
 	GamesWon     int64     `json:"games_won"`
+	AvatarURL    *string   `json:"avatar_url,omitempty"`
+	IsPremium    bool      `json:"is_premium"`
 }
 
 func CreateUser(db *sql.DB, username, passwordHash string) (*User, error) {
@@ -32,30 +34,50 @@ func CreateUser(db *sql.DB, username, passwordHash string) (*User, error) {
 
 func GetUserByID(db *sql.DB, id int64) (*User, error) {
 	var u User
+	var avatarURL sql.NullString
 	err := db.QueryRow(
-		`SELECT id, username, password_hash, created_at, games_played, games_won FROM users WHERE id = ?`,
+		`SELECT id, username, password_hash, created_at, games_played, games_won, avatar_url FROM users WHERE id = ?`,
 		id,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt, &u.GamesPlayed, &u.GamesWon)
+	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt, &u.GamesPlayed, &u.GamesWon, &avatarURL)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	if avatarURL.Valid {
+		u.AvatarURL = &avatarURL.String
+	}
+	// Check if user has active premium subscription
+	isPremium, err := HasActivePremiumSubscription(db, id)
+	if err != nil {
+		return nil, err
+	}
+	u.IsPremium = isPremium
 	return &u, nil
 }
 
 func GetUserByUsername(db *sql.DB, username string) (*User, error) {
 	var u User
+	var avatarURL sql.NullString
 	err := db.QueryRow(
-		`SELECT id, username, password_hash, created_at, games_played, games_won FROM users WHERE username = ?`,
+		`SELECT id, username, password_hash, created_at, games_played, games_won, avatar_url FROM users WHERE username = ?`,
 		username,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt, &u.GamesPlayed, &u.GamesWon)
+	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt, &u.GamesPlayed, &u.GamesWon, &avatarURL)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	if avatarURL.Valid {
+		u.AvatarURL = &avatarURL.String
+	}
+	// Check if user has active premium subscription
+	isPremium, err := HasActivePremiumSubscription(db, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	u.IsPremium = isPremium
 	return &u, nil
 }

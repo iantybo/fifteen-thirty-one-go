@@ -2,12 +2,14 @@ import { apiBaseUrl } from '../lib/env'
 import { ApiError, apiFetch } from '../lib/http'
 import type {
   AuthResponse,
+  CheckoutSessionResponse,
   Game,
   GameMove,
   GameSnapshot,
   LeaderboardResponse,
   Lobby,
   LobbyChatMessage,
+  PremiumStatus,
   PresenceStatus,
   SpectatorInfo,
   User,
@@ -182,6 +184,28 @@ export const api = {
   },
   async getUserPresence(userId: number) {
     const res = await apiFetch<PresenceStatus>(`${apiBaseUrl()}/api/users/${userId}/presence`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+
+  // Premium features
+  async createCheckoutSession() {
+    const res = await apiFetch<CheckoutSessionResponse>(`${apiBaseUrl()}/api/premium/checkout`, {
+      method: 'POST',
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async getPremiumStatus() {
+    const res = await apiFetch<PremiumStatus>(`${apiBaseUrl()}/api/premium/status`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async updateAvatar(avatarUrl: string | null) {
+    const res = await apiFetch<{ user: User }>(`${apiBaseUrl()}/api/premium/avatar`, {
+      method: 'PUT',
+      body: { avatar_url: avatarUrl },
+    })
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },

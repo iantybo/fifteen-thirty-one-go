@@ -2,6 +2,30 @@ export type User = {
   id: number
   username: string
   created_at?: string
+  avatar_url?: string | null
+  is_premium?: boolean
+}
+
+export type PremiumSubscription = {
+  id: number
+  user_id: number
+  stripe_customer_id: string
+  stripe_subscription_id?: string | null
+  status: 'active' | 'canceled' | 'past_due' | 'unpaid'
+  current_period_start: string
+  current_period_end: string
+  created_at: string
+  updated_at: string
+}
+
+export type PremiumStatus = {
+  is_premium: boolean
+  subscription: PremiumSubscription | null
+}
+
+export type CheckoutSessionResponse = {
+  session_id: string
+  url: string
 }
 
 export type AuthResponse = {
