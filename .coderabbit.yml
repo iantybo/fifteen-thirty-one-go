@@ -1,45 +1,51 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-#
-# CodeRabbit Configuration - Example defaults
+
 # This file is a partial example and may not include every valid configuration option.
 # See the schema (above) for the complete list of supported keys and tools.
-#
 
 # General settings
 language: "en-US"
-tone_instructions: ""
+tone_instructions: "Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not."
 early_access: false
 enable_free_tier: true
 
 reviews:
   # Review profile and behavior
-  profile: "chill"
+  # profile: "chill"
+  profile: "assertive"
 
-  # Make CodeRabbit block merges
+  # Make CodeRabbit block merges until all issues are resolved
   request_changes_workflow: true
 
   pre_merge_checks:
     custom_checks:
       - mode: error
-        name: ensure JIRA ticket
+        name: Linked JIRA ticket meets criteria
         instructions: >-
           Make sure there is a Jira ticket linked in the PR/MR AND that it satisfies the text of
           that JIRA ticket
+
       - mode: error
-        name: ensure Linear ticket
+        name: Ensure no "exec" type commands run
         instructions: >-
-          Make sure there is a Linear ticket linked in the PR/MR AND that it satisfies the text of
-          that Linear ticket
-      - mode: error
-        name: ensure GitHub ticket
-        instructions: >-
-          Make sure there is a GitHub ticket linked in the PR/MR AND that it satisfies the text of
-          that GitHub ticket
-      - mode: error
-        name: ensure GitLab ticket
-        instructions: >-
-          Make sure there is a GitLab ticket linked in the PR/MR AND that it satisfies the text of
-          that GitLab ticket
+          Make sure no tools wrap external shell scripts and bash commands, e.g., a Python script cannot invoke
+          a bash command, nor can a Terraform file run the "exec" command. Scan all the code to ensure that
+          external commands are not hidden.
+      # - mode: error
+      #   name: ensure Linear ticket
+      #   instructions: >-
+      #     Make sure there is a Linear ticket linked in the PR/MR AND that it satisfies the text of
+      #     that Linear ticket
+      # - mode: error
+      #   name: ensure GitHub ticket
+      #   instructions: >-
+      #     Make sure there is a GitHub ticket linked in the PR/MR AND that it satisfies the text of
+      #     that GitHub ticket
+      # - mode: error
+      #   name: ensure GitLab ticket
+      #   instructions: >-
+      #     Make sure there is a GitLab ticket linked in the PR/MR AND that it satisfies the text of
+      #     that GitLab ticket
 
   # High-level summary settings
   high_level_summary: true
@@ -50,18 +56,19 @@ reviews:
   # Auto title settings
   # auto_title_placeholder: "@coderabbitai"
   auto_title_placeholder: "[cr]"
-  auto_title_instructions: ""
+  auto_title_instructions: "Follow conventional commits https://www.conventionalcommits.org/en/v1.0.0/"
 
   # Review status and commit status
   review_status: true
   commit_status: true
+  # Do not fail PR if CodeRabbit cannot execute a review for some reason
   fail_commit_status: false
 
   # Walkthrough settings
-  collapse_walkthrough: false
-  changed_files_summary: true
-  sequence_diagrams: true
-  estimate_code_review_effort: true
+  collapse_walkthrough: true
+  changed_files_summary: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
 
   # Issue and PR related settings
   assess_linked_issues: true
@@ -76,6 +83,19 @@ reviews:
   # Path filtering and instructions
   path_filters: []
   path_instructions:
+    # Wildcard path instructions
+    - path: "**/*"
+      instructions: |
+        Ensure all code meets the following standards:
+        - All code should only be related to serving the Cribbage game
+        - All code in production must either be Go or Typescript, admin code like Dockerfiles and Makefiles is fine
+        - Ensure all code is not committing n+1 queries, O(n^2), and other recursive/iterative traps (see ch. 1 of SICP)
+        - No overly clever abstractions
+        - Ensure functions are focused and not doing too much UNLESS detailed comments are added
+        - Ensure no business logic is tightly coupled to any particular framework
+        - Ensure no errors are swallowed, and no silents failures take place
+        - No fire-and-forget async processes
+
     # Go-specific instructions
     - path: "**/*.go"
       instructions: |
@@ -218,4 +238,3 @@ code_generation:
     path_instructions: []
   unit_tests:
     path_instructions: []
-
