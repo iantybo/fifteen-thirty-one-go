@@ -89,7 +89,7 @@ reviews:
         Ensure all code meets the following standards:
         - All code should only be related to serving the Cribbage game
         - All code in production must either be Go or Typescript, admin code like Dockerfiles and Makefiles is fine
-        - Ensure all code is not committing n+1 queries, O(n^2), and other recurisve/iterative traps (see ch. 1 of SICP)
+        - Ensure all code is not committing n+1 queries, O(n^2), and other recursive/iterative traps (see ch. 1 of SICP)
         - No overly clever abstractions
         - Ensure functions are focused and not doing too much UNLESS detailed comments are added
         - Ensure no business logic is tightly coupled to any particular framework
@@ -238,5 +238,3 @@ code_generation:
     path_instructions: []
   unit_tests:
     path_instructions: []
-
-
