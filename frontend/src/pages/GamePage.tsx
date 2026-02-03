@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Card, GameMove, GameSnapshot, UserStats } from '../api/types'
 import { useAuth } from '../auth/auth'
+import { VideoChat } from '../components/VideoChat'
 import { WsClient } from '../ws/wsClient'
 import type React from 'react'
 
@@ -664,6 +665,7 @@ export function GamePage() {
   const [profilesByUserId, setProfilesByUserId] = useState<Record<number, PlayerProfileState>>({})
   const profileFetchRef = useRef<Set<number>>(new Set())
   const lastCueMoveIDRef = useRef<number | null>(null)
+  const [showVideoChat, setShowVideoChat] = useState(false)
 
   useEffect(() => {
     if (!user || !isValidId) return
@@ -845,7 +847,7 @@ export function GamePage() {
           </button>
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
         <div
           title={`Connection: ${status}`}
           style={{
@@ -857,8 +859,33 @@ export function GamePage() {
           }}
         />
         <div style={{ opacity: 0.8 }}>{loading ? 'Loading…' : ''}</div>
+        {snap && (
+          <button
+            type="button"
+            onClick={() => setShowVideoChat((v) => !v)}
+            style={{
+              marginLeft: 'auto',
+              padding: '6px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--color-border)',
+              background: showVideoChat ? 'var(--color-primary)' : 'var(--color-bg-button)',
+              color: showVideoChat ? 'white' : undefined,
+            }}
+          >
+            {showVideoChat ? 'Hide video chat' : 'Video chat'}
+          </button>
+        )}
       </div>
       {err && <div style={{ color: 'crimson', marginTop: 8 }}>{err}</div>}
+      {showVideoChat && snap && user && (
+        <div style={{ marginTop: 16 }}>
+          <VideoChat
+            ws={ws}
+            myUserId={user.id}
+            peerUserIds={snap.players.filter((p) => !p.is_bot && p.user_id !== user.id).map((p) => p.user_id)}
+          />
+        </div>
+      )}
 
       {!snap ? (
         <div style={{ marginTop: 16, opacity: 0.8 }}>{loading ? 'Loading…' : 'No snapshot yet.'}</div>

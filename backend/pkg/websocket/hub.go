@@ -13,11 +13,20 @@ type Hub struct {
 	unregister chan *Client
 	join       chan joinReq
 	broadcast  chan Broadcast
+	sendToUser chan sendToUserReq
 
 	rooms map[string]map[*Client]bool
 
 	stopOnce sync.Once
 	stop     chan struct{}
+}
+
+// sendToUserReq sends a message to a single user in a room (e.g. for WebRTC signaling).
+type sendToUserReq struct {
+	Room     string
+	ToUserID int64
+	Type     string
+	Payload  any
 }
 
 type joinReq struct {
@@ -37,6 +46,7 @@ func NewHub() *Hub {
 		unregister: make(chan *Client),
 		join:       make(chan joinReq),
 		broadcast:  make(chan Broadcast, 256),
+		sendToUser: make(chan sendToUserReq, 64),
 		rooms:      map[string]map[*Client]bool{},
 		stop:       make(chan struct{}),
 	}
@@ -61,6 +71,8 @@ func (h *Hub) Run() {
 			h.moveClientToRoom(jr.Client, jr.Room)
 		case b := <-h.broadcast:
 			h.broadcastToRoom(b.Room, b.Type, b.Payload)
+		case s := <-h.sendToUser:
+			h.sendToUserInRoom(s.Room, s.ToUserID, s.Type, s.Payload)
 		}
 	}
 }
@@ -115,6 +127,19 @@ func (h *Hub) Broadcast(room, typ string, payload any) {
 	default:
 		// Drop rather than block forever (e.g., if Run() has exited and the
 		// channel buffer fills).
+		return
+	}
+}
+
+// SendToUser sends a message to a single user in the room (e.g. WebRTC offer/answer/ICE).
+// If that user has no client in the room, the message is dropped.
+func (h *Hub) SendToUser(room string, toUserID int64, typ string, payload any) {
+	select {
+	case <-h.stop:
+		return
+	case h.sendToUser <- sendToUserReq{Room: room, ToUserID: toUserID, Type: typ, Payload: payload}:
+		return
+	default:
 		return
 	}
 }
@@ -178,6 +203,38 @@ func (h *Hub) broadcastToRoom(room, typ string, payload any) {
 			// Backpressure / dead client.
 			deadClients = append(deadClients, c)
 		}
+	}
+	for _, c := range deadClients {
+		h.removeClient(c)
+	}
+}
+
+func (h *Hub) sendToUserInRoom(room string, toUserID int64, typ string, payload any) {
+	clients := h.rooms[room]
+	if len(clients) == 0 {
+		return
+	}
+	msg := map[string]any{
+		"type":      typ,
+		"payload":   payload,
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("ws sendToUser marshal error: room=%s type=%s err=%v", room, typ, err)
+		return
+	}
+	var deadClients []*Client
+	for c := range clients {
+		if c.UserID != toUserID {
+			continue
+		}
+		select {
+		case c.Send <- data:
+		default:
+			deadClients = append(deadClients, c)
+		}
+		break // at most one client per user per room
 	}
 	for _, c := range deadClients {
 		h.removeClient(c)

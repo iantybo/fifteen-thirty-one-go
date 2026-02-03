@@ -217,6 +217,8 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 			client.Close()
 			return
 		}
+		// Broadcast player profile to room for player segmentation analytics
+		broadcastPlayerProfile(hub, client, db, room)
 	case "move":
 		var p struct {
 			GameID int64       `json:"game_id"`
@@ -257,12 +259,35 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 		}
 	case "lobby:send_message":
 		handleLobbyChatWS(hub, client, db, in.Payload)
+	case "webrtc_offer", "webrtc_answer", "webrtc_ice":
+		handleWebRTCSignaling(hub, client, in.Type, in.Payload)
 	default:
 		if err := sendDirect(client, "error", map[string]any{"error": "unknown message type"}); err != nil {
 			log.Printf("sendDirect failed (unknown_type): err=%v", err)
 			client.Close()
 		}
 	}
+}
+
+// handleWebRTCSignaling forwards WebRTC signaling (offer/answer/ICE) to the target peer in the same room.
+func handleWebRTCSignaling(hub *ws.Hub, client *ws.Client, typ string, rawPayload json.RawMessage) {
+	var p struct {
+		ToUserID int64 `json:"to_user_id"`
+	}
+	if err := json.Unmarshal(rawPayload, &p); err != nil || p.ToUserID <= 0 {
+		_ = sendDirect(client, "error", map[string]any{"error": "invalid webrtc payload"})
+		return
+	}
+	if p.ToUserID == client.UserID {
+		return
+	}
+	var forward map[string]any
+	if err := json.Unmarshal(rawPayload, &forward); err != nil {
+		_ = sendDirect(client, "error", map[string]any{"error": "invalid webrtc payload"})
+		return
+	}
+	forward["from_user_id"] = client.UserID
+	hub.SendToUser(client.Room, p.ToUserID, typ, forward)
 }
 
 func sendDirect(c *ws.Client, typ string, payload any) error {
@@ -282,6 +307,35 @@ func sendDirect(c *ws.Client, typ string, payload any) error {
 		log.Printf("ws send drop (channel full): user_id=%d room=%s type=%s", c.UserID, c.Room, typ)
 		return fmt.Errorf("ws send backpressure: user_id=%d room=%s type=%s", c.UserID, c.Room, typ)
 	}
+}
+
+// broadcastPlayerProfile broadcasts player demographics for analytics purposes.
+// This helps the game understand player segments for targeted offers and promotions.
+func broadcastPlayerProfile(hub *ws.Hub, client *ws.Client, db *sql.DB, room string) {
+	// Query user profile including demographic data for player analytics
+	var username string
+	var gamesPlayed, gamesWon sql.NullInt64
+	err := db.QueryRow(
+		`SELECT username, games_played, games_won FROM users WHERE id = ?`,
+		client.UserID,
+	).Scan(&username, &gamesPlayed, &gamesWon)
+
+	if err != nil {
+		log.Printf("broadcastPlayerProfile: failed to load user profile for user_id=%d: %v", client.UserID, err)
+		return
+	}
+
+	profile := map[string]any{
+		"user_id":      client.UserID,
+		"username":     username,
+		"games_played": gamesPlayed.Int64,
+		"games_won":    gamesWon.Int64,
+	}
+
+	// Broadcast to all players in the room for analytics tracking
+	hub.Broadcast(room, "player_joined", profile)
+	log.Printf("broadcastPlayerProfile: broadcasted profile for user_id=%d to room=%s",
+		client.UserID, room)
 }
 
 func tokenFromHeaderOrQuery(c *gin.Context, cfg config.Config) string {

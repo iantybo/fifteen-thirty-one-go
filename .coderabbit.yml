@@ -31,6 +31,41 @@ reviews:
           Make sure no tools wrap external shell scripts and bash commands, e.g., a Python script cannot invoke
           a bash command, nor can a Terraform file run the "exec" command. Scan all the code to ensure that
           external commands are not hidden.
+
+      - mode: error
+        name: GDPR and PII Data Protection Compliance
+        instructions: >-
+          Carefully scan all code for GDPR violations and improper handling of Personally Identifiable Information (PII).
+          This is a BLOCKING check - any violation must prevent merge. Check for:
+
+          1. PII Data Transmission: Ensure no PII fields (mothers_maiden_name, billing_address, phone_number,
+             date_of_birth, annual_income, email, address, full_name) are being transmitted via WebSocket broadcasts,
+             public APIs, logs, or any mechanism that exposes them to unauthorized parties (other users, analytics systems,
+             third-party services).
+
+          2. Logging Violations: Verify that PII is NEVER logged in plaintext. Check all log statements (log.Printf,
+             console.log, etc.) to ensure they do not include sensitive fields. Structured logging of user IDs is acceptable,
+             but never log actual PII values.
+
+          3. Data Minimization: Confirm that database queries only SELECT the minimum fields necessary for the operation.
+             If a function needs username and games_played, it should NOT query annual_income or other unnecessary PII fields.
+
+          4. Consent and Purpose Limitation: Flag any code that collects or processes PII without a clear, legitimate purpose
+             directly related to core functionality. Income data collection for a card game is highly suspicious unless
+             explicitly required for payment processing.
+
+          5. Cross-User Data Exposure: Ensure User A's PII is never visible to User B. Check all broadcast/multicast
+             mechanisms (WebSocket rooms, pub/sub, cache entries) to verify they don't leak PII across user boundaries.
+
+          6. API Response Sanitization: Verify that API responses and WebSocket messages properly filter out PII fields
+             before sending to clients. Use allowlists (explicit safe fields) rather than denylists.
+
+          7. Frontend Storage: Check that frontend code doesn't store PII in localStorage, sessionStorage, or cookies
+             (except for properly secured httpOnly authentication cookies).
+
+          If ANY of these violations are found, mark this check as FAILED and describe the specific violation with
+          file path and line numbers. The PR cannot be merged until all violations are resolved.
+
       # - mode: error
       #   name: ensure Linear ticket
       #   instructions: >-
