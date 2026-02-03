@@ -10,6 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GetAllCardsHandler returns a handler that retrieves all trading cards.
+// Returns a JSON array of all cards sorted by rarity and name.
 func GetAllCardsHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cards, err := models.GetAllTradingCards(db)
@@ -21,6 +23,8 @@ func GetAllCardsHandler(db *sql.DB) gin.HandlerFunc {
 	}
 }
 
+// GetUserCardsHandler returns a handler that retrieves the authenticated user's trading card collection.
+// Requires authentication. Returns a JSON array of cards the user owns with quantity and acquisition date.
 func GetUserCardsHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("user_id")
@@ -38,6 +42,9 @@ func GetUserCardsHandler(db *sql.DB) gin.HandlerFunc {
 	}
 }
 
+// ClaimCardHandler returns a handler that allows users to claim trading cards they've earned.
+// Validates that the user meets the reward requirements before granting the card.
+// Requires authentication. Returns 403 if requirements are not met, 409 if card is already owned.
 func ClaimCardHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("user_id")
@@ -101,6 +108,10 @@ func ClaimCardHandler(db *sql.DB) gin.HandlerFunc {
 				if user.GamesPlayed >= int64(reward.RequirementValue) {
 					eligible = true
 				}
+			case "win_streak", "high_score", "special_event":
+				// These reward types require additional tracking not yet implemented.
+				// For now, skip eligibility check for these cards.
+				continue
 			}
 		}
 
@@ -121,6 +132,9 @@ func ClaimCardHandler(db *sql.DB) gin.HandlerFunc {
 	}
 }
 
+// GetCardProgressHandler returns a handler that shows the user's progress toward earning all trading cards.
+// Requires authentication. Returns a JSON array showing each card, whether it's unlocked,
+// and the user's progress toward the requirement.
 func GetCardProgressHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("user_id")

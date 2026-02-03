@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// TradingCard represents a collectible card that users can earn.
 type TradingCard struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
@@ -16,6 +17,7 @@ type TradingCard struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// UserTradingCard represents a user's ownership of a trading card.
 type UserTradingCard struct {
 	ID         int64     `json:"id"`
 	UserID     int64     `json:"user_id"`
@@ -24,6 +26,7 @@ type UserTradingCard struct {
 	Quantity   int       `json:"quantity"`
 }
 
+// CardReward defines the requirements for earning a trading card.
 type CardReward struct {
 	ID               int64  `json:"id"`
 	CardID           int64  `json:"card_id"`
@@ -33,12 +36,14 @@ type CardReward struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
+// UserCardWithDetails combines trading card information with user ownership details.
 type UserCardWithDetails struct {
 	TradingCard
 	Quantity   int       `json:"quantity"`
 	AcquiredAt time.Time `json:"acquired_at"`
 }
 
+// CardProgress tracks a user's progress toward earning a trading card.
 type CardProgress struct {
 	Card            TradingCard `json:"card"`
 	Unlocked        bool        `json:"unlocked"`
@@ -47,6 +52,7 @@ type CardProgress struct {
 	RewardType      string      `json:"reward_type"`
 }
 
+// GetAllTradingCards retrieves all trading cards from the database, sorted by rarity and name.
 func GetAllTradingCards(db *sql.DB) ([]TradingCard, error) {
 	rows, err := db.Query(`
 		SELECT id, name, description, rarity, artwork_url, category, created_at
@@ -72,6 +78,8 @@ func GetAllTradingCards(db *sql.DB) ([]TradingCard, error) {
 	return cards, nil
 }
 
+// GetTradingCardByID retrieves a single trading card by its ID.
+// Returns ErrNotFound if the card does not exist.
 func GetTradingCardByID(db *sql.DB, cardID int64) (*TradingCard, error) {
 	var c TradingCard
 	err := db.QueryRow(`
@@ -88,6 +96,8 @@ func GetTradingCardByID(db *sql.DB, cardID int64) (*TradingCard, error) {
 	return &c, nil
 }
 
+// GetUserTradingCards retrieves all trading cards owned by a specific user.
+// Returns cards with ownership details sorted by acquisition date (most recent first).
 func GetUserTradingCards(db *sql.DB, userID int64) ([]UserCardWithDetails, error) {
 	rows, err := db.Query(`
 		SELECT tc.id, tc.name, tc.description, tc.rarity, tc.artwork_url, tc.category, tc.created_at,
@@ -119,6 +129,7 @@ func GetUserTradingCards(db *sql.DB, userID int64) ([]UserCardWithDetails, error
 	return cards, nil
 }
 
+// UserHasCard checks whether a user owns a specific trading card.
 func UserHasCard(db *sql.DB, userID, cardID int64) (bool, error) {
 	var exists bool
 	err := db.QueryRow(`
@@ -127,6 +138,8 @@ func UserHasCard(db *sql.DB, userID, cardID int64) (bool, error) {
 	return exists, err
 }
 
+// AddCardToUser adds a trading card to a user's collection.
+// If the user already owns the card, increments the quantity.
 func AddCardToUser(db *sql.DB, userID, cardID int64) error {
 	_, err := db.Exec(`
 		INSERT INTO user_trading_cards (user_id, card_id, quantity)
@@ -137,6 +150,7 @@ func AddCardToUser(db *sql.DB, userID, cardID int64) error {
 	return err
 }
 
+// GetCardRewards retrieves all reward conditions for a specific trading card.
 func GetCardRewards(db *sql.DB, cardID int64) ([]CardReward, error) {
 	rows, err := db.Query(`
 		SELECT id, card_id, reward_type, requirement_value, COALESCE(requirement_data, ''), created_at
@@ -162,6 +176,7 @@ func GetCardRewards(db *sql.DB, cardID int64) ([]CardReward, error) {
 	return rewards, nil
 }
 
+// GetAllCardRewards retrieves all reward conditions for all trading cards.
 func GetAllCardRewards(db *sql.DB) ([]CardReward, error) {
 	rows, err := db.Query(`
 		SELECT id, card_id, reward_type, requirement_value, COALESCE(requirement_data, ''), created_at
@@ -187,6 +202,8 @@ func GetAllCardRewards(db *sql.DB) ([]CardReward, error) {
 	return rewards, nil
 }
 
+// GetUserCardProgress calculates a user's progress toward earning all trading cards.
+// Returns information about each card including whether it's unlocked and current progress.
 func GetUserCardProgress(db *sql.DB, userID int64) ([]CardProgress, error) {
 	user, err := GetUserByID(db, userID)
 	if err != nil {
