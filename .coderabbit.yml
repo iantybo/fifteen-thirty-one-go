@@ -15,7 +15,8 @@ reviews:
   profile: "assertive"
 
   # Make CodeRabbit block merges until all issues are resolved
-  request_changes_workflow: true
+  request_changes_wor
+  kflow: true
 
   pre_merge_checks:
     custom_checks:
