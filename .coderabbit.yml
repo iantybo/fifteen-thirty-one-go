@@ -20,7 +20,7 @@ reviews:
   pre_merge_checks:
     custom_checks:
       - mode: error
-        name: Backend changes must have a Jira and Linear ticket linked
+        name: Backend PRs require Jira and Linear tickets
         instructions: >-
           For any pull requests that take place in ./backend, they must have BOTH a Jira and Linear ticket in the title.
       - mode: error
