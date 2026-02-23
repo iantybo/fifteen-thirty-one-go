@@ -256,7 +256,7 @@ knowledge_base:
   issues:
     scope: "global"
   jira:
-    enabled: true
+    usage: "enabled"
     project_keys:
       - KAN
   linear:
