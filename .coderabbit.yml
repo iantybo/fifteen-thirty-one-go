@@ -19,6 +19,11 @@ reviews:
 
   pre_merge_checks:
     custom_checks:
+      - mode: warning
+        name: Enforce Feature Flag
+        instructions: >-
+          All new business logic features must be behind a feature flag. For example, if a new game feature is added, it should be behind a feature flag. Ancillary tooling files are an exception, e.g., Makefile, Dockerfile, etc. 
+
       - mode: error
         name: Linked JIRA ticket meets criteria
         instructions: >-
