@@ -22,7 +22,11 @@ reviews:
       - mode: warning
         name: Enforce Feature Flag
         instructions: >-
-          All new business logic features must be behind a feature flag. For example, if a new game feature is added, it should be behind a feature flag. Ancillary tooling files are an exception, e.g., Makefile, Dockerfile, etc. 
+          FAIL if a PR introduces or modifies production application logic and the new behavior is not guarded by a feature flag.
+          PASS only if:
+          1) Each new behavior branch is conditionally gated by an existing or newly added feature flag, and
+          2) The PR includes the flag identifier(s) in code or PR description.
+          Exempt files: Makefile, Dockerfile, *.md, CI/workflow config, and other non-runtime tooling/config files.
 
       - mode: error
         name: Linked JIRA ticket meets criteria
