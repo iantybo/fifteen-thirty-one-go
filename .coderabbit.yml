@@ -104,7 +104,7 @@ reviews:
 
   # Review status and commit status
   review_status: true
-  commit_status: true
+  commit_status: false
   # Do not fail PR if CodeRabbit cannot execute a review for some reason
   fail_commit_status: false
 
