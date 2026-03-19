@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -106,6 +107,64 @@ type countRequest struct {
 	Final bool   `json:"final"`
 }
 
+type countResult struct {
+	Verified  int64
+	Breakdown any
+}
+
+// processCount performs the core scoring and persistence logic for a count request.
+// It returns the verified score and breakdown, or an error suitable for writeAPIError.
+func processCount(db *sql.DB, gameID, userID int64, pos int64, req countRequest, cut common.Card, dealerIndex int, keptHands [][]common.Card, crib []common.Card) (*countResult, int, error) {
+	var verified int64
+	var breakdown any
+	switch req.Kind {
+	case "hand":
+		posIdx := int(pos)
+		if posIdx < 0 || posIdx >= len(keptHands) {
+			return nil, http.StatusBadRequest, errors.New("invalid player position")
+		}
+		bd := cribbage.ScoreHand(keptHands[posIdx], cut, false)
+		verified = int64(bd.Total)
+		breakdown = bd
+	case "crib":
+		if int(pos) != dealerIndex {
+			return nil, http.StatusForbidden, errors.New("only dealer counts crib")
+		}
+		bd := cribbage.ScoreHand(crib, cut, true)
+		verified = int64(bd.Total)
+		breakdown = bd
+	default:
+		return nil, http.StatusBadRequest, errors.New("invalid kind")
+	}
+
+	claim := req.Claim
+	mt := "count_" + req.Kind
+	if req.Final {
+		mt = mt + "_final"
+	}
+	if req.Final {
+		exists, err := models.HasUncorrectedMoveType(db, gameID, userID, mt)
+		if err != nil {
+			return nil, http.StatusInternalServerError, fmt.Errorf("processCount: check uncorrected move (game_id=%d user_id=%d): %w", gameID, userID, err)
+		}
+		if exists {
+			return nil, http.StatusConflict, errors.New("final count already submitted")
+		}
+	}
+	if _, err := models.InsertMove(db, models.GameMove{
+		GameID:        gameID,
+		PlayerID:      userID,
+		MoveType:      mt,
+		ScoreClaimed:  &claim,
+		ScoreVerified: &verified,
+		IsCorrected:   false,
+	}); err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("processCount: insert move (game_id=%d user_id=%d): %w", gameID, userID, err)
+	}
+
+	return &countResult{Verified: verified, Breakdown: breakdown}, 0, nil
+}
+
 func CountHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.CountHandler")
@@ -143,14 +202,13 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid stage for counting"})
 			return
 		}
-		// Copy the minimal read-only fields we need, then release the lock before DB work.
 		cut := *st.Cut
 		dealerIndex := st.DealerIndex
 		keptHands := make([][]common.Card, len(st.KeptHands))
 		for i := range st.KeptHands {
 			keptHands[i] = append([]common.Card(nil), st.KeptHands[i]...)
 		}
-		crib := append([]common.Card(nil), st.Crib...)
+		cribCopy := append([]common.Card(nil), st.Crib...)
 		unlock()
 
 		players, err := models.ListGamePlayersByGame(db, gameID)
@@ -170,58 +228,9 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		var verified int64
-		var breakdown any
-		switch req.Kind {
-		case "hand":
-			posIdx := int(pos)
-			if posIdx < 0 || posIdx >= len(keptHands) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid player position"})
-				return
-			}
-			bd := cribbage.ScoreHand(keptHands[posIdx], cut, false)
-			verified = int64(bd.Total)
-			breakdown = bd
-		case "crib":
-			if int(pos) != dealerIndex {
-				c.JSON(http.StatusForbidden, gin.H{"error": "only dealer counts crib"})
-				return
-			}
-			bd := cribbage.ScoreHand(crib, cut, true)
-			verified = int64(bd.Total)
-			breakdown = bd
-		default:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid kind"})
-			return
-		}
-
-		claim := req.Claim
-		mt := "count_" + req.Kind
-		if req.Final {
-			mt = mt + "_final"
-		}
-		if req.Final {
-			// Prevent duplicate final submissions for the same player/game/type.
-			// Corrections should use the correction flow which marks the original as corrected.
-			exists, err := models.HasUncorrectedMoveType(db, gameID, userID, mt)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-				return
-			}
-			if exists {
-				c.JSON(http.StatusConflict, gin.H{"error": "final count already submitted"})
-				return
-			}
-		}
-		if _, err := models.InsertMove(db, models.GameMove{
-			GameID:        gameID,
-			PlayerID:      userID,
-			MoveType:      mt,
-			ScoreClaimed:  &claim,
-			ScoreVerified: &verified,
-			IsCorrected:   false,
-		}); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+		result, statusCode, err := processCount(db, gameID, userID, pos, req, cut, dealerIndex, keptHands, cribCopy)
+		if err != nil {
+			c.JSON(statusCode, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -230,7 +239,7 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"verified": verified, "breakdown": breakdown, "auto_count_mode": prefs.AutoCountMode})
+		c.JSON(http.StatusOK, gin.H{"verified": result.Verified, "breakdown": result.Breakdown, "auto_count_mode": prefs.AutoCountMode})
 	}
 }
 

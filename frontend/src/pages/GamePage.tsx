@@ -1,424 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Card, GameMove, GameSnapshot, UserStats } from '../api/types'
+import type { GameMove, GameSnapshot } from '../api/types'
 import { useAuth } from '../auth/auth'
 import { WsClient } from '../ws/wsClient'
 import type React from 'react'
-
-// Standard poker-size playing cards are 2.5" x 3.5" (ratio 5:7). Keep our UI cards at that ratio.
-const CARD_W = 70
-const CARD_H = 98
-const CARD_R = 12
-
-type ScoreBreakdown = {
-  total: number
-  fifteens: number
-  pairs: number
-  runs: number
-  flush: number
-  nobs: number
-  reasons?: Record<string, number>
-}
-
-type PlayerProfileState = {
-  loading: boolean
-  stats?: UserStats
-  error?: string
-}
-
-function ScoreBreakdownLine({ b }: { b: ScoreBreakdown | undefined }) {
-  if (!b) return <span style={{ opacity: 0.8 }}>(no breakdown)</span>
-  const parts: Array<[string, number]> = (
-    [
-      ['15s', b.fifteens],
-      ['pairs', b.pairs],
-      ['runs', b.runs],
-      ['flush', b.flush],
-      ['nobs', b.nobs],
-    ] as Array<[string, number]>
-  ).filter(([, v]) => v > 0)
-  return (
-    <span style={{ opacity: 0.92 }}>
-      <span style={{ fontWeight: 900 }}>+{b.total}</span>
-      {parts.length > 0 ? <span style={{ opacity: 0.9 }}> ({parts.map(([k, v]) => `${k} ${v}`).join(' · ')})</span> : null}
-    </span>
-  )
-}
-
-function playerInitials(name: string): string {
-  const trimmed = name.trim()
-  if (!trimmed) return '?'
-  const parts = trimmed.split(/\s+/).slice(0, 2)
-  const letters = parts.map((p) => p[0]).join('')
-  return letters.toUpperCase()
-}
-
-function profilePalette(slot: number) {
-  const palettes = [
-    { bg1: '#fef3c7', bg2: '#fde68a', accent: '#b45309', border: '#f59e0b' },
-    { bg1: '#dbeafe', bg2: '#bfdbfe', accent: '#1d4ed8', border: '#60a5fa' },
-    { bg1: '#dcfce7', bg2: '#bbf7d0', accent: '#15803d', border: '#4ade80' },
-    { bg1: '#fee2e2', bg2: '#fecaca', accent: '#b91c1c', border: '#f87171' },
-  ]
-  return palettes[Math.abs(slot) % palettes.length]
-}
-
-function PlayerProfileCard({
-  player,
-  profile,
-  isDealer,
-  isYou,
-}: {
-  player: GameSnapshot['players'][number]
-  profile: PlayerProfileState | undefined
-  isDealer: boolean
-  isYou: boolean
-}) {
-  const palette = profilePalette(player.position)
-  const stats = profile?.stats
-  const gamesPlayed = stats?.games_played ?? 0
-  const wins = stats?.games_won ?? 0
-  const losses = Math.max(0, gamesPlayed - wins)
-  const winRate = gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : null
-  const rank =
-    gamesPlayed >= 20 ? (winRate !== null && winRate >= 60 ? 'Ace' : winRate !== null && winRate >= 45 ? 'Pro' : 'Regular') : 'Rookie'
-
-  return (
-    <div
-      style={{
-        padding: 12,
-        borderRadius: 16,
-        border: `1px solid ${palette.border}`,
-        background: `linear-gradient(145deg, ${palette.bg1}, ${palette.bg2})`,
-        boxShadow: '0 12px 24px rgba(15, 23, 42, 0.15)',
-        position: 'relative',
-        overflow: 'hidden',
-        minHeight: 150,
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          right: -20,
-          top: -20,
-          width: 80,
-          height: 80,
-          borderRadius: 999,
-          background: 'rgba(255,255,255,0.35)',
-        }}
-      />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 999,
-            background: 'rgba(15,23,42,0.88)',
-            color: '#f8fafc',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 900,
-            letterSpacing: 0.6,
-            boxShadow: '0 6px 14px rgba(15,23,42,0.22)',
-            textTransform: 'uppercase',
-          }}
-        >
-          {playerInitials(player.username)}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 900, fontSize: 16, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {player.username} {player.is_bot ? '🤖' : ''}
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: 0.6,
-                textTransform: 'uppercase',
-                padding: '2px 6px',
-                borderRadius: 999,
-                background: 'rgba(15,23,42,0.08)',
-                color: '#0f172a',
-              }}
-            >
-              P{player.position}
-            </span>
-            {isYou ? (
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: 0.6,
-                  textTransform: 'uppercase',
-                  padding: '2px 6px',
-                  borderRadius: 999,
-                  background: 'rgba(14,116,144,0.18)',
-                  color: '#0e7490',
-                }}
-              >
-                You
-              </span>
-            ) : null}
-            {isDealer ? (
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: 0.6,
-                  textTransform: 'uppercase',
-                  padding: '2px 6px',
-                  borderRadius: 999,
-                  background: 'rgba(250,204,21,0.25)',
-                  color: '#92400e',
-                }}
-              >
-                Dealer
-              </span>
-            ) : null}
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: 0.6,
-                textTransform: 'uppercase',
-                padding: '2px 6px',
-                borderRadius: 999,
-                background: 'rgba(255,255,255,0.75)',
-                color: palette.accent,
-              }}
-            >
-              {rank}
-            </span>
-          </div>
-        </div>
-      </div>
-      <div style={{ marginTop: 12 }}>
-        {profile?.loading ? (
-          <div style={{ fontWeight: 700, opacity: 0.75 }}>Loading stats...</div>
-        ) : profile?.error ? (
-          <div style={{ fontWeight: 700, color: '#b91c1c' }}>Stats unavailable</div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
-            <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Wins</div>
-              <div style={{ fontSize: 16, fontWeight: 900 }}>{wins}</div>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Losses</div>
-              <div style={{ fontSize: 16, fontWeight: 900 }}>{losses}</div>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Win %</div>
-              <div style={{ fontSize: 16, fontWeight: 900 }}>{winRate === null ? '—' : `${winRate}%`}</div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function rankLabel(rank: number): string {
-  return rank === 1 ? 'A' : rank === 11 ? 'J' : rank === 12 ? 'Q' : rank === 13 ? 'K' : String(rank)
-}
-
-function suitSymbol(suit: Card['suit']): string {
-  switch (suit) {
-    case 'S':
-      return '♠'
-    case 'H':
-      return '♥'
-    case 'D':
-      return '♦'
-    case 'C':
-      return '♣'
-  }
-}
-
-function suitColor(suit: Card['suit']): string {
-  return suit === 'H' || suit === 'D' ? '#dc2626' : '#0f172a'
-}
-
-function cardToCode(c: Card): string {
-  return `${rankLabel(c.rank)}${c.suit}`
-}
-
-function cardToString(c: Card): string {
-  return `${rankLabel(c.rank)}${suitSymbol(c.suit)}`
-}
-
-function cardValue15(c: Card): number {
-  // Pegging total uses 15-values: A=1, 2-10 as-is, J/Q/K=10.
-  return c.rank >= 10 ? 10 : c.rank
-}
-
-function CardIcon({
-  card,
-  selected,
-  disabled,
-  muted,
-  onClick,
-  title,
-}: {
-  card: Card
-  selected?: boolean
-  disabled?: boolean
-  muted?: boolean
-  onClick?: () => void
-  title?: string
-}) {
-  const rank = rankLabel(card.rank)
-  const suit = suitSymbol(card.suit)
-  const color = suitColor(card.suit)
-  const interactive = !!onClick && !disabled
-
-  const outerStyle: React.CSSProperties = {
-    width: CARD_W,
-    height: CARD_H,
-    padding: 0,
-    borderRadius: CARD_R,
-    border: '1px solid #cbd5e1',
-    background: selected ? '#2563eb' : '#ffffff',
-    cursor: interactive ? 'pointer' : 'default',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: selected ? '0 0 0 2px rgba(37,99,235,0.25)' : undefined,
-    opacity: muted ? 0.55 : 1,
-  }
-
-  const inner = (
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        position: 'relative',
-        borderRadius: CARD_R,
-        background: selected ? '#2563eb' : '#ffffff',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          top: 7,
-          left: 8,
-          fontSize: 14,
-          fontWeight: 700,
-          lineHeight: 1,
-          color: selected ? 'white' : color,
-        }}
-      >
-        {rank}
-      </div>
-      <div
-        style={{
-          position: 'absolute',
-          top: 30,
-          left: 0,
-          right: 0,
-          textAlign: 'center',
-          fontSize: 36,
-          lineHeight: 1,
-          color: selected ? 'white' : color,
-        }}
-      >
-        {suit}
-      </div>
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 7,
-          right: 8,
-          fontSize: 14,
-          fontWeight: 700,
-          lineHeight: 1,
-          transform: 'rotate(180deg)',
-          color: selected ? 'white' : color,
-        }}
-      >
-        {rank}
-      </div>
-    </div>
-  )
-
-  if (!interactive) {
-    return (
-      <div aria-disabled={disabled ? true : undefined} title={title} style={outerStyle}>
-        {inner}
-      </div>
-    )
-  }
-
-  return (
-    <button type="button" onClick={onClick} title={title} style={outerStyle}>
-      {inner}
-    </button>
-  )
-}
-
-function ActionCard({
-  label,
-  disabled,
-  onClick,
-  title,
-  accent,
-}: {
-  label: string
-  disabled?: boolean
-  onClick?: () => void
-  title?: string
-  accent?: 'primary' | 'danger'
-}) {
-  const bg = accent === 'primary' ? '#2563eb' : accent === 'danger' ? '#dc2626' : '#ffffff'
-  const fg = accent ? '#ffffff' : '#0f172a'
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      title={title}
-      style={{
-        width: CARD_W,
-        height: CARD_H,
-        padding: 0,
-        borderRadius: CARD_R,
-        border: '1px solid #cbd5e1',
-        background: bg,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: 900,
-        letterSpacing: 0.8,
-        color: fg,
-        opacity: disabled ? 0.6 : 1,
-      }}
-    >
-      {label}
-    </button>
-  )
-}
-
-function CardBack({ title }: { title?: string }) {
-  return (
-    <div
-      title={title}
-      style={{
-        // Match CardIcon / ActionCard sizing so all cards feel consistent on the table.
-        width: CARD_W,
-        height: CARD_H,
-        borderRadius: CARD_R,
-        border: '1px solid #cbd5e1',
-        background:
-          'repeating-linear-gradient(45deg, #1d4ed8 0px, #1d4ed8 6px, #2563eb 6px, #2563eb 12px)',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
-      }}
-    />
-  )
-}
+import { PEG_BOARD_THEMES, usePegBoardTheme } from './game/pegBoardThemes'
+import { cardToCode, cardToString, cardValue15 } from './game/cardUtils'
+import { CardIcon, ActionCard, CardBack } from './game/CardComponents'
+import { PlayerProfileCard, ScoreBreakdownLine } from './game/PlayerProfileCard'
+import type { PlayerProfileState } from './game/PlayerProfileCard'
+import { PegTrack } from './game/PegTrack'
 
 function safeCountHandJSON(handJSON: string | undefined): number | null {
   if (!handJSON) return null
@@ -451,197 +43,6 @@ function feltPanelStyle(): React.CSSProperties {
   }
 }
 
-function PegTrack({
-  players,
-  scores,
-}: {
-  players: GameSnapshot['players']
-  scores: number[] | undefined
-}) {
-  const max = 121
-  const endPad = 18
-  const sorted = players.slice().sort((a, b) => a.position - b.position)
-  const colors = ['#2563eb', '#dc2626', '#16a34a', '#7c3aed']
-
-  const prevScoresRef = useRef<number[] | null>(null)
-
-  useEffect(() => {
-    if (!scores || scores.length === 0) return
-    const prev = prevScoresRef.current
-    if (!prev) {
-      prevScoresRef.current = scores.slice()
-      return
-    }
-    prevScoresRef.current = scores.slice()
-  }, [scores])
-
-  const posPct = (v: number) => `${Math.max(0, Math.min(max, v)) / max * 100}%`
-
-  return (
-    <div style={{ marginTop: 10, padding: 10, border: '1px solid #e2e8f0', borderRadius: 10 }}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>Peg board</div>
-      <div
-        style={{
-          position: 'relative',
-          height: 54,
-          borderRadius: 999,
-          background: '#f1f5f9',
-          border: '1px solid #e2e8f0',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Endcaps so 0/121 don't feel cramped */}
-        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: endPad, background: '#eef2ff' }} />
-        <div
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: endPad,
-            background: '#0f766e',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 900,
-            color: '#facc15',
-            textShadow: '0 1px 0 rgba(0,0,0,0.25)',
-            fontSize: 12,
-          }}
-          title="121"
-        >
-          121
-        </div>
-
-        {/* Inner lane where ticks/pegs are positioned (gives padding at the ends) */}
-        <div style={{ position: 'absolute', left: endPad, right: endPad, top: 0, bottom: 0 }}>
-          {/* Peg holes (two rows) */}
-          {Array.from({ length: max + 1 }).map((_, v) => {
-            const isTen = v % 10 === 0
-            const isFive = v % 5 === 0
-            const size = isTen ? 5 : isFive ? 4 : 3
-            const alpha = isTen ? 0.28 : isFive ? 0.18 : 0.12
-            const common: React.CSSProperties = {
-              position: 'absolute',
-              left: posPct(v),
-              width: size,
-              height: size,
-              borderRadius: 999,
-              transform: 'translateX(-50%)',
-              background: `rgba(15, 23, 42, ${alpha})`,
-              boxShadow: `inset 0 1px 1px rgba(255,255,255,0.45)`,
-              pointerEvents: 'none',
-            }
-            // Centers for the two peg rows (match peg positions visually).
-            return (
-              <div key={`hole:${v}`}>
-                <div style={{ ...common, top: 22 - size / 2 }} />
-                <div style={{ ...common, top: 42 - size / 2 }} />
-              </div>
-            )
-          })}
-
-          {/* tick marks */}
-          {Array.from({ length: Math.floor(max / 5) + 1 }).map((_, i) => {
-            const v = i * 5
-            const isTen = v % 10 === 0
-            return (
-              <div
-                key={`tick:${v}`}
-                style={{
-                  position: 'absolute',
-                  left: posPct(v),
-                  top: 0,
-                  bottom: 0,
-                  width: 1,
-                  background: isTen ? '#cbd5e1' : '#e2e8f0',
-                  opacity: isTen ? 1 : 0.75,
-                }}
-                title={String(v)}
-              />
-            )
-          })}
-
-          {sorted.map((p, idx) => {
-            const s = scores?.[p.position] ?? 0
-            const c = colors[idx % colors.length]
-            return (
-              <div
-                key={`peg:${p.position}`}
-                style={{
-                  position: 'absolute',
-                  left: posPct(s),
-                  top: 14 + (idx % 2) * 20,
-                  transform: 'translateX(-50%)',
-                  transition: 'left 420ms cubic-bezier(0.2, 0.8, 0.2, 1)',
-                }}
-              >
-                <div style={{ position: 'relative' }}>
-                  <div
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: 999,
-                      background: c,
-                      border: '2px solid #ffffff',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-                    }}
-                    title={`P${p.position}: ${s}`}
-                  />
-                  {/* Always show exact score next to the peg */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: -2,
-                      left: 20,
-                      fontSize: 11,
-                      fontWeight: 800,
-                      color: '#0f172a',
-                      background: 'rgba(255,255,255,0.9)',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 999,
-                      padding: '0 6px',
-                    }}
-                  >
-                    {s}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      {/* Vertical ruler labels so we can see the whole scale without horizontal crowding */}
-      <div style={{ marginTop: 4, position: 'relative', height: 28, fontSize: 10, opacity: 0.85 }}>
-        <div style={{ position: 'absolute', left: endPad, right: endPad, top: 0, bottom: 0 }}>
-          {Array.from({ length: Math.floor(max / 5) + 1 }).map((_, i) => {
-            const v = i * 5
-            const isTen = v % 10 === 0
-            return (
-              <div
-                key={`label:${v}`}
-                style={{
-                  position: 'absolute',
-                  left: posPct(v),
-                  transform: 'translateX(-50%)',
-                  writingMode: 'vertical-rl',
-                  textOrientation: 'mixed',
-                  lineHeight: 1,
-                  fontWeight: isTen ? 800 : 600,
-                  color: isTen ? '#0f172a' : '#334155',
-                  pointerEvents: 'none',
-                }}
-              >
-                {v}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // (BreakdownView removed; counting/finished UI now focuses on recap + readiness inside the table.)
 
 export function GamePage() {
@@ -662,8 +63,21 @@ export function GamePage() {
   const [peggingCue, setPeggingCue] = useState<{ pos: number; kind: 'play'; delta?: number; card?: string } | null>(null)
   const [cutPulse, setCutPulse] = useState(false)
   const [profilesByUserId, setProfilesByUserId] = useState<Record<number, PlayerProfileState>>({})
+  const [pegBoardCustomizeOpen, setPegBoardCustomizeOpen] = useState(false)
+  const pegBoardCustomizeRef = useRef<HTMLDivElement>(null)
+  const [pegBoardTheme, setPegBoardTheme] = usePegBoardTheme()
   const profileFetchRef = useRef<Set<number>>(new Set())
   const lastCueMoveIDRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!pegBoardCustomizeOpen) return
+    function handleClick(e: MouseEvent) {
+      if (pegBoardCustomizeRef.current?.contains(e.target as Node)) return
+      setPegBoardCustomizeOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [pegBoardCustomizeOpen])
 
   useEffect(() => {
     if (!user || !isValidId) return
@@ -924,8 +338,80 @@ export function GamePage() {
 
                 {/* Board */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' }}>
-                  <div style={{ flex: '1 1 520px', minWidth: 360 }}>
-                    <PegTrack players={snap.players} scores={state?.scores} />
+                  <div style={{ flex: '1 1 520px', minWidth: 360, position: 'relative' }} ref={pegBoardCustomizeRef}>
+                    <PegTrack
+                      players={snap.players}
+                      scores={state?.scores}
+                      theme={pegBoardTheme}
+                      headerAction={
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setPegBoardCustomizeOpen((o) => !o)}
+                            style={{
+                              fontSize: 12,
+                              padding: '4px 10px',
+                              borderRadius: 6,
+                              border: '1px solid rgba(255,255,255,0.3)',
+                              background: 'rgba(255,255,255,0.12)',
+                              color: 'rgba(255,255,255,0.95)',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                            }}
+                          >
+                            Customize
+                          </button>
+                          {pegBoardCustomizeOpen && (
+                            <div
+                              role="dialog"
+                              aria-label="Peg board theme"
+                              style={{
+                                position: 'absolute',
+                                top: '100%',
+                                right: 0,
+                                marginTop: 4,
+                                padding: 8,
+                                borderRadius: 8,
+                                background: '#1e293b',
+                                border: '1px solid #334155',
+                                boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
+                                zIndex: 20,
+                                minWidth: 140,
+                              }}
+                            >
+                              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6, color: 'rgba(255,255,255,0.7)' }}>
+                                Theme
+                              </div>
+                              {PEG_BOARD_THEMES.map((t) => (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setPegBoardTheme(t.id)
+                                    setPegBoardCustomizeOpen(false)
+                                  }}
+                                  style={{
+                                    display: 'block',
+                                    width: '100%',
+                                    textAlign: 'left',
+                                    padding: '6px 8px',
+                                    marginBottom: 2,
+                                    borderRadius: 4,
+                                    border: 'none',
+                                    background: pegBoardTheme.id === t.id ? 'rgba(255,255,255,0.2)' : 'transparent',
+                                    color: 'rgba(255,255,255,0.95)',
+                                    cursor: 'pointer',
+                                    fontSize: 13,
+                                  }}
+                                >
+                                  {t.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      }
+                    />
                   </div>
                   <div style={{ flex: '0 0 auto' }}>
                     <div style={{ fontWeight: 900, marginBottom: 6, opacity: 0.9 }}>Cut</div>
@@ -1050,7 +536,7 @@ export function GamePage() {
                             }}
                           >
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
-                              <div style={{ fontWeight: 900, opacity: 0.95 }}>Dealer’s crib</div>
+                              <div style={{ fontWeight: 900, opacity: 0.95 }}>Dealer's crib</div>
                               <div style={{ textAlign: 'right' }}>
                                 <ScoreBreakdownLine b={state?.count_summary?.crib} />
                               </div>

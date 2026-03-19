@@ -33,14 +33,13 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 		return nil, errors.New("no players")
 	}
 
+	// Single lock acquisition: gather the view clone, fallback hand, and hand counts together.
 	st, unlock, err := ensureGameStateLocked(db, gameID, players)
 	if err != nil {
 		return nil, err
 	}
 	view := CloneStateForView(st)
 
-	// Best-effort fallback: if the DB hand JSON is missing/empty for the requesting player,
-	// we can recover from the server-authoritative engine state and re-persist it.
 	userPos := int64(-1)
 	for _, gp := range players {
 		if gp.UserID == userID {
@@ -52,8 +51,19 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 	if userPos >= 0 && int(userPos) < len(st.Hands) {
 		fallbackHand = append([]common.Card(nil), st.Hands[userPos]...)
 	}
+
+	// Collect hand counts while we still hold the lock.
+	for i := range players {
+		pos := int(players[i].Position)
+		if pos >= 0 && pos < len(st.Hands) {
+			n := int64(len(st.Hands[pos]))
+			players[i].HandCount = &n
+		}
+	}
 	unlock()
 
+	// Best-effort fallback: if the DB hand JSON is missing/empty for the requesting player,
+	// we can recover from the server-authoritative engine state and re-persist it.
 	for _, gp := range players {
 		if gp.UserID == userID {
 			var yourHand []common.Card
@@ -61,7 +71,6 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 				return nil, err
 			}
 			if len(yourHand) == 0 && len(fallbackHand) > 0 {
-				// Repair: show the fallback hand and re-persist it to keep DB and runtime aligned.
 				yourHand = fallbackHand
 				if b, err := json.Marshal(fallbackHand); err == nil {
 					if err := models.UpdatePlayerHand(db, gameID, userID, string(b)); err != nil {
@@ -75,29 +84,10 @@ func BuildGameSnapshotForUser(db *sql.DB, gameID int64, userID int64) (*GameSnap
 		}
 	}
 
-	// Do NOT leak opponent hand contents to the client. Provide hand_count for all players,
-	// and blank out Hand for non-requesting players.
-	//
-	// We use the server-authoritative runtime hand lengths as the source of truth.
-	st2, unlock2, err := ensureGameStateLocked(db, gameID, players)
-	if err == nil {
-		for i := range players {
-			pos := int(players[i].Position)
-			if pos >= 0 && pos < len(st2.Hands) {
-				n := int64(len(st2.Hands[pos]))
-				players[i].HandCount = &n
-			}
-			if players[i].UserID != userID {
-				players[i].Hand = "[]"
-			}
-		}
-		unlock2()
-	} else {
-		// If runtime state isn't available, still blank opponent hand contents (best-effort).
-		for i := range players {
-			if players[i].UserID != userID {
-				players[i].Hand = "[]"
-			}
+	// Do NOT leak opponent hand contents to the client.
+	for i := range players {
+		if players[i].UserID != userID {
+			players[i].Hand = "[]"
 		}
 	}
 
@@ -567,47 +557,3 @@ func ensureGameStateLocked(db *sql.DB, gameID int64, players []models.GamePlayer
 	})
 }
 
-func cloneStateDeep(st *cribbage.State) cribbage.State {
-	if st == nil {
-		return cribbage.State{}
-	}
-	var out cribbage.State
-	out.Version = st.Version
-	out.Rules = st.Rules
-	out.DealerIndex = st.DealerIndex
-	out.CurrentIndex = st.CurrentIndex
-	out.LastPlayIndex = st.LastPlayIndex
-	out.PeggingTotal = st.PeggingTotal
-	out.Stage = st.Stage
-	if st.Cut != nil {
-		c := *st.Cut
-		out.Cut = &c
-	}
-	if st.Deck != nil {
-		out.Deck = append([]common.Card(nil), st.Deck...)
-	}
-	if st.Crib != nil {
-		out.Crib = append([]common.Card(nil), st.Crib...)
-	}
-	if st.PeggingSeq != nil {
-		out.PeggingSeq = append([]common.Card(nil), st.PeggingSeq...)
-	}
-	if st.PeggingPassed != nil {
-		out.PeggingPassed = append([]bool(nil), st.PeggingPassed...)
-	}
-	if st.DiscardCompleted != nil {
-		out.DiscardCompleted = append([]bool(nil), st.DiscardCompleted...)
-	}
-	if st.Scores != nil {
-		out.Scores = append([]int(nil), st.Scores...)
-	}
-	out.Hands = make([][]common.Card, len(st.Hands))
-	for i := range st.Hands {
-		out.Hands[i] = append([]common.Card(nil), st.Hands[i]...)
-	}
-	out.KeptHands = make([][]common.Card, len(st.KeptHands))
-	for i := range st.KeptHands {
-		out.KeptHands[i] = append([]common.Card(nil), st.KeptHands[i]...)
-	}
-	return out
-}

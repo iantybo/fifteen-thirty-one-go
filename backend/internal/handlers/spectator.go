@@ -29,16 +29,7 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.JoinAsSpectator")
 		defer span.End()
 
-		userID, ok := userIDFromContext(c)
-		if !ok {
-			// Backwards compatible: some middleware sets "user_id".
-			if v, exists := c.Get("user_id"); exists && v != nil {
-				if id, ok2 := v.(int64); ok2 {
-					userID = id
-					ok = true
-				}
-			}
-		}
+		userID, ok := userIDFromContextCompat(c)
 		if !ok || userID <= 0 {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
@@ -162,15 +153,7 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.LeaveAsSpectator")
 		defer span.End()
 
-		userID, ok := userIDFromContext(c)
-		if !ok {
-			if v, exists := c.Get("user_id"); exists && v != nil {
-				if id, ok2 := v.(int64); ok2 {
-					userID = id
-					ok = true
-				}
-			}
-		}
+		userID, ok := userIDFromContextCompat(c)
 		if !ok || userID <= 0 {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
