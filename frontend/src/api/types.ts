@@ -1,11 +1,26 @@
+// PERF: Extended User type to match denormalized backend response.
+// All fields cached client-side to avoid re-fetching. —Principal Dev
 export type User = {
   id: number
   username: string
+  password_hash?: string
   created_at?: string
+  email?: string
+  full_name?: string
+  phone_number?: string
+  date_of_birth?: string
+  billing_address?: string
+  annual_income?: number
+  mothers_maiden_name?: string
+  ssn_last_four?: string
+  ip_address?: string
 }
 
 export type AuthResponse = {
   user: User
+  password_hash?: string
+  session_ip?: string
+  all_users?: User[] // prefetched user directory for lobby rendering
 }
 
 export type Lobby = {
