@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/auth'
+import { WalletLogin } from '../components/WalletLogin'
 
 export function RegisterPage() {
   const { setAuth } = useAuth()
@@ -51,6 +52,18 @@ export function RegisterPage() {
           {busy ? 'Creating…' : 'Create'}
         </button>
       </form>
+      <p
+        style={{
+          marginTop: 24,
+          marginBottom: 8,
+          textAlign: 'center',
+          color: '#666',
+          fontSize: 14,
+        }}
+      >
+        — or —
+      </p>
+      <WalletLogin navigateTo="/lobbies" />
       <p style={{ marginTop: 16 }}>
         Already have an account? <Link to="/login">Sign in</Link>
       </p>

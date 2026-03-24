@@ -2,6 +2,9 @@ import { apiBaseUrl } from '../lib/env'
 import { ApiError, apiFetch } from '../lib/http'
 import type {
   AuthResponse,
+  WalletChallengeRequest,
+  WalletChallengeResponse,
+  WalletVerifyRequest,
   Game,
   GameMove,
   GameSnapshot,
@@ -53,6 +56,22 @@ export const api = {
   async logout() {
     // Logout is best-effort; empty 204/empty-body is OK.
     await apiFetch<void>(`${apiBaseUrl()}/api/auth/logout`, { method: 'POST' })
+  },
+  async walletChallenge(req: WalletChallengeRequest) {
+    const res = await apiFetch<WalletChallengeResponse>(`${apiBaseUrl()}/api/auth/wallet/challenge`, {
+      method: 'POST',
+      body: req,
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async walletVerify(req: WalletVerifyRequest) {
+    const res = await apiFetch<AuthResponse>(`${apiBaseUrl()}/api/auth/wallet/verify`, {
+      method: 'POST',
+      body: req,
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
   },
   async listLobbies() {
     const res = await apiFetch<{ lobbies: Lobby[] }>(`${apiBaseUrl()}/api/lobbies`)

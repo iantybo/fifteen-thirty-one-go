@@ -16,6 +16,10 @@ type Config struct {
 	JWTIssuer string
 	JWTTTL    time.Duration
 
+	// WalletChallengeSecret signs time-bound wallet auth challenges (defaults to JWTSecret).
+	WalletChallengeSecret string
+	WalletChallengeTTL    time.Duration
+
 	AppEnv                string
 	WSAllowedOrigins      []string
 	WSAllowQueryTokens    bool
@@ -57,12 +61,22 @@ func LoadFromEnv() (Config, error) {
 		issuer = "fifteen-thirty-one"
 	}
 
+	walletChallengeTTL := time.Duration(5) * time.Minute
+	if v := strings.TrimSpace(os.Getenv("WALLET_CHALLENGE_TTL_SECONDS")); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			walletChallengeTTL = time.Duration(n) * time.Second
+		} else {
+			fmt.Fprintf(os.Stderr, "WARNING: invalid WALLET_CHALLENGE_TTL_SECONDS=%q, using default %s\n", v, walletChallengeTTL)
+		}
+	}
+
 	cfg := Config{
 		Addr:         os.Getenv("BACKEND_ADDR"),
 		DatabasePath: os.Getenv("DATABASE_PATH"),
 		JWTSecret:    os.Getenv("JWT_SECRET"),
 		JWTIssuer:    issuer,
 		JWTTTL:       time.Duration(ttlMinutes) * time.Minute,
+		WalletChallengeTTL: walletChallengeTTL,
 		AppEnv:       strings.TrimSpace(os.Getenv("APP_ENV")),
 	}
 	if cfg.AppEnv == "" {
@@ -105,6 +119,14 @@ func LoadFromEnv() (Config, error) {
 	if len(cfg.JWTSecret) < 32 {
 		return Config{}, fmt.Errorf("JWT_SECRET must be at least 32 bytes (got %d)", len(cfg.JWTSecret))
 	}
+
+	walletSecret := strings.TrimSpace(os.Getenv("WALLET_CHALLENGE_SECRET"))
+	if walletSecret == "" {
+		walletSecret = cfg.JWTSecret
+	} else if len(walletSecret) < 32 {
+		return Config{}, fmt.Errorf("WALLET_CHALLENGE_SECRET must be at least 32 bytes when set (got %d)", len(walletSecret))
+	}
+	cfg.WalletChallengeSecret = walletSecret
 
 	var missing []string
 	if cfg.DatabasePath == "" {
