@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"fifteen-thirty-one-go/backend/internal/tracing"
@@ -29,25 +28,13 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.JoinAsSpectator")
 		defer span.End()
 
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			// Backwards compatible: some middleware sets "user_id".
-			if v, exists := c.Get("user_id"); exists && v != nil {
-				if id, ok2 := v.(int64); ok2 {
-					userID = id
-					ok = true
-				}
-			}
-		}
-		if !ok || userID <= 0 {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
-		lobbyIDStr := c.Param("id")
-		lobbyID, err := strconv.ParseInt(lobbyIDStr, 10, 64)
-		if err != nil || lobbyID <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lobby id"})
+		lobbyID, ok := parseIDParam(c, "id", "lobby")
+		if !ok {
 			return
 		}
 
@@ -56,7 +43,7 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 		// Check if lobby exists and allows spectators
 		var allowSpectators bool
 		var lobbyStatus string
-		err = db.QueryRowContext(ctx, `
+		err := db.QueryRowContext(ctx, `
 			SELECT allow_spectators, status
 			FROM lobbies
 			WHERE id = ?
@@ -146,7 +133,7 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 		// Broadcast spectator joined event
 		hub, ok := hubProvider()
 		if ok && hub != nil {
-			hub.Broadcast(fmt.Sprintf("lobby:%d", lobbyID), "lobby:spectator_joined", spectator)
+			hub.Broadcast(LobbyRoom(lobbyID), "lobby:spectator_joined", spectator)
 
 			// Send system message
 			_ = SendSystemMessage(ctx, db, hub, lobbyID, fmt.Sprintf("%s is now spectating", username), "join")
@@ -162,24 +149,13 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.LeaveAsSpectator")
 		defer span.End()
 
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			if v, exists := c.Get("user_id"); exists && v != nil {
-				if id, ok2 := v.(int64); ok2 {
-					userID = id
-					ok = true
-				}
-			}
-		}
-		if !ok || userID <= 0 {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
-		lobbyIDStr := c.Param("id")
-		lobbyID, err := strconv.ParseInt(lobbyIDStr, 10, 64)
-		if err != nil || lobbyID <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lobby id"})
+		lobbyID, ok := parseIDParam(c, "id", "lobby")
+		if !ok {
 			return
 		}
 
@@ -187,7 +163,7 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 
 		// Get username before deleting
 		var username string
-		err = db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", userID).Scan(&username)
+		err := db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", userID).Scan(&username)
 		if err != nil {
 			wrappedErr := fmt.Errorf("LeaveAsSpectator: get username (user_id=%d): %w", userID, err)
 			log.Printf("%v", wrappedErr)
@@ -216,7 +192,7 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 		// Broadcast spectator left event
 		hub, ok := hubProvider()
 		if ok && hub != nil {
-			hub.Broadcast(fmt.Sprintf("lobby:%d", lobbyID), "lobby:spectator_left", map[string]any{
+			hub.Broadcast(LobbyRoom(lobbyID), "lobby:spectator_left", map[string]any{
 				"user_id":  userID,
 				"username": username,
 			})
@@ -235,10 +211,8 @@ func GetSpectators(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.GetSpectators")
 		defer span.End()
 
-		lobbyIDStr := c.Param("id")
-		lobbyID, err := strconv.ParseInt(lobbyIDStr, 10, 64)
-		if err != nil || lobbyID <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lobby id"})
+		lobbyID, ok := parseIDParam(c, "id", "lobby")
+		if !ok {
 			return
 		}
 

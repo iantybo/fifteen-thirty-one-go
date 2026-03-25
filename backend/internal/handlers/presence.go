@@ -103,7 +103,7 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 		// Broadcast presence change to global lobby
 		hub, ok := hubProvider()
 		if ok && hub != nil {
-			hub.Broadcast("lobby:global", "player:presence_changed", presence)
+			hub.Broadcast(GlobalLobbyRoom, "player:presence_changed", presence)
 		}
 
 		c.JSON(http.StatusOK, presence)

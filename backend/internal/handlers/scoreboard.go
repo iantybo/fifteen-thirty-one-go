@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"fifteen-thirty-one-go/backend/internal/models"
 	"fifteen-thirty-one-go/backend/internal/tracing"
@@ -31,13 +30,8 @@ func UserStatsHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.UserStatsHandler")
 		defer span.End()
 
-		userID, err := strconv.ParseInt(c.Param("userId"), 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
-			return
-		}
-		if userID <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		userID, ok := parseIDParam(c, "userId", "user")
+		if !ok {
 			return
 		}
 		stats, err := models.GetUserStats(db, userID)

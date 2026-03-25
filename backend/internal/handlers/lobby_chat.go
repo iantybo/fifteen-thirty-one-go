@@ -132,7 +132,7 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 		// Broadcast to lobby room
 		hub, ok := hubProvider()
 		if ok && hub != nil {
-			hub.Broadcast(fmt.Sprintf("lobby:%d", lobbyID), "lobby:chat", chatMsg)
+			hub.Broadcast(LobbyRoom(lobbyID), "lobby:chat", chatMsg)
 		}
 
 		c.JSON(http.StatusOK, chatMsg)
@@ -337,7 +337,7 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 	}
 
 	// Broadcast to lobby room
-	hub.Broadcast(fmt.Sprintf("lobby:%d", req.LobbyID), "lobby:chat", chatMsg)
+	hub.Broadcast(LobbyRoom(req.LobbyID), "lobby:chat", chatMsg)
 }
 
 // SendSystemMessage inserts a system message into the lobby chat and broadcasts it via WebSocket if hub is provided.
@@ -371,7 +371,7 @@ func SendSystemMessage(ctx context.Context, db *sql.DB, hub *ws.Hub, lobbyID int
 	}
 
 	if hub != nil {
-		hub.Broadcast(fmt.Sprintf("lobby:%d", lobbyID), "lobby:chat", chatMsg)
+		hub.Broadcast(LobbyRoom(lobbyID), "lobby:chat", chatMsg)
 	}
 
 	return nil
