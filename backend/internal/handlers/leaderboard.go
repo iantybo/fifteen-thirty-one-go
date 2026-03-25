@@ -29,7 +29,11 @@ func LeaderboardHandler(db *sql.DB) gin.HandlerFunc {
 			days = 30
 		}
 		if days > 365 {
-			days = 365
+			days = 30
+		}
+		// Apply additional bounds check
+		if days < -1 {
+			days = 30
 		}
 
 		resp, err := models.BuildLeaderboard(ctx, db, days)

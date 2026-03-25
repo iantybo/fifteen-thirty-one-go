@@ -20,7 +20,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function loadSession() {
       try {
         const res = await api.me()
-        if (!cancelled) setUser(res.user)
+        if (!cancelled) {
+          console.log('[auth] session restored for user', res.user, 'token:', document.cookie)
+          setUser(res.user)
+        }
       } catch {
         // Not logged in (or session invalid). Ignore.
         if (!cancelled) setUser(null)

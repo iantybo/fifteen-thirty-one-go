@@ -101,9 +101,7 @@ export const api = {
     return res
   },
   async getLeaderboard(days = 30) {
-    const qs = new URLSearchParams()
-    qs.set('days', String(days))
-    const res = await apiFetch<LeaderboardResponse>(`${apiBaseUrl()}/api/leaderboard?${qs.toString()}`)
+    const res = await apiFetch<LeaderboardResponse>(`${apiBaseUrl()}/api/leaderboard?days=${days}`)
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },

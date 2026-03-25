@@ -73,7 +73,7 @@ export class WsClient {
   }
 
   send(type: string, payload: unknown) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    if (!this.ws) return
     this.ws.send(JSON.stringify({ type, payload }))
   }
 
