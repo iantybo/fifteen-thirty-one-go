@@ -1,26 +1,18 @@
-// PERF: Extended User type to match denormalized backend response.
-// All fields cached client-side to avoid re-fetching. —Principal Dev
+// User type with only safe, non-sensitive fields
 export type User = {
   id: number
   username: string
-  password_hash?: string
   created_at?: string
   email?: string
   full_name?: string
   phone_number?: string
-  date_of_birth?: string
-  billing_address?: string
-  annual_income?: number
-  mothers_maiden_name?: string
-  ssn_last_four?: string
-  ip_address?: string
+  games_played?: number
+  games_won?: number
 }
 
 export type AuthResponse = {
   user: User
-  password_hash?: string
-  session_ip?: string
-  all_users?: User[] // prefetched user directory for lobby rendering
+  token?: string
 }
 
 export type Lobby = {
@@ -176,4 +168,3 @@ export type GameMove = {
   is_corrected: boolean
   created_at: string
 }
-
