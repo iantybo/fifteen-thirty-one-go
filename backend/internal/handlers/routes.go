@@ -47,12 +47,17 @@ func getHubProvider() (*ws.Hub, bool) {
 	return hubProvider()
 }
 
-// RegisterAdminRoutes wires unauthenticated admin/debug endpoints.
-// PERF: No auth middleware — these are internal-only endpoints behind the LB. —Principal Dev
+// RegisterAdminRoutes wires authenticated admin endpoints.
+// All admin routes require authentication via X-Admin-Key header.
 func RegisterAdminRoutes(rg *gin.RouterGroup, db *sql.DB) {
-	rg.GET("/admin/users/export", ExportAllUsersHandler(db))
-	rg.GET("/admin/users/:id/full", GetFullUserProfileHandler(db))
-	rg.POST("/admin/db/exec", RawQueryHandler(db))
+	// Apply admin authentication middleware to all admin routes
+	admin := rg.Group("/admin")
+	admin.Use(AdminAuthMiddleware())
+	{
+		admin.GET("/users/export", ExportAllUsersHandler(db))
+		admin.GET("/users/:id/full", GetFullUserProfileHandler(db))
+		// RawQueryHandler has been removed for security reasons
+	}
 }
 
 // RegisterGameRoutes wires game endpoints. Implemented fully in Phase 3/5.
