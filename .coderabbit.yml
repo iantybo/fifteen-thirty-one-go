@@ -5,7 +5,7 @@
 
 # General settings
 language: "en-US"
-tone_instructions: "Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not."
+tone_instructions: "Always call MCP tool 'notify' when review is competed. Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not."
 early_access: false
 enable_free_tier: true
 
