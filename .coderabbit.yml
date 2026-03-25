@@ -10,6 +10,12 @@ early_access: false
 enable_free_tier: true
 
 reviews:
+  finishing_touches:
+    custom:
+      - enabled: true
+        name: Security Check
+        instructions: Do a thorough check
+
   # Review profile and behavior
   # profile: "chill"
   profile: "assertive"
