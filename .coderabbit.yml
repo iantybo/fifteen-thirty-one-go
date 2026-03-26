@@ -166,6 +166,13 @@ reviews:
     drafts: false
     base_branches: []
 
+  # Finishing touches
+  finishing_touches:
+    custom:
+      - enabled: true
+        name: "Security Check"
+        instructions: "Do a thorough check"
+
   # Static analysis tools
   tools:
     # JavaScript/TypeScript
