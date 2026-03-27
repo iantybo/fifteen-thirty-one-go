@@ -2,16 +2,25 @@ package handlers
 
 import (
 	"database/sql"
+	"time"
 
 	"fifteen-thirty-one-go/backend/internal/config"
+	"fifteen-thirty-one-go/backend/internal/middleware"
 	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/time/rate"
 )
 
 // RegisterAuthRoutes wires auth endpoints. Implemented fully in Phase 1.2.
 func RegisterAuthRoutes(rg *gin.RouterGroup, db *sql.DB, cfg config.Config) {
+	// Per-IP rate limits for wallet auth (challenge is cheaper than verify/signature recovery).
+	walletChallengeRL := middleware.NewIPRateLimiter(rate.Every(time.Minute/60), 60)
+	walletVerifyRL := middleware.NewIPRateLimiter(rate.Every(time.Minute/20), 20)
+
 	rg.POST("/auth/register", RegisterHandler(db, cfg))
 	rg.POST("/auth/login", LoginHandler(db, cfg))
+	rg.POST("/auth/wallet/challenge", walletChallengeRL.GinHandler(), WalletChallengeHandler(cfg))
+	rg.POST("/auth/wallet/verify", walletVerifyRL.GinHandler(), WalletVerifyHandler(db, cfg))
 	rg.GET("/auth/me", MeHandler(db, cfg))
 	rg.POST("/auth/logout", LogoutHandler(cfg))
 }

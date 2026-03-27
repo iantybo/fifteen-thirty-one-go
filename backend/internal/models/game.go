@@ -62,37 +62,23 @@ func GetGameByID(db *sql.DB, id int64) (*Game, error) {
 	return &g, nil
 }
 
-// SetGameStatus updates a game's status to the specified value.
-// Valid status values are "waiting", "playing", and "finished".
-// When status is "finished", it also sets finished_at to CURRENT_TIMESTAMP.
-// Returns ErrGameNotFound if the game does not exist, or ErrInvalidGameStatus for invalid status values.
-func SetGameStatus(db *sql.DB, gameID int64, status string) error {
+// execer abstracts *sql.DB and *sql.Tx for shared query logic.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func setGameStatus(e execer, gameID int64, status string) error {
 	if status != "waiting" && status != "playing" && status != "finished" {
 		return fmt.Errorf("invalid game status %q: %w", status, ErrInvalidGameStatus)
 	}
+	var query string
 	if status == "finished" {
-		res, err := db.Exec(`UPDATE games SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, gameID)
-		if err != nil {
-			return err
-		}
-		ra, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if ra == 0 {
-			// Disambiguate "no rows affected": game may not exist, or values were already set.
-			var one int
-			if err := db.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					return ErrGameNotFound
-				}
-				return err
-			}
-			return nil
-		}
-		return nil
+		query = `UPDATE games SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`
+	} else {
+		query = `UPDATE games SET status = ? WHERE id = ?`
 	}
-	res, err := db.Exec(`UPDATE games SET status = ? WHERE id = ?`, status, gameID)
+	res, err := e.Exec(query, status, gameID)
 	if err != nil {
 		return err
 	}
@@ -102,7 +88,7 @@ func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 	}
 	if ra == 0 {
 		var one int
-		if err := db.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
+		if err := e.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrGameNotFound
 			}
@@ -113,54 +99,17 @@ func SetGameStatus(db *sql.DB, gameID int64, status string) error {
 	return nil
 }
 
-// SetGameStatusTx updates a game's status within the provided transaction.
+// SetGameStatus updates a game's status to the specified value.
 // Valid status values are "waiting", "playing", and "finished".
 // When status is "finished", it also sets finished_at to CURRENT_TIMESTAMP.
-// Returns ErrGameNotFound if the game does not exist.
+// Returns ErrGameNotFound if the game does not exist, or ErrInvalidGameStatus for invalid status values.
+func SetGameStatus(db *sql.DB, gameID int64, status string) error {
+	return setGameStatus(db, gameID, status)
+}
+
+// SetGameStatusTx updates a game's status within the provided transaction.
 func SetGameStatusTx(tx *sql.Tx, gameID int64, status string) error {
-	if status != "waiting" && status != "playing" && status != "finished" {
-		return fmt.Errorf("invalid game status %q: %w", status, ErrInvalidGameStatus)
-	}
-	if status == "finished" {
-		res, err := tx.Exec(`UPDATE games SET status = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?`, status, gameID)
-		if err != nil {
-			return err
-		}
-		ra, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if ra == 0 {
-			var one int
-			if err := tx.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					return ErrGameNotFound
-				}
-				return err
-			}
-			return nil
-		}
-		return nil
-	}
-	res, err := tx.Exec(`UPDATE games SET status = ? WHERE id = ?`, status, gameID)
-	if err != nil {
-		return err
-	}
-	ra, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if ra == 0 {
-		var one int
-		if err := tx.QueryRow(`SELECT 1 FROM games WHERE id = ?`, gameID).Scan(&one); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return ErrGameNotFound
-			}
-			return err
-		}
-		return nil
-	}
-	return nil
+	return setGameStatus(tx, gameID, status)
 }
 
 func SetCurrentPlayer(db *sql.DB, gameID int64, userID int64) error {

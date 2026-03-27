@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import type { Location } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/auth'
+import { WalletLogin } from '../components/WalletLogin'
 
 interface LocationState {
   from?: string
@@ -57,6 +58,18 @@ export function LoginPage() {
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+      <p
+        style={{
+          marginTop: 24,
+          marginBottom: 8,
+          textAlign: 'center',
+          color: '#666',
+          fontSize: 14,
+        }}
+      >
+        — or —
+      </p>
+      <WalletLogin navigateTo={loc.state?.from ?? '/lobbies'} />
       <p style={{ marginTop: 16 }}>
         New here? <Link to="/register">Create an account</Link>
       </p>

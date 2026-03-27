@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -173,6 +174,137 @@ func MeHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, meResponse{User: u})
+	}
+}
+
+type walletChallengeRequest struct {
+	WalletAddress string `json:"wallet_address"`
+}
+
+type walletChallengeResponse struct {
+	Challenge string `json:"challenge"`
+}
+
+type walletVerifyRequest struct {
+	WalletAddress string `json:"wallet_address"`
+	Challenge     string `json:"challenge"`
+	Signature     string `json:"signature"`
+}
+
+// WalletChallengeHandler returns a time-bound challenge for the client to sign with personal_sign.
+func WalletChallengeHandler(cfg config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.WalletChallengeHandler")
+		defer span.End()
+
+		var req walletChallengeRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
+			return
+		}
+		challenge, err := auth.GenerateChallenge(cfg, req.WalletAddress)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, walletChallengeResponse{Challenge: challenge})
+	}
+}
+
+func usernameFromWalletAddress(normalizedAddr string) string {
+	if len(normalizedAddr) < 10 {
+		return normalizedAddr
+	}
+	return normalizedAddr[:6] + "..." + normalizedAddr[len(normalizedAddr)-4:]
+}
+
+// WalletVerifyHandler verifies a signed challenge, then logs in or registers a wallet user.
+func WalletVerifyHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.WalletVerifyHandler")
+		defer span.End()
+
+		var req walletVerifyRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
+			return
+		}
+		if strings.TrimSpace(req.WalletAddress) == "" || strings.TrimSpace(req.Signature) == "" || strings.TrimSpace(req.Challenge) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "wallet_address, challenge, and signature required"})
+			return
+		}
+
+		if err := auth.VerifyChallenge(cfg, req.Challenge, req.WalletAddress); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+
+		recovered, err := auth.RecoverAddress(req.Challenge, req.Signature)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
+			return
+		}
+
+		normalized, err := models.NormalizeWalletAddress(req.WalletAddress)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if !strings.EqualFold(recovered, normalized) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "signature does not match wallet address"})
+			return
+		}
+
+		u, err := models.GetUserByWalletAddress(db, normalized)
+		if err != nil && !errors.Is(err, models.ErrNotFound) {
+			log.Printf("WalletVerifyHandler GetUserByWalletAddress failed: err=%v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		if errors.Is(err, models.ErrNotFound) {
+			base := usernameFromWalletAddress(normalized)
+			// base is at most 14 runes (0x + 4 hex + "..." + 4 hex), so with "_<n>" suffix we stay under the 32 rune cap.
+			username := base
+			for attempt := 0; attempt < 50; attempt++ {
+				if attempt > 0 {
+					username = fmt.Sprintf("%s_%d", base, attempt)
+				}
+				if utf8.RuneCountInString(username) > 32 {
+					username = username[:32]
+				}
+				_, errUser := models.GetUserByUsername(db, username)
+				if errors.Is(errUser, models.ErrNotFound) {
+					u, err = models.CreateWalletUser(db, normalized, username)
+					if err != nil {
+						if models.IsUniqueConstraint(err) {
+							continue
+						}
+						log.Printf("WalletVerifyHandler CreateWalletUser failed: err=%v", err)
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+						return
+					}
+					_ = models.SetUserAutoCountMode(db, u.ID, "suggest")
+					break
+				}
+				if errUser != nil {
+					log.Printf("WalletVerifyHandler GetUserByUsername failed: err=%v", errUser)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+					return
+				}
+			}
+			if u == nil {
+				c.JSON(http.StatusConflict, gin.H{"error": "could not allocate username"})
+				return
+			}
+		}
+
+		token, err := auth.GenerateToken(u.ID, u.Username, cfg)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "token error"})
+			return
+		}
+		setAuthCookie(c, cfg, token)
+		c.JSON(http.StatusOK, authResponse{Token: token, User: u})
 	}
 }
 

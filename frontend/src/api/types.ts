@@ -2,10 +2,26 @@ export type User = {
   id: number
   username: string
   created_at?: string
+  wallet_address?: string | null
 }
 
 export type AuthResponse = {
+  token?: string
   user: User
+}
+
+export type WalletChallengeRequest = {
+  wallet_address: string
+}
+
+export type WalletChallengeResponse = {
+  challenge: string
+}
+
+export type WalletVerifyRequest = {
+  wallet_address: string
+  challenge: string
+  signature: string
 }
 
 export type Lobby = {
