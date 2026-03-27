@@ -53,6 +53,9 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/me/preferences", GetPreferencesHandler(db))
 	rg.PUT("/me/preferences", PutPreferencesHandler(db))
 
+	// Profile
+	rg.POST("/me/profile", UploadProfileHandler(db))
+
 	rg.GET("/games/:id", GetGameHandler(db))
 	rg.GET("/games/:id/moves", GameMovesHandler(db))
 	rg.POST("/games/:id/move", MoveHandler(db))
