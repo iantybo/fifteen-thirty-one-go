@@ -25,14 +25,26 @@ reviews:
 
   pre_merge_checks:
     custom_checks:
-      - mode: warning
-        name: Enforce Feature Flag
+      - mode: warn
+        name: Ensure no outdated crypto
         instructions: >-
-          FAIL if a PR introduces or modifies production application logic and the new behavior is not guarded by a feature flag.
-          PASS only if:
-          1) Each new behavior branch is conditionally gated by an existing or newly added feature flag, and
-          2) The PR includes the flag identifier(s) in code or PR description.
-          Exempt files: Makefile, Dockerfile, *.md, CI/workflow config, and other non-runtime tooling/config files.
+          Make sure no outdated crypto libs or self-rolled crypto stuff is ever in the codebase.
+          Check for:
+          - Forbidden crypto patterns: MD5, SHA1 for security purposes, DES, 3DES, RC4, custom/homegrown crypto implementations
+          - Specific libraries to avoid: older versions of OpenSSL (<1.1.1), deprecated crypto packages
+          - Self-implemented encryption/hashing algorithms instead of using vetted libraries
+          - Use of crypto.createCipher (Node.js) instead of crypto.createCipheriv
+          - Weak key sizes (RSA < 2048 bits, AES < 128 bits)
+
+      - mode: error
+        name: Ensure 3rd-party APIs are valid
+        instructions: >-
+          Verify that all external API responses include proper Content-Length headers to prevent cache overload.
+          Requirements:
+          - The "Content-Length" header (case-insensitive: "content-length") must be present in all external API responses
+          - The header value must be a valid numeric value (no negative numbers or non-numeric strings)
+          - The header value must not exceed the configured maximum cache size (validate against system limits)
+          - If any external API call is missing this header or has an invalid/excessive value, flag it as a violation
 
       - mode: error
         name: Linked JIRA ticket meets criteria
