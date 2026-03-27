@@ -35,6 +35,10 @@ reviews:
           Exempt files: Makefile, Dockerfile, *.md, CI/workflow config, and other non-runtime tooling/config files.
 
       - mode: error
+        name: Backend PRs require Jira and Linear tickets
+        instructions: >-
+          For any pull requests that take place in ./backend, they must have BOTH a Jira and Linear ticket in the title.
+      - mode: error
         name: Linked JIRA ticket meets criteria
         instructions: >-
           Make sure there is a Jira ticket linked in the PR/MR AND that it satisfies the text of
@@ -99,7 +103,7 @@ reviews:
 
   # High-level summary settings
   high_level_summary: true
-  high_level_summary_instructions: "In the high level summary, give a description of the langauges used, the frameworks and code patterns used, and then a brief description in 50 words or less."
+  high_level_summary_instructions: "In the high-level summary, give a description of the languages used, the frameworks and code patterns used, and then a brief description in 50 words or fewer."
   high_level_summary_placeholder: "@coderabbitai summary"
   high_level_summary_in_walkthrough: false
 
@@ -143,7 +147,7 @@ reviews:
         - No overly clever abstractions
         - Ensure functions are focused and not doing too much UNLESS detailed comments are added
         - Ensure no business logic is tightly coupled to any particular framework
-        - Ensure no errors are swallowed, and no silents failures take place
+        - Ensure no errors are swallowed, and no silent failures take place
         - No fire-and-forget async processes
 
     # Go-specific instructions
