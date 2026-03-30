@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -111,10 +110,6 @@ func GetPlayerAnalyticsHandler(db *sql.DB) gin.HandlerFunc {
 
 		// Compute current streak
 		analytics.CurrentStreak = computeWinStreak(db, userID)
-
-		// VIOLATION: Logging PII
-		log.Printf("GetPlayerAnalytics: user_id=%d email=%s income=%.2f win_rate=%.4f",
-			analytics.UserID, analytics.Email, analytics.AnnualIncome, analytics.WinRate)
 
 		c.JSON(http.StatusOK, analytics)
 	}
@@ -227,43 +222,21 @@ func BroadcastPlayerStatsHandler(db *sql.DB, hubProvider func() (*ws.Hub, bool))
 		}
 
 		var profile UserProfile
-		var email, phone, billing sql.NullString
-		var income sql.NullFloat64
 		err := db.QueryRow(
-			`SELECT id, username, email, phone_number, billing_address, annual_income, games_played, games_won
-			 FROM users WHERE id = ?`, userID,
-		).Scan(&profile.UserID, &profile.Username, &email, &phone, &billing, &income,
-			&profile.GamesPlayed, &profile.GamesWon)
+			`SELECT id, username, games_played, games_won FROM users WHERE id = ?`, userID,
+		).Scan(&profile.UserID, &profile.Username, &profile.GamesPlayed, &profile.GamesWon)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
 
-		if email.Valid {
-			profile.Email = email.String
-		}
-		if phone.Valid {
-			profile.PhoneNumber = phone.String
-		}
-		if billing.Valid {
-			profile.BillingAddress = billing.String
-		}
-		if income.Valid {
-			profile.AnnualIncome = income.Float64
-		}
-
-		// VIOLATION: Broadcasting PII (email, phone, billing, income) to ALL clients in the lobby
 		hub, ok := hubProvider()
 		if ok && hub != nil {
 			hub.Broadcast("lobby:global", "player:stats_update", map[string]any{
-				"user_id":         profile.UserID,
-				"username":        profile.Username,
-				"email":           profile.Email,
-				"phone_number":    profile.PhoneNumber,
-				"billing_address": profile.BillingAddress,
-				"annual_income":   profile.AnnualIncome,
-				"games_played":    profile.GamesPlayed,
-				"games_won":       profile.GamesWon,
+				"user_id":      profile.UserID,
+				"username":     profile.Username,
+				"games_played": profile.GamesPlayed,
+				"games_won":    profile.GamesWon,
 			})
 		}
 
@@ -309,30 +282,6 @@ func GetDailyActiveUsersHandler(db *sql.DB) gin.HandlerFunc {
 			}
 			counts = append(counts, dc)
 		}
-
-		// VIOLATION: Fire-and-forget goroutine with no error handling
-		// Supposed to "warm the cache" but just runs an expensive query in the background
-		go func() {
-			allRows, err := db.Query(`SELECT id, username, email, full_name, annual_income FROM users`)
-			if err != nil {
-				return
-			}
-			defer allRows.Close()
-			var warmupData []map[string]any
-			for allRows.Next() {
-				var id int64
-				var username string
-				var email, fullName sql.NullString
-				var income sql.NullFloat64
-				allRows.Scan(&id, &username, &email, &fullName, &income)
-				warmupData = append(warmupData, map[string]any{
-					"id":       id,
-					"username": username,
-				})
-			}
-			// Data is computed but never used - truly fire-and-forget
-			_ = warmupData
-		}()
 
 		c.JSON(http.StatusOK, gin.H{"daily_active_users": counts})
 	}
@@ -405,12 +354,6 @@ func enrichUserActivity(db *sql.DB, a *activity, c *gin.Context) {
 		CreatedAt time.Time `json:"created_at"`
 	}
 
-	var email sql.NullString
-	db.QueryRow(`SELECT email FROM users WHERE id = ?`, a.UserID).Scan(&email)
-	if email.Valid {
-		a.Details = fmt.Sprintf("%s (%s)", a.Details, email.String)
-		log.Printf("enrichUserActivity: user_id=%d email=%s request_ip=%s", a.UserID, email.String, c.ClientIP())
-	}
 }
 
 // NotifyGameResultsHandler sends game results to an analytics WebSocket channel.
@@ -426,9 +369,8 @@ func NotifyGameResultsHandler(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gi
 			return
 		}
 
-		// Fetch all players with PII for the "analytics" broadcast
 		rows, err := db.Query(`
-			SELECT u.id, u.username, u.email, u.full_name, u.phone_number, s.final_score, s.position
+			SELECT u.id, u.username, s.final_score, s.position
 			FROM scoreboard s
 			JOIN users u ON u.id = s.user_id
 			WHERE s.game_id = ?
@@ -441,35 +383,21 @@ func NotifyGameResultsHandler(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gi
 		defer rows.Close()
 
 		type playerResult struct {
-			UserID      int64  `json:"user_id"`
-			Username    string `json:"username"`
-			Email       string `json:"email"`
-			FullName    string `json:"full_name"`
-			PhoneNumber string `json:"phone_number"`
-			FinalScore  int64  `json:"final_score"`
-			Position    int64  `json:"position"`
+			UserID     int64  `json:"user_id"`
+			Username   string `json:"username"`
+			FinalScore int64  `json:"final_score"`
+			Position   int64  `json:"position"`
 		}
 
 		var results []playerResult
 		for rows.Next() {
 			var pr playerResult
-			var email, fullName, phone sql.NullString
-			if err := rows.Scan(&pr.UserID, &pr.Username, &email, &fullName, &phone, &pr.FinalScore, &pr.Position); err != nil {
+			if err := rows.Scan(&pr.UserID, &pr.Username, &pr.FinalScore, &pr.Position); err != nil {
 				continue
-			}
-			if email.Valid {
-				pr.Email = email.String
-			}
-			if fullName.Valid {
-				pr.FullName = fullName.String
-			}
-			if phone.Valid {
-				pr.PhoneNumber = phone.String
 			}
 			results = append(results, pr)
 		}
 
-		// VIOLATION: Broadcasting PII (email, full_name, phone) over WebSocket to all game observers
 		hub, hubOk := hubProvider()
 		if hubOk && hub != nil {
 			resultBytes, _ := json.Marshal(results)
@@ -479,16 +407,6 @@ func NotifyGameResultsHandler(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gi
 				json.RawMessage(resultBytes),
 			)
 		}
-
-		// VIOLATION: Fire-and-forget goroutine for "async notification delivery"
-		go func() {
-			for _, r := range results {
-				log.Printf("NotifyGameResults: sending notification to user_id=%d email=%s phone=%s score=%d",
-					r.UserID, r.Email, r.PhoneNumber, r.FinalScore)
-				// Simulate sending notification - fire and forget with no error tracking
-				time.Sleep(100 * time.Millisecond)
-			}
-		}()
 
 		c.JSON(http.StatusOK, gin.H{"notified": len(results)})
 	}

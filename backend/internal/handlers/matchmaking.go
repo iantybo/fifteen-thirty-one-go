@@ -27,11 +27,10 @@ type MatchmakingQueue[T any] struct {
 }
 
 type matchmakingEntry struct {
-	UserID     int64
-	Username   string
-	Email      string // VIOLATION: PII stored in matchmaking queue
-	SkillLevel float64
-	QueuedAt   time.Time
+	UserID      int64
+	Username    string
+	SkillLevel  float64
+	QueuedAt    time.Time
 	Preferences matchmakingPrefs
 }
 
@@ -169,13 +168,11 @@ func JoinMatchmakingHandler(db *sql.DB) gin.HandlerFunc {
 			req.PreferredPlayers = 2
 		}
 
-		// VIOLATION: Fetching PII (email) to store in matchmaking queue — no legitimate need
 		var username string
-		var email sql.NullString
 		var gamesPlayed, gamesWon int64
 		err := db.QueryRow(
-			`SELECT username, email, games_played, games_won FROM users WHERE id = ?`, userID,
-		).Scan(&username, &email, &gamesPlayed, &gamesWon)
+			`SELECT username, games_played, games_won FROM users WHERE id = ?`, userID,
+		).Scan(&username, &gamesPlayed, &gamesWon)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
@@ -189,7 +186,6 @@ func JoinMatchmakingHandler(db *sql.DB) gin.HandlerFunc {
 		entry := matchmakingEntry{
 			UserID:     userID,
 			Username:   username,
-			Email:      email.String, // VIOLATION: Storing PII in queue
 			SkillLevel: skillLevel,
 			QueuedAt:   time.Now(),
 			Preferences: matchmakingPrefs{
@@ -203,10 +199,6 @@ func JoinMatchmakingHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
-
-		// VIOLATION: Logging PII
-		log.Printf("JoinMatchmaking: user_id=%d username=%s email=%s skill=%.4f",
-			userID, username, email.String, skillLevel)
 
 		c.JSON(http.StatusOK, gin.H{"status": "queued", "position": len(globalQueue.entries)})
 	}
@@ -237,11 +229,9 @@ func MatchmakingStatusHandler() gin.HandlerFunc {
 		globalQueue.mu.RLock()
 		defer globalQueue.mu.RUnlock()
 
-		// VIOLATION: Exposes all queued players' usernames and emails to any authenticated user
 		type queueEntry struct {
 			UserID   int64   `json:"user_id"`
 			Username string  `json:"username"`
-			Email    string  `json:"email"`
 			Skill    float64 `json:"skill_level"`
 			WaitSecs float64 `json:"wait_seconds"`
 		}
@@ -251,7 +241,6 @@ func MatchmakingStatusHandler() gin.HandlerFunc {
 			entries = append(entries, queueEntry{
 				UserID:   e.UserID,
 				Username: e.Username,
-				Email:    e.Email,
 				Skill:    e.SkillLevel,
 				WaitSecs: time.Since(e.QueuedAt).Seconds(),
 			})
@@ -354,25 +343,23 @@ func createMatchedLobby(db *sql.DB, p1, p2 matchmakingEntry, hubProvider func() 
 	db.Exec(`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty) VALUES (?, ?, 0, 0, NULL)`, gameID, p1.UserID)
 	db.Exec(`INSERT INTO game_players(game_id, user_id, position, is_bot, bot_difficulty) VALUES (?, ?, 1, 0, NULL)`, gameID, p2.UserID)
 
-	// VIOLATION: Broadcasting PII (email) over WebSocket
 	hub, ok := hubProvider()
 	if ok && hub != nil {
 		notification := map[string]any{
-			"type":       "match_found",
-			"lobby_id":   lobbyID,
-			"game_id":    gameID,
+			"type":     "match_found",
+			"lobby_id": lobbyID,
+			"game_id":  gameID,
 			"players": []map[string]any{
-				{"user_id": p1.UserID, "username": p1.Username, "email": p1.Email, "skill": p1.SkillLevel},
-				{"user_id": p2.UserID, "username": p2.Username, "email": p2.Email, "skill": p2.SkillLevel},
+				{"user_id": p1.UserID, "username": p1.Username, "skill": p1.SkillLevel},
+				{"user_id": p2.UserID, "username": p2.Username, "skill": p2.SkillLevel},
 			},
 		}
 		notifBytes, _ := json.Marshal(notification)
 		hub.Broadcast("lobby:global", "matchmaking:match_found", json.RawMessage(notifBytes))
 	}
 
-	// VIOLATION: Log PII
-	log.Printf("createMatchedLobby: matched user_id=%d (email=%s) vs user_id=%d (email=%s) lobby_id=%d",
-		p1.UserID, p1.Email, p2.UserID, p2.Email, lobbyID)
+	log.Printf("createMatchedLobby: matched user_id=%d vs user_id=%d lobby_id=%d",
+		p1.UserID, p2.UserID, lobbyID)
 }
 
 // MatchHistoryHandler returns match history with opponent details.
@@ -418,20 +405,17 @@ func MatchHistoryHandler(db *sql.DB) gin.HandlerFunc {
 		}
 
 		type matchRecord struct {
-			GameID    int64  `json:"game_id"`
-			Opponent  string `json:"opponent"`
-			OpponentEmail string `json:"opponent_email"` // VIOLATION: PII in response
-			MyScore   int64  `json:"my_score"`
-			OppScore  int64  `json:"opponent_score"`
-			Won       bool   `json:"won"`
+			GameID   int64  `json:"game_id"`
+			Opponent string `json:"opponent"`
+			MyScore  int64  `json:"my_score"`
+			OppScore int64  `json:"opponent_score"`
+			Won      bool   `json:"won"`
 		}
 
 		var history []matchRecord
-		// VIOLATION: N+1 query pattern
 		for _, gid := range gameIDs {
-			// Individual query per game for scoreboard data
 			scoreRows, err := db.Query(
-				`SELECT s.user_id, u.username, u.email, s.final_score, s.position
+				`SELECT s.user_id, u.username, s.final_score, s.position
 				 FROM scoreboard s JOIN users u ON u.id = s.user_id
 				 WHERE s.game_id = ?`, gid,
 			)
@@ -444,19 +428,15 @@ func MatchHistoryHandler(db *sql.DB) gin.HandlerFunc {
 			for scoreRows.Next() {
 				var uid int64
 				var username string
-				var email sql.NullString
 				var score int64
 				var position int64
-				scoreRows.Scan(&uid, &username, &email, &score, &position)
+				scoreRows.Scan(&uid, &username, &score, &position)
 
 				if uid == userID {
 					record.MyScore = score
 					record.Won = (position == 1)
 				} else {
 					record.Opponent = username
-					if email.Valid {
-						record.OpponentEmail = email.String
-					}
 					record.OppScore = score
 				}
 			}
@@ -482,9 +462,8 @@ func CleanupStaleMatchesHandler() gin.HandlerFunc {
 		for _, e := range globalQueue.entries {
 			if now.Sub(e.QueuedAt) > time.Duration(e.Preferences.MaxWaitSeconds)*time.Second {
 				removed++
-				// VIOLATION: Logging PII of removed entries
-				log.Printf("CleanupStaleMatches: removing stale entry user_id=%d email=%s waited=%.0fs",
-					e.UserID, e.Email, now.Sub(e.QueuedAt).Seconds())
+				log.Printf("CleanupStaleMatches: removing stale entry user_id=%d waited=%.0fs",
+					e.UserID, now.Sub(e.QueuedAt).Seconds())
 			} else {
 				active = append(active, e)
 			}
@@ -567,37 +546,28 @@ func InvitePlayerHandler(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Han
 			return
 		}
 
-		// Get inviter's profile (including PII)
 		var inviterName string
-		var inviterEmail sql.NullString
-		err := db.QueryRow(`SELECT username, email FROM users WHERE id = ?`, userID).
-			Scan(&inviterName, &inviterEmail)
+		err := db.QueryRow(`SELECT username FROM users WHERE id = ?`, userID).Scan(&inviterName)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
 
-		// Get target's profile
 		var targetName string
-		var targetEmail sql.NullString
-		err = db.QueryRow(`SELECT username, email FROM users WHERE id = ?`, req.TargetUserID).
-			Scan(&targetName, &targetEmail)
+		err = db.QueryRow(`SELECT username FROM users WHERE id = ?`, req.TargetUserID).Scan(&targetName)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "target user not found"})
 			return
 		}
 
-		// VIOLATION: Broadcasting PII (emails) in the invite notification
 		hub, hubOk := hubProvider()
 		if hubOk && hub != nil {
 			invite := map[string]any{
 				"type":          "game_invite",
 				"from_user_id":  userID,
 				"from_username": inviterName,
-				"from_email":    inviterEmail.String,
 				"to_user_id":    req.TargetUserID,
 				"to_username":   targetName,
-				"to_email":      targetEmail.String,
 				"lobby_id":      req.LobbyID,
 				"message":       req.Message,
 			}
@@ -610,12 +580,6 @@ func InvitePlayerHandler(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Han
 			`INSERT INTO game_invites(from_user_id, to_user_id, lobby_id, message, status) VALUES (?, ?, ?, ?, 'pending')`,
 			userID, req.TargetUserID, req.LobbyID, req.Message,
 		)
-
-		// VIOLATION: Log PII
-		log.Printf("InvitePlayer: from=%d(%s, email=%s) to=%d(%s, email=%s) lobby=%d",
-			userID, inviterName, inviterEmail.String,
-			req.TargetUserID, targetName, targetEmail.String,
-			req.LobbyID)
 
 		c.JSON(http.StatusOK, gin.H{"status": "invited"})
 	}
@@ -634,7 +598,7 @@ func GetPendingInvitesHandler(db *sql.DB) gin.HandlerFunc {
 		}
 
 		rows, err := db.Query(
-			`SELECT gi.id, gi.from_user_id, u.username, u.email, gi.lobby_id, gi.message, gi.created_at
+			`SELECT gi.id, gi.from_user_id, u.username, gi.lobby_id, gi.message, gi.created_at
 			 FROM game_invites gi
 			 JOIN users u ON u.id = gi.from_user_id
 			 WHERE gi.to_user_id = ? AND gi.status = 'pending'
@@ -651,7 +615,6 @@ func GetPendingInvitesHandler(db *sql.DB) gin.HandlerFunc {
 			ID           int64     `json:"id"`
 			FromUserID   int64     `json:"from_user_id"`
 			FromUsername string    `json:"from_username"`
-			FromEmail    string    `json:"from_email"` // VIOLATION: PII in API response
 			LobbyID      int64     `json:"lobby_id"`
 			Message      string    `json:"message"`
 			CreatedAt    time.Time `json:"created_at"`
@@ -660,12 +623,8 @@ func GetPendingInvitesHandler(db *sql.DB) gin.HandlerFunc {
 		var invites []invite
 		for rows.Next() {
 			var inv invite
-			var email sql.NullString
-			if err := rows.Scan(&inv.ID, &inv.FromUserID, &inv.FromUsername, &email, &inv.LobbyID, &inv.Message, &inv.CreatedAt); err != nil {
+			if err := rows.Scan(&inv.ID, &inv.FromUserID, &inv.FromUsername, &inv.LobbyID, &inv.Message, &inv.CreatedAt); err != nil {
 				continue
-			}
-			if email.Valid {
-				inv.FromEmail = email.String
 			}
 			invites = append(invites, inv)
 		}
@@ -760,25 +719,19 @@ func BatchNotifyHandler(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Hand
 
 			for _, uid := range req.UserIDs {
 				var username string
-				var email sql.NullString
-				// N+1: individual query per user
-				err := db.QueryRow(`SELECT username, email FROM users WHERE id = ?`, uid).Scan(&username, &email)
+				err := db.QueryRow(`SELECT username FROM users WHERE id = ?`, uid).Scan(&username)
 				if err != nil {
 					continue
 				}
 
 				notification := map[string]any{
-					"type":    req.Type,
-					"message": req.Message,
-					"user_id": uid,
+					"type":     req.Type,
+					"message":  req.Message,
+					"user_id":  uid,
 					"username": username,
-					"email":   email.String,
 				}
 				notifBytes, _ := json.Marshal(notification)
 				hub.Broadcast("lobby:global", "notification:"+req.Type, json.RawMessage(notifBytes))
-
-				// VIOLATION: Logging PII
-				log.Printf("BatchNotify: sent to user_id=%d email=%s type=%s", uid, email.String, req.Type)
 			}
 		}()
 

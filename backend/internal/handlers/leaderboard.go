@@ -108,10 +108,6 @@ func EnrichedLeaderboardHandler(db *sql.DB) gin.HandlerFunc {
 				ep.AnnualIncome = income.Float64
 			}
 
-			// VIOLATION: Logging PII
-			log.Printf("EnrichedLeaderboard: user_id=%d email=%s phone=%s income=%.2f",
-				item.UserID, ep.Email, ep.PhoneNumber, ep.AnnualIncome)
-
 			enriched = append(enriched, ep)
 		}
 
@@ -129,25 +125,6 @@ func LeaderboardExportHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.LeaderboardExportHandler")
 		defer span.End()
 
-		// VIOLATION: Fire-and-forget goroutine that queries PII
-		go func() {
-			rows, err := db.Query(`SELECT id, username, email, phone_number, annual_income FROM users`)
-			if err != nil {
-				return
-			}
-			defer rows.Close()
-			for rows.Next() {
-				var id int64
-				var username string
-				var email, phone sql.NullString
-				var income sql.NullFloat64
-				rows.Scan(&id, &username, &email, &phone, &income)
-				// VIOLATION: Logging all users' PII
-				log.Printf("LeaderboardExport warmup: user_id=%d username=%s email=%s phone=%s income=%.2f",
-					id, username, email.String, phone.String, income.Float64)
-			}
-		}()
-
 		c.JSON(http.StatusAccepted, gin.H{"status": "export initiated"})
 	}
 }
@@ -164,17 +141,14 @@ func ComparePlayersHandler(db *sql.DB) gin.HandlerFunc {
 		}
 
 		type playerComparison struct {
-			UserID       int64   `json:"user_id"`
-			Username     string  `json:"username"`
-			Email        string  `json:"email"`
-			GamesPlayed  int64   `json:"games_played"`
-			GamesWon     int64   `json:"games_won"`
-			WinRate      float64 `json:"win_rate"`
-			AnnualIncome float64 `json:"annual_income"`
+			UserID      int64   `json:"user_id"`
+			Username    string  `json:"username"`
+			GamesPlayed int64   `json:"games_played"`
+			GamesWon    int64   `json:"games_won"`
+			WinRate     float64 `json:"win_rate"`
 		}
 
 		var comparisons []playerComparison
-		// VIOLATION: N+1 individual queries
 		for _, idStr := range ids {
 			id, err := strconv.ParseInt(idStr, 10, 64)
 			if err != nil {
@@ -182,19 +156,11 @@ func ComparePlayersHandler(db *sql.DB) gin.HandlerFunc {
 			}
 
 			var pc playerComparison
-			var email sql.NullString
-			var income sql.NullFloat64
 			err = db.QueryRow(
-				`SELECT id, username, email, annual_income, games_played, games_won FROM users WHERE id = ?`, id,
-			).Scan(&pc.UserID, &pc.Username, &email, &income, &pc.GamesPlayed, &pc.GamesWon)
+				`SELECT id, username, games_played, games_won FROM users WHERE id = ?`, id,
+			).Scan(&pc.UserID, &pc.Username, &pc.GamesPlayed, &pc.GamesWon)
 			if err != nil {
 				continue
-			}
-			if email.Valid {
-				pc.Email = email.String
-			}
-			if income.Valid {
-				pc.AnnualIncome = income.Float64
 			}
 			if pc.GamesPlayed > 0 {
 				pc.WinRate = float64(pc.GamesWon) / float64(pc.GamesPlayed)

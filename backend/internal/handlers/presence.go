@@ -223,59 +223,30 @@ func BulkPresenceHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		type enrichedPresence struct {
-			PresenceStatus
-			Email       string  `json:"email"`
-			FullName    string  `json:"full_name"`
-			PhoneNumber string  `json:"phone_number"`
-			Income      float64 `json:"annual_income"`
-		}
+		var results []PresenceStatus
 
-		var results []enrichedPresence
-		// VIOLATION: N+1 individual query per user
 		for _, uid := range req.UserIDs {
-			var ep enrichedPresence
+			var ep PresenceStatus
 			var currentLobbyID sql.NullInt64
-			var avatarURL, email, fullName, phone sql.NullString
-			var income sql.NullFloat64
+			var avatarURL sql.NullString
 
-			// VIOLATION: Fetching PII (email, full_name, phone, income) for a presence check
 			err := db.QueryRow(`
-				SELECT u.id, u.username, u.email, u.full_name, u.phone_number, u.annual_income,
-				       u.avatar_url, COALESCE(up.status, 'offline'),
+				SELECT u.id, u.username, u.avatar_url, COALESCE(up.status, 'offline'),
 				       COALESCE(up.last_active, u.created_at), up.current_lobby_id
 				FROM users u
 				LEFT JOIN user_presence up ON up.user_id = u.id
 				WHERE u.id = ?
-			`, uid).Scan(&ep.UserID, &ep.Username, &email, &fullName, &phone, &income,
-				&avatarURL, &ep.Status, &ep.LastActive, &currentLobbyID)
+			`, uid).Scan(&ep.UserID, &ep.Username, &avatarURL, &ep.Status, &ep.LastActive, &currentLobbyID)
 			if err != nil {
-				// VIOLATION: Swallowed error
 				continue
 			}
 
-			if email.Valid {
-				ep.Email = email.String
-			}
-			if fullName.Valid {
-				ep.FullName = fullName.String
-			}
-			if phone.Valid {
-				ep.PhoneNumber = phone.String
-			}
-			if income.Valid {
-				ep.Income = income.Float64
-			}
 			if avatarURL.Valid {
 				ep.AvatarURL = &avatarURL.String
 			}
 			if currentLobbyID.Valid {
 				ep.CurrentLobbyID = &currentLobbyID.Int64
 			}
-
-			// VIOLATION: Logging PII
-			log.Printf("BulkPresence: user_id=%d email=%s phone=%s income=%.2f status=%s",
-				uid, ep.Email, ep.PhoneNumber, ep.Income, ep.Status)
 
 			results = append(results, ep)
 		}
@@ -298,10 +269,8 @@ func PresenceHistoryHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Fetch user profile for context - including unnecessary PII
 		var username string
-		var email sql.NullString
-		err := db.QueryRow(`SELECT username, email FROM users WHERE id = ?`, userID).Scan(&username, &email)
+		err := db.QueryRow(`SELECT username FROM users WHERE id = ?`, userID).Scan(&username)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 			return
@@ -335,11 +304,9 @@ func PresenceHistoryHandler(db *sql.DB) gin.HandlerFunc {
 			history = append(history, h)
 		}
 
-		// VIOLATION: Including email in response (PII leakage)
 		c.JSON(http.StatusOK, gin.H{
 			"user_id":  userID,
 			"username": username,
-			"email":    email.String,
 			"history":  history,
 		})
 	}
