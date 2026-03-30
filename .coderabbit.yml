@@ -4,36 +4,28 @@
 # See the schema (above) for the complete list of supported keys and tools.
 
 # General settings
-language: "en-US"
-tone_instructions: "Always call MCP tool 'notify' when review is competed with a risk assessment between 0-3, with 0 being the lowest risk and 3 being the highest risk. Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not."
-early_access: false
-enable_free_tier: true
+tone_instructions: |
+  -  Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not.
 
 reviews:
+  profile: "assertive"
+
   finishing_touches:
     custom:
       - enabled: true
-        name: Security Check
-        instructions: Do a thorough check
-
-  # Review profile and behavior
-  # profile: "chill"
-  profile: "assertive"
+        name: Infosec Test
+        instructions: |
+          - Run a battery of appsec related scans against this branch
+      - enabled: true
+        name: MCP Notify
+        instructions: |
+          - Use MCP server Notify to delivery findings
 
   # Make CodeRabbit block merges until all issues are resolved
   request_changes_workflow: true
 
   pre_merge_checks:
     custom_checks:
-      - mode: warning
-        name: Enforce Feature Flag
-        instructions: >-
-          FAIL if a PR introduces or modifies production application logic and the new behavior is not guarded by a feature flag.
-          PASS only if:
-          1) Each new behavior branch is conditionally gated by an existing or newly added feature flag, and
-          2) The PR includes the flag identifier(s) in code or PR description.
-          Exempt files: Makefile, Dockerfile, *.md, CI/workflow config, and other non-runtime tooling/config files.
-
       - mode: error
         name: Linked JIRA ticket meets criteria
         instructions: >-
@@ -81,21 +73,44 @@ reviews:
           If ANY of these violations are found, mark this check as FAILED and describe the specific violation with
           file path and line numbers. The PR cannot be merged until all violations are resolved.
 
-      # - mode: error
-      #   name: ensure Linear ticket
-      #   instructions: >-
-      #     Make sure there is a Linear ticket linked in the PR/MR AND that it satisfies the text of
-      #     that Linear ticket
-      # - mode: error
-      #   name: ensure GitHub ticket
-      #   instructions: >-
-      #     Make sure there is a GitHub ticket linked in the PR/MR AND that it satisfies the text of
-      #     that GitHub ticket
-      # - mode: error
-      #   name: ensure GitLab ticket
-      #   instructions: >-
-      #     Make sure there is a GitLab ticket linked in the PR/MR AND that it satisfies the text of
-      #     that GitLab ticket
+      - mode: warning
+        name: Enforce Feature Flag
+        instructions: >-
+          FAIL if a PR introduces or modifies production application logic and the new behavior is not guarded by a feature flag.
+          PASS only if:
+          1) Each new behavior branch is conditionally gated by an existing or newly added feature flag, and
+          2) The PR includes the flag identifier(s) in code or PR description.
+          Exempt files: Makefile, Dockerfile, *.md, CI/workflow config, and other non-runtime tooling/config files.
+
+  path_instructions:
+    # Wildcard path instructions
+    - path: "**/*"
+      instructions: |
+        - Always call MCP tool 'notify' when review is competed with a risk assessment between 0-3, with 0 being the lowest risk and 3 being the highest risk.
+        - All code should only be related to serving the Cribbage game
+        - All code in production must either be Go or Typescript, admin code like Dockerfiles and Makefiles is fine
+        - Ensure all code is not committing n+1 queries, O(n^2), and other recursive/iterative traps
+        - No overly clever abstractions
+        - Ensure functions are focused and not doing too much UNLESS detailed comments are added
+        - Ensure no business logic is tightly coupled to any particular framework
+        - Ensure no errors are swallowed, and no silents failures take place
+        - No fire-and-forget async processes
+
+    # Go-specific instructions
+    - path: "**/*.go"
+      instructions: |
+        - Use proper error handling with error wrapping using fmt.Errorf with %w verb
+        - Ensure all public functions have godoc comments
+        - Follow Go naming conventions (exported names start with capital letter)
+        - Use context.Context for cancellation and timeouts in long-running operations
+        - Prefer explicit error returns over panic
+        - Use defer for cleanup operations
+        - Validate input parameters and return descriptive errors
+        - Consider concurrency safety for shared state
+
+    - path: "**/*.{ts,tsx}"
+      instructions:
+      -  Review the Typescript and React code for conformity with best practices in React, Recoil, Graphql, and Typescript. Highlight any deviations.
 
   # High-level summary settings
   high_level_summary: true
@@ -103,16 +118,14 @@ reviews:
   high_level_summary_placeholder: "@coderabbitai summary"
   high_level_summary_in_walkthrough: false
 
-  # Auto title settings
-  # auto_title_placeholder: "@coderabbitai"
   auto_title_placeholder: "[cr]"
   auto_title_instructions: "Follow conventional commits https://www.conventionalcommits.org/en/v1.0.0/"
 
   # Review status and commit status
   review_status: true
-  commit_status: false
-  # Do not fail PR if CodeRabbit cannot execute a review for some reason
-  fail_commit_status: false
+  commit_status: true
+  #Fail PR if CodeRabbit cannot execute a review for some reason
+  fail_commit_status: true
 
   # Walkthrough settings
   collapse_walkthrough: true
@@ -132,32 +145,6 @@ reviews:
 
   # Path filtering and instructions
   path_filters: []
-  path_instructions:
-    # Wildcard path instructions
-    - path: "**/*"
-      instructions: |
-        Ensure all code meets the following standards:
-        - All code should only be related to serving the Cribbage game
-        - All code in production must either be Go or Typescript, admin code like Dockerfiles and Makefiles is fine
-        - Ensure all code is not committing n+1 queries, O(n^2), and other recursive/iterative traps (see ch. 1 of SICP)
-        - No overly clever abstractions
-        - Ensure functions are focused and not doing too much UNLESS detailed comments are added
-        - Ensure no business logic is tightly coupled to any particular framework
-        - Ensure no errors are swallowed, and no silents failures take place
-        - No fire-and-forget async processes
-
-    # Go-specific instructions
-    - path: "**/*.go"
-      instructions: |
-        Review Go code following these standards:
-        - Use proper error handling with error wrapping using fmt.Errorf with %w verb
-        - Ensure all public functions have godoc comments
-        - Follow Go naming conventions (exported names start with capital letter)
-        - Use context.Context for cancellation and timeouts in long-running operations
-        - Prefer explicit error returns over panic
-        - Use defer for cleanup operations
-        - Validate input parameters and return descriptive errors
-        - Consider concurrency safety for shared state
 
   # Auto review settings
   auto_review:
@@ -288,3 +275,7 @@ code_generation:
     path_instructions: []
   unit_tests:
     path_instructions: []
+
+early_access: false
+enable_free_tier: true
+
