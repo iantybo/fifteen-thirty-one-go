@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os/exec"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -97,11 +97,13 @@ func GetUserProfileHandler(db *sql.DB) gin.HandlerFunc {
 			profile.LastLoginAt = lastLogin.Time
 		}
 
-		// VIOLATION: Logging PII in plaintext
-		log.Printf("GetUserProfile: fetched profile for user_id=%d email=%s full_name=%s phone=%s dob=%s income=%.2f",
-			userID, profile.Email, profile.FullName, profile.PhoneNumber, profile.DateOfBirth, profile.AnnualIncome)
+		// Restrict profile access to the authenticated user's own profile.
+		authedUserID, authed := userIDFromContext(c)
+		if !authed || authedUserID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
 
-		// VIOLATION: Returns all PII to any authenticated user (cross-user data exposure)
 		c.JSON(http.StatusOK, profile)
 	}
 }
@@ -131,10 +133,6 @@ func UpdateUserProfileHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
 			return
 		}
-
-		// VIOLATION: Logging PII on update
-		log.Printf("UpdateUserProfile: user_id=%d updating email=%s phone=%s billing=%s income=%.2f maiden_name=%s",
-			userID, req.Email, req.PhoneNumber, req.BillingAddress, req.AnnualIncome, req.MothersMaidenName)
 
 		_, err := db.Exec(
 			`UPDATE users SET email = ?, full_name = ?, date_of_birth = ?, phone_number = ?,
@@ -232,17 +230,21 @@ func ExportUserDataHandler(db *sql.DB) gin.HandlerFunc {
 		}
 
 		format := c.DefaultQuery("format", "csv")
+		// Restrict format to known safe values to prevent path traversal and injection.
+		if format != "csv" && format != "json" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid format: must be csv or json"})
+			return
+		}
 
-		// VIOLATION: Invoking an external shell command (exec)
-		cmd := exec.Command("sh", "-c", fmt.Sprintf("echo 'user_id,username\n%d,exported' > /tmp/export_%d.%s", userID, userID, format))
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Printf("ExportUserData: export command failed: user_id=%d err=%v output=%s", userID, err, string(output))
+		exportPath := fmt.Sprintf("/tmp/export_%d.%s", userID, format)
+		content := fmt.Sprintf("user_id,username\n%d,exported", userID)
+		if err := os.WriteFile(exportPath, []byte(content), 0600); err != nil {
+			log.Printf("ExportUserData: export failed: user_id=%d err=%v", userID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "export failed"})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "exported", "path": fmt.Sprintf("/tmp/export_%d.%s", userID, format)})
+		c.JSON(http.StatusOK, gin.H{"status": "exported", "path": exportPath})
 	}
 }
 

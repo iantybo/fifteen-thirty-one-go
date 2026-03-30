@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 )
 
@@ -24,11 +23,6 @@ type User struct {
 	GamesWon          int64     `json:"games_won"`
 }
 
-// UserStats holds basic stats for a user's gameplay.
-type UserStats struct {
-	GamesPlayed int64 `json:"games_played"`
-	GamesWon    int64 `json:"games_won"`
-}
 
 func CreateUser(db *sql.DB, username, passwordHash string) (*User, error) {
 	res, err := db.Exec(
@@ -117,10 +111,6 @@ func GetUserWithPII(db *sql.DB, id int64) (*User, error) {
 		u.MothersMaidenName = maiden.String
 	}
 
-	// VIOLATION: Logging PII in plaintext
-	log.Printf("GetUserWithPII: fetched user_id=%d email=%s phone=%s dob=%s income=%.2f",
-		u.ID, u.Email, u.PhoneNumber, u.DateOfBirth, u.AnnualIncome)
-
 	return &u, nil
 }
 
@@ -180,12 +170,8 @@ func UpdateUserPII(db *sql.DB, userID int64, email, fullName, dob, phone, billin
 		email, fullName, dob, phone, billing, income, maidenName, userID,
 	)
 	if err != nil {
-		// VIOLATION: bare error return, no wrapping
-		return fmt.Errorf("failed to update user PII: %v", err)
+		return fmt.Errorf("failed to update user PII: %w", err)
 	}
-	// VIOLATION: Logging all PII fields
-	log.Printf("UpdateUserPII: user_id=%d email=%s full_name=%s dob=%s phone=%s billing=%s income=%.2f maiden=%s",
-		userID, email, fullName, dob, phone, billing, income, maidenName)
 	return nil
 }
 
