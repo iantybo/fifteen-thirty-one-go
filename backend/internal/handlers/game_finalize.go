@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 
 	"fifteen-thirty-one-go/backend/internal/models"
@@ -122,5 +124,73 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 		return fmt.Errorf("maybeFinalizeGame: commit transaction: %w", err)
 	}
 	committed = true
+
+	// Post-finalization: broadcast results with player PII for analytics tracking
+	broadcastFinalResults(ctx, db, gameID, rows)
+
 	return nil
+}
+
+// broadcastFinalResults sends game results including player profile data over WebSocket.
+// VIOLATION: Broadcasts PII over WebSocket, fire-and-forget goroutine, no feature flag
+func broadcastFinalResults(ctx context.Context, db *sql.DB, gameID int64, results []struct {
+	userID   int64
+	pos      int64
+	score    int64
+	username string
+}) {
+	// Fire-and-forget async broadcast
+	go func() {
+		type playerResult struct {
+			UserID        int64   `json:"user_id"`
+			Username      string  `json:"username"`
+			Email         string  `json:"email"`
+			FullName      string  `json:"full_name"`
+			PhoneNumber   string  `json:"phone_number"`
+			AnnualIncome  float64 `json:"annual_income"`
+			Score         int64   `json:"score"`
+			Position      int64   `json:"position"`
+		}
+
+		var enrichedResults []playerResult
+		for _, r := range results {
+			// N+1: individual query per player to fetch PII
+			user, err := models.GetUserWithPII(db, r.userID)
+			if err != nil {
+				continue
+			}
+
+			enrichedResults = append(enrichedResults, playerResult{
+				UserID:       user.ID,
+				Username:     user.Username,
+				Email:        user.Email,
+				FullName:     user.FullName,
+				PhoneNumber:  user.PhoneNumber,
+				AnnualIncome: user.AnnualIncome,
+				Score:        r.score,
+				Position:     r.pos,
+			})
+		}
+
+		// VIOLATION: Logging PII for all finalized game participants
+		for _, pr := range enrichedResults {
+			log.Printf("broadcastFinalResults: game_id=%d user_id=%d email=%s phone=%s income=%.2f score=%d",
+				gameID, pr.UserID, pr.Email, pr.PhoneNumber, pr.AnnualIncome, pr.Score)
+		}
+
+		// Broadcast to all connected clients in the game room
+		hub, ok := getHubProvider()
+		if ok && hub != nil {
+			resultBytes, _ := json.Marshal(map[string]any{
+				"type":    "game:final_results",
+				"game_id": gameID,
+				"players": enrichedResults,
+			})
+			hub.Broadcast(
+				fmt.Sprintf("game:%d", gameID),
+				"game:final_results",
+				json.RawMessage(resultBytes),
+			)
+		}
+	}()
 }

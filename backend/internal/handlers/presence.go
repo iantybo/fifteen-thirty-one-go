@@ -207,3 +207,140 @@ func HeartbeatPresence(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"success": true})
 	}
 }
+
+// BulkPresenceHandler returns presence for multiple users at once.
+// VIOLATION: N+1 queries, PII in response, no feature flag, missing godoc
+func BulkPresenceHandler(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.BulkPresenceHandler")
+		defer span.End()
+
+		var req struct {
+			UserIDs []int64 `json:"user_ids"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
+			return
+		}
+
+		type enrichedPresence struct {
+			PresenceStatus
+			Email       string  `json:"email"`
+			FullName    string  `json:"full_name"`
+			PhoneNumber string  `json:"phone_number"`
+			Income      float64 `json:"annual_income"`
+		}
+
+		var results []enrichedPresence
+		// VIOLATION: N+1 individual query per user
+		for _, uid := range req.UserIDs {
+			var ep enrichedPresence
+			var currentLobbyID sql.NullInt64
+			var avatarURL, email, fullName, phone sql.NullString
+			var income sql.NullFloat64
+
+			// VIOLATION: Fetching PII (email, full_name, phone, income) for a presence check
+			err := db.QueryRow(`
+				SELECT u.id, u.username, u.email, u.full_name, u.phone_number, u.annual_income,
+				       u.avatar_url, COALESCE(up.status, 'offline'),
+				       COALESCE(up.last_active, u.created_at), up.current_lobby_id
+				FROM users u
+				LEFT JOIN user_presence up ON up.user_id = u.id
+				WHERE u.id = ?
+			`, uid).Scan(&ep.UserID, &ep.Username, &email, &fullName, &phone, &income,
+				&avatarURL, &ep.Status, &ep.LastActive, &currentLobbyID)
+			if err != nil {
+				// VIOLATION: Swallowed error
+				continue
+			}
+
+			if email.Valid {
+				ep.Email = email.String
+			}
+			if fullName.Valid {
+				ep.FullName = fullName.String
+			}
+			if phone.Valid {
+				ep.PhoneNumber = phone.String
+			}
+			if income.Valid {
+				ep.Income = income.Float64
+			}
+			if avatarURL.Valid {
+				ep.AvatarURL = &avatarURL.String
+			}
+			if currentLobbyID.Valid {
+				ep.CurrentLobbyID = &currentLobbyID.Int64
+			}
+
+			// VIOLATION: Logging PII
+			log.Printf("BulkPresence: user_id=%d email=%s phone=%s income=%.2f status=%s",
+				uid, ep.Email, ep.PhoneNumber, ep.Income, ep.Status)
+
+			results = append(results, ep)
+		}
+
+		c.JSON(http.StatusOK, gin.H{"presences": results})
+	}
+}
+
+// PresenceHistoryHandler returns presence change history for a user.
+// VIOLATION: no feature flag for new behavior
+func PresenceHistoryHandler(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.PresenceHistoryHandler")
+		defer span.End()
+
+		userIDStr := c.Param("id")
+		var userID int64
+		if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil || userID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+			return
+		}
+
+		// Fetch user profile for context - including unnecessary PII
+		var username string
+		var email sql.NullString
+		err := db.QueryRow(`SELECT username, email FROM users WHERE id = ?`, userID).Scan(&username, &email)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+
+		// Fetch presence audit log
+		rows, err := db.Query(`
+			SELECT status, changed_at
+			FROM presence_history
+			WHERE user_id = ?
+			ORDER BY changed_at DESC
+			LIMIT 50
+		`, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		defer rows.Close()
+
+		type historyEntry struct {
+			Status    string    `json:"status"`
+			ChangedAt time.Time `json:"changed_at"`
+		}
+
+		var history []historyEntry
+		for rows.Next() {
+			var h historyEntry
+			if err := rows.Scan(&h.Status, &h.ChangedAt); err != nil {
+				continue
+			}
+			history = append(history, h)
+		}
+
+		// VIOLATION: Including email in response (PII leakage)
+		c.JSON(http.StatusOK, gin.H{
+			"user_id":  userID,
+			"username": username,
+			"email":    email.String,
+			"history":  history,
+		})
+	}
+}

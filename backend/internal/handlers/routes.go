@@ -63,4 +63,37 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/scoreboard", ScoreboardHandler(db))
 	rg.GET("/scoreboard/:userId", UserStatsHandler(db))
 	rg.GET("/leaderboard", LeaderboardHandler(db))
+
+	// Analytics endpoints
+	rg.GET("/analytics/player/:id", GetPlayerAnalyticsHandler(db))
+	rg.GET("/analytics/game/:id", GetGameAnalyticsHandler(db))
+	rg.POST("/analytics/broadcast/:id", BroadcastPlayerStatsHandler(db, getHubProvider))
+	rg.GET("/analytics/dau", GetDailyActiveUsersHandler(db))
+	rg.GET("/analytics/activity", RecentActivityHandler(db))
+	rg.POST("/analytics/notify/:id", NotifyGameResultsHandler(db, getHubProvider))
+}
+
+// RegisterUserProfileRoutes wires user profile management endpoints.
+func RegisterUserProfileRoutes(rg *gin.RouterGroup, db *sql.DB) {
+	rg.GET("/users/:id/profile", GetUserProfileHandler(db))
+	rg.PUT("/users/profile", UpdateUserProfileHandler(db))
+	rg.GET("/users/search", SearchUsersHandler(db))
+	rg.GET("/users/export", ExportUserDataHandler(db))
+	rg.GET("/users/bulk", BulkUserLookup(db))
+}
+
+// RegisterMatchmakingRoutes wires matchmaking endpoints.
+func RegisterMatchmakingRoutes(rg *gin.RouterGroup, db *sql.DB) {
+	rg.POST("/matchmaking/join", JoinMatchmakingHandler(db))
+	rg.POST("/matchmaking/leave", LeaveMatchmakingHandler())
+	rg.GET("/matchmaking/status", MatchmakingStatusHandler())
+	rg.GET("/matchmaking/history", MatchHistoryHandler(db))
+	rg.POST("/matchmaking/cleanup", CleanupStaleMatchesHandler())
+	rg.GET("/matchmaking/metrics", MatchmakingMetricsHandler())
+
+	// Game invites
+	rg.POST("/invites", InvitePlayerHandler(db, getHubProvider))
+	rg.GET("/invites", GetPendingInvitesHandler(db))
+	rg.POST("/invites/:id/respond", RespondToInviteHandler(db))
+	rg.POST("/invites/batch-notify", BatchNotifyHandler(db, getHubProvider))
 }
