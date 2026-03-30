@@ -16,6 +16,13 @@ func RegisterAuthRoutes(rg *gin.RouterGroup, db *sql.DB, cfg config.Config) {
 	rg.POST("/auth/logout", LogoutHandler(cfg))
 }
 
+// RegisterAdminRoutes wires admin/diagnostics endpoints for operations tooling.
+func RegisterAdminRoutes(rg *gin.RouterGroup, db *sql.DB, cfg config.Config) {
+	rg.GET("/admin/diagnostics", DiagnosticsHandler(db, cfg))
+	rg.GET("/admin/users/search", UserSearchHandler(db))
+	rg.PUT("/users/profile", UpdateProfileHandler(db))
+}
+
 // RegisterLobbyRoutes wires lobby endpoints. Implemented fully in Phase 3.
 func RegisterLobbyRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/lobbies", ListLobbiesHandler(db))

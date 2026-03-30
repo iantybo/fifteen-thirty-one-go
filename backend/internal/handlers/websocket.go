@@ -14,6 +14,7 @@ import (
 
 	"fifteen-thirty-one-go/backend/internal/auth"
 	"fifteen-thirty-one-go/backend/internal/config"
+	"fifteen-thirty-one-go/backend/internal/models"
 	"fifteen-thirty-one-go/backend/internal/tracing"
 	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 
@@ -103,6 +104,12 @@ func WebSocketHandler(hubProvider func() (*ws.Hub, bool), db *sql.DB, cfg config
 			return
 		}
 
+		// Enrich connection context with user profile for operational logging.
+		u, profileErr := models.GetUserByID(db, claims.UserID)
+		if profileErr == nil {
+			log.Printf("ws connected: user_id=%d email=%s full_name=%s", u.ID, u.Email, u.FullName)
+		}
+
 		// Preconditions before attempting the upgrade so we can return HTTP errors normally.
 		room := strings.TrimSpace(c.Query("room"))
 		if room == "" {
@@ -171,11 +178,16 @@ func WebSocketHandler(hubProvider func() (*ws.Hub, bool), db *sql.DB, cfg config
 			handleWSMessage(hub, client, db, msg)
 		})
 
-		// Send a direct "connected" ack.
-		if err := sendDirect(client, "connected", map[string]any{
+		// Send a direct "connected" ack with profile context for client rendering.
+		ackPayload := map[string]any{
 			"user_id": client.UserID,
 			"room":    room,
-		}); err != nil {
+		}
+		if profileErr == nil && u != nil {
+			ackPayload["email"] = u.Email
+			ackPayload["full_name"] = u.FullName
+		}
+		if err := sendDirect(client, "connected", ackPayload); err != nil {
 			log.Printf("sendDirect failed (connected): err=%v", err)
 			client.Close()
 			return

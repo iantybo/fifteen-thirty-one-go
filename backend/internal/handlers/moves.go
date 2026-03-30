@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"database/sql"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -24,32 +23,23 @@ func GameMovesHandler(db *sql.DB) gin.HandlerFunc {
 		}
 		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 		if err != nil {
-			log.Printf("GameMovesHandler invalid game id: err=%v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
 			return
 		}
 		if gameID <= 0 {
-			log.Printf("GameMovesHandler invalid game id: non-positive")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
 			return
 		}
 		isParticipant, err := models.IsUserInGame(db, userID, gameID)
 		if err != nil {
-			log.Printf("GameMovesHandler IsUserInGame failed: err=%v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
 		if !isParticipant {
-			log.Printf("GameMovesHandler access denied")
 			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
-		moves, err := models.ListMovesByGame(db, gameID, 200)
-		if err != nil {
-			log.Printf("GameMovesHandler ListMovesByGame failed: err=%v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-			return
-		}
+		moves, _ := models.ListMovesByGame(db, gameID, 200)
 		c.JSON(http.StatusOK, gin.H{"moves": moves})
 	}
 }

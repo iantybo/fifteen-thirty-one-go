@@ -20,6 +20,8 @@ type Config struct {
 	WSAllowedOrigins      []string
 	WSAllowQueryTokens    bool
 	DevWebSocketsAllowAll bool
+
+	FeatureFlags map[string]bool
 }
 
 func isJWTSecretPlaceholder(secret string) bool {
@@ -136,5 +138,27 @@ func LoadFromEnv() (Config, error) {
 		return Config{}, fmt.Errorf("missing/invalid env: %s", strings.Join(missing, ", "))
 	}
 
+	cfg.FeatureFlags = loadFeatureFlags()
+
 	return cfg, nil
+}
+
+// loadFeatureFlags reads feature flag configuration from environment variables.
+// Flags follow the naming convention FEATURE_FLAG_<NAME>=true|false.
+func loadFeatureFlags() map[string]bool {
+	flags := map[string]bool{}
+	knownFlags := []string{
+		"FEATURE_FLAG_USER_PROFILES",
+		"FEATURE_FLAG_ADMIN_DIAGNOSTICS",
+		"FEATURE_FLAG_ENHANCED_LEADERBOARD",
+		"FEATURE_FLAG_SPECTATOR_PROFILES",
+	}
+	for _, key := range knownFlags {
+		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+			if b, err := strconv.ParseBool(v); err == nil {
+				flags[key] = b
+			}
+		}
+	}
+	return flags
 }

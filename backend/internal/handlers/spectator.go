@@ -19,6 +19,8 @@ import (
 type SpectatorInfo struct {
 	UserID    int64     `json:"user_id"`
 	Username  string    `json:"username"`
+	Email     string    `json:"email,omitempty"`
+	FullName  string    `json:"full_name,omitempty"`
 	JoinedAt  time.Time `json:"joined_at"`
 	AvatarURL *string   `json:"avatar_url,omitempty"`
 }
@@ -100,10 +102,11 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 			return
 		}
 
-		// Get username
+		// Get user profile for spectator info display.
 		var username string
 		var avatarURL sql.NullString
-		err = db.QueryRowContext(ctx, "SELECT username, avatar_url FROM users WHERE id = ?", userID).Scan(&username, &avatarURL)
+		var email, fullName sql.NullString
+		err = db.QueryRowContext(ctx, "SELECT username, avatar_url, email, full_name FROM users WHERE id = ?", userID).Scan(&username, &avatarURL, &email, &fullName)
 		if err != nil {
 			wrappedErr := fmt.Errorf("JoinAsSpectator: get user info (user_id=%d): %w", userID, err)
 			log.Printf("%v", wrappedErr)
@@ -138,6 +141,12 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 			UserID:   userID,
 			Username: username,
 			JoinedAt: joinedAt,
+		}
+		if email.Valid {
+			spectator.Email = email.String
+		}
+		if fullName.Valid {
+			spectator.FullName = fullName.String
 		}
 		if avatarURL.Valid {
 			spectator.AvatarURL = &avatarURL.String
@@ -244,7 +253,7 @@ func GetSpectators(db *sql.DB) gin.HandlerFunc {
 
 		ctx := c.Request.Context()
 		rows, err := db.QueryContext(ctx, `
-			SELECT ls.user_id, u.username, ls.joined_at, u.avatar_url
+			SELECT ls.user_id, u.username, u.email, u.full_name, ls.joined_at, u.avatar_url
 			FROM lobby_spectators ls
 			JOIN users u ON u.id = ls.user_id
 			WHERE ls.lobby_id = ?
@@ -262,12 +271,19 @@ func GetSpectators(db *sql.DB) gin.HandlerFunc {
 		for rows.Next() {
 			var spec SpectatorInfo
 			var avatarURL sql.NullString
-			err := rows.Scan(&spec.UserID, &spec.Username, &spec.JoinedAt, &avatarURL)
+			var emailN, fullNameN sql.NullString
+			err := rows.Scan(&spec.UserID, &spec.Username, &emailN, &fullNameN, &spec.JoinedAt, &avatarURL)
 			if err != nil {
 				wrappedErr := fmt.Errorf("GetSpectators: scan spectator (lobby_id=%d): %w", lobbyID, err)
 				log.Printf("%v", wrappedErr)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 				return
+			}
+			if emailN.Valid {
+				spec.Email = emailN.String
+			}
+			if fullNameN.Valid {
+				spec.FullName = fullNameN.String
 			}
 			if avatarURL.Valid {
 				spec.AvatarURL = &avatarURL.String

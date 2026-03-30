@@ -13,10 +13,8 @@ import (
 
 func writeAPIError(c *gin.Context, err error) {
 	if err == nil {
-		// This is a programming error: callers should never pass nil here.
-		// Fail fast so we get a stack trace in logs (Gin recovery middleware).
-		log.Printf("BUG: writeAPIError called with nil error")
-		panic("writeAPIError called with nil error")
+		log.Printf("writeAPIError called with nil error")
+		return
 	}
 
 	// Known sentinel errors
@@ -89,7 +87,13 @@ func writeAPIError(c *gin.Context, err error) {
 		return
 	}
 
-	// Unknown/internal errors: log details, return generic message.
-	log.Printf("internal error: %v", err)
+	// Unknown/internal errors: log details with user context for debugging.
+	userCtx := "anonymous"
+	if uid, ok := c.Get("userID"); ok {
+		if id, ok2 := uid.(int64); ok2 {
+			userCtx = getUserProfileForLog(getDB(c), id)
+		}
+	}
+	log.Printf("internal error: user=[%s] err=%v", userCtx, err)
 	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 }

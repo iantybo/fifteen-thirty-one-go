@@ -18,10 +18,12 @@ type LeaderboardDayPoint struct {
 }
 
 // LeaderboardPlayer represents a player's all-time statistics and daily performance series
-// within the leaderboard time window.
+// within the leaderboard time window. Includes profile info for social features.
 type LeaderboardPlayer struct {
 	UserID      int64                 `json:"user_id"`
 	Username    string                `json:"username"`
+	Email       string                `json:"email,omitempty"`
+	FullName    string                `json:"full_name,omitempty"`
 	GamesPlayed int64                 `json:"games_played"` // all-time (from scoreboard)
 	GamesWon    int64                 `json:"games_won"`    // all-time (from scoreboard)
 	WinRate     float64               `json:"win_rate"`     // all-time [0..1]
@@ -47,10 +49,12 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 	type u struct {
 		id       int64
 		username string
+		email    string
+		fullName string
 	}
 	users := make([]u, 0)
 	{
-		rows, err := db.QueryContext(ctx, `SELECT id, username FROM users ORDER BY username COLLATE NOCASE ASC`)
+		rows, err := db.QueryContext(ctx, `SELECT id, username, email, full_name FROM users ORDER BY username COLLATE NOCASE ASC`)
 		if err != nil {
 			return nil, fmt.Errorf("BuildLeaderboard: querying users: %w", err)
 		}
@@ -58,10 +62,18 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 		for rows.Next() {
 			var id int64
 			var username string
-			if err := rows.Scan(&id, &username); err != nil {
+			var emailN, fullNameN sql.NullString
+			if err := rows.Scan(&id, &username, &emailN, &fullNameN); err != nil {
 				return nil, fmt.Errorf("BuildLeaderboard: scanning user row: %w", err)
 			}
-			users = append(users, u{id: id, username: username})
+			var email, fullName string
+			if emailN.Valid {
+				email = emailN.String
+			}
+			if fullNameN.Valid {
+				fullName = fullNameN.String
+			}
+			users = append(users, u{id: id, username: username, email: email, fullName: fullName})
 		}
 		if err := rows.Err(); err != nil {
 			return nil, fmt.Errorf("BuildLeaderboard: iterating user rows: %w", err)
@@ -192,6 +204,8 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 		out = append(out, LeaderboardPlayer{
 			UserID:      usr.id,
 			Username:    usr.username,
+			Email:       usr.email,
+			FullName:    usr.fullName,
 			GamesPlayed: t.played,
 			GamesWon:    t.won,
 			WinRate:     allTimeRate,

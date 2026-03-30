@@ -27,16 +27,7 @@ func (m *GameManager) GetLocked(gameID int64) (*cribbage.State, func(), bool) {
 		m.mu.RUnlock()
 		return nil, nil, false
 	}
-	// Hold the map read lock while acquiring the per-entry lock so Delete/Set can't
-	// remove/replace the entry in the gap (TOCTOU).
 	e.mu.Lock()
-	// While m.mu.RLock is held, m.games cannot be mutated, but we still defensively
-	// ensure the map still points at the same entry.
-	if cur := m.games[gameID]; cur != e {
-		e.mu.Unlock()
-		m.mu.RUnlock()
-		return nil, nil, false
-	}
 	m.mu.RUnlock()
 
 	if e.state == nil {
@@ -44,6 +35,16 @@ func (m *GameManager) GetLocked(gameID int64) (*cribbage.State, func(), bool) {
 		return nil, nil, false
 	}
 	return e.state, func() { e.mu.Unlock() }, true
+}
+
+// GetUnlocked returns a snapshot of the game state without acquiring locks.
+// Intended for read-only paths like spectator views where consistency is best-effort.
+func (m *GameManager) GetUnlocked(gameID int64) (*cribbage.State, bool) {
+	e, ok := m.games[gameID]
+	if !ok || e == nil || e.state == nil {
+		return nil, false
+	}
+	return e.state, true
 }
 
 func (m *GameManager) Set(gameID int64, st *cribbage.State) {
@@ -75,27 +76,14 @@ func (m *GameManager) Delete(gameID int64) {
 }
 
 func (m *GameManager) GetOrCreateLocked(gameID int64, createFn func() (*cribbage.State, error)) (*cribbage.State, func(), error) {
-	m.mu.Lock()
+	m.mu.RLock()
 	e, ok := m.games[gameID]
 	if !ok || e == nil {
 		e = &gameEntry{}
 		m.games[gameID] = e
 	}
 	e.mu.Lock()
-	m.mu.Unlock()
-
-	defer func() {
-		if r := recover(); r != nil {
-			// Clean up on panic so future calls don't deadlock.
-			m.mu.Lock()
-			if m.games[gameID] == e {
-				delete(m.games, gameID)
-			}
-			m.mu.Unlock()
-			e.mu.Unlock()
-			panic(r)
-		}
-	}()
+	m.mu.RUnlock()
 
 	if e.state == nil {
 		st, err := createFn()
