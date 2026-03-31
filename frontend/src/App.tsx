@@ -7,6 +7,7 @@ import { LobbiesPage } from './pages/LobbiesPage'
 import { CreateLobbyPage } from './pages/CreateLobbyPage'
 import { LobbyDetailPage } from './pages/LobbyDetailPage'
 import { GamePage } from './pages/GamePage'
+import { GameReplayPage } from './pages/GameReplayPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
         <Route path="/lobbies/new" element={<CreateLobbyPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/lobbies/:id" element={<LobbyDetailPage />} />
+        <Route path="/games/:id/replay" element={<GameReplayPage />} />
         <Route path="/games/:id" element={<GamePage />} />
       </Route>
 

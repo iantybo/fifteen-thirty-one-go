@@ -55,6 +55,7 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 
 	rg.GET("/games/:id", GetGameHandler(db))
 	rg.GET("/games/:id/moves", GameMovesHandler(db))
+	rg.GET("/games/:id/replay", ReplayHandler(db))
 	rg.POST("/games/:id/move", MoveHandler(db))
 	rg.POST("/games/:id/quit", QuitGameHandler(db))
 	rg.POST("/games/:id/next_hand", NextHandHandler(db))

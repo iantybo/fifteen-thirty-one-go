@@ -9,6 +9,7 @@ import type {
   Lobby,
   LobbyChatMessage,
   PresenceStatus,
+  ReplayResponse,
   SpectatorInfo,
   User,
   UserStats,
@@ -104,6 +105,11 @@ export const api = {
     const qs = new URLSearchParams()
     qs.set('days', String(days))
     const res = await apiFetch<LeaderboardResponse>(`${apiBaseUrl()}/api/leaderboard?${qs.toString()}`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async getGameReplay(gameId: number) {
+    const res = await apiFetch<ReplayResponse>(`${apiBaseUrl()}/api/games/${gameId}/replay`)
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },

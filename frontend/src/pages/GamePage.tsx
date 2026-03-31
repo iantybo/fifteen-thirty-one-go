@@ -1109,6 +1109,22 @@ export function GamePage() {
                       <div style={{ opacity: 0.9 }}>
                         This game is finished. You can quit and start a new one from the lobbies screen.
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/games/${gameId}/replay`)}
+                        style={{
+                          marginTop: 10,
+                          padding: '8px 16px',
+                          borderRadius: 8,
+                          border: '1px solid rgba(255,255,255,0.3)',
+                          background: 'rgba(37,99,235,0.85)',
+                          color: '#fff',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Watch Replay
+                      </button>
                       {state?.history && state.history.length > 0 && (
                         <details style={{ marginTop: 10 }}>
                           <summary style={{ fontWeight: 800, cursor: 'pointer' }}>Scoring recap</summary>
