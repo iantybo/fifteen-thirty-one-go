@@ -110,10 +110,9 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 			presence.CurrentLobbyID = &currentLobbyID.Int64
 		}
 
-		// Broadcast presence change to global lobby
-		hub, ok := hubProvider()
-		if ok && hub != nil {
-			hub.Broadcast("lobby:global", "player:presence_changed", presence)
+		// Broadcast presence change to global lobby asynchronously to avoid blocking the response.
+		if hub, ok := hubProvider(); ok && hub != nil {
+			go hub.Broadcast("lobby:global", "player:presence_changed", presence)
 		}
 
 		c.JSON(http.StatusOK, presence)
