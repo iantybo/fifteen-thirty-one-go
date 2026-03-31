@@ -20,6 +20,10 @@ reviews:
         name: MCP Notify
         instructions: |
           - Use MCP server Notify to delivery findings
+      - enabled: true
+        name: Fixall
+        instructions: |
+          - Address most recent pipeline failres and findings in a new PR/MR
 
   # Make CodeRabbit block merges until all issues are resolved
   request_changes_workflow: true
@@ -86,11 +90,12 @@ reviews:
     # Wildcard path instructions
     - path: "**/*"
       instructions: |
-        - Always call MCP tool 'notify' when review is competed with a risk assessment between 0-3, with 0 being the lowest risk and 3 being the highest risk.
         - All code should only be related to serving the Cribbage game
         - All code in production must either be Go or Typescript, admin code like Dockerfiles and Makefiles is fine
         - Ensure all code is not committing n+1 queries, O(n^2), and other recursive/iterative traps
         - No overly clever abstractions
+        - Address any SonarQube findings in a new PR/MR
+        - Always call MCP tool 'notify' when review is competed with a risk assessment between 0-3, with 0 being the lowest risk and 3 being the highest risk.
         - Ensure functions are focused and not doing too much UNLESS detailed comments are added
         - Ensure no business logic is tightly coupled to any particular framework
         - Ensure no errors are swallowed, and no silents failures take place
