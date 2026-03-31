@@ -19,7 +19,9 @@ reviews:
       - enabled: true
         name: MCP Notify
         instructions: |
-          - Use MCP server Notify to delivery findings
+          - Use MCP server Notify to deliver CodeRabbit findings and Risk Score in the High Level Summary.
+            -  Risk Score should be delivered as a simple JSON: {"timestamp": "%iso_timestamp%", "source": "coderabbit", "risk_score": "%risk_score%", "url": "%url%}
+            -  Findings should be delivered as a simple JSON: {"timestamp": "%iso_timestamp%", "source": "coderabbit", "finding": "%finding_ summary%", "url": "%url% }
       - enabled: true
         name: Fixall
         instructions: |
@@ -95,7 +97,11 @@ reviews:
         - Ensure all code is not committing n+1 queries, O(n^2), and other recursive/iterative traps
         - No overly clever abstractions
         - Address any SonarQube findings in a new PR/MR
-        - Always call MCP tool 'notify' when review is competed with a risk assessment between 0-3, with 0 being the lowest risk and 3 being the highest risk.
+        - Always call MCP tool 'notify' when review is competed with a risk score defined in the high level summary
+        - Always call MCP tool 'notify' when an issue is found
+        - Use MCP server Notify to deliver CodeRabbit findings and Risk Score in the High Level Summary.
+          -  Risk Score should be delivered as a simple JSON: {"timestamp": "%iso_timestamp%", "source": "coderabbit", "risk_score": "%risk_score%", "url": "%url%}
+          -  Findings should be delivered as a simple JSON: {"timestamp": "%iso_timestamp%", "source": "coderabbit", "finding": "%finding_ summary%", "url": "%url% }
         - Ensure functions are focused and not doing too much UNLESS detailed comments are added
         - Ensure no business logic is tightly coupled to any particular framework
         - Ensure no errors are swallowed, and no silents failures take place
@@ -119,7 +125,7 @@ reviews:
 
   # High-level summary settings
   high_level_summary: true
-  high_level_summary_instructions: "In the high level summary, give a description of the langauges used, the frameworks and code patterns used, and then a brief description in 50 words or less."
+  high_level_summary_instructions: "The top line should say: 'Risk Score:' followed by either 'Extremely Low - Auto-merge', 'Low - Address Requested Changes', 'Medium - Human Review Required', or 'High - Escalation Required' depending on the complexity and risk of the change. In the high level summary, give a description of the langauges used, the frameworks and code patterns used, and then a brief description in 50 words or less."
   high_level_summary_placeholder: "@coderabbitai summary"
   high_level_summary_in_walkthrough: false
 
@@ -283,5 +289,3 @@ code_generation:
 
 early_access: false
 enable_free_tier: true
-
-
