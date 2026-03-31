@@ -36,10 +36,14 @@ reviews:
         - No fire-and-forget async processes
 
         # MCP Settings
-        - Use MCP server Notify to deliver CodeRabbit findings and the Risk Score
-          - The risk score is one of: 'Extremely Low Auto-merge', 'Low Address Requested Changes', 'Medium Human Review Required', or 'High Escalation Required' depending on the complexity and risk of the change.        - Use MCP server Notify to deliver CodeRabbit findings and Risk Score in the High Level Summary.
-          - The risk score  message should be delivered as a simple JSON: {"timestamp": "%iso_timestamp%", "source": "coderabbit", "risk_score": "%risk_score%", "url": "%url%}
-          - Each finding should be delivered as a simple JSON: {"timestamp": "%iso_timestamp%", "source": "coderabbit", "finding": "%finding_ summary%", "url": "%url%}
+        - Use MCP tool `notify` to send structured review events.
+        - Call `notify` once for the final risk score.
+        - Call `notify` once for each finding you emit.
+        - Use exactly these argument shapes:
+          - Risk score: {"event_type":"risk_score","timestamp":"<ISO-8601>","source":"coderabbit","url":"<PR URL>","risk_score":"<one of: Extremely Low - Auto-merge | Low - Address Requested Changes | Medium - Human Review Required | High - Escalation Required>"}
+          - Finding: {"event_type":"finding","timestamp":"<ISO-8601>","source":"coderabbit","url":"<PR URL>","finding":"<concise summary, max 500 chars>"}
+        - Do not wrap arguments in markdown or send raw prose.
+        - If the tool returns an error, read the error message and retry with corrected arguments.
 
     - path: '**/*.go'
       instructions: >
@@ -51,6 +55,7 @@ reviews:
         - Use defer for cleanup operations
         - Validate input parameters and return descriptive errors
         - Consider concurrency safety for shared state
+
     - path: '**/*.{ts,tsx}'
       instructions: >
         - Review the TypeScript code for conformity with the Google TypeScript style guide, highlighting any deviations.
@@ -171,16 +176,25 @@ reviews:
         name: Infosec Test
         instructions: |
           - Run a battery of appsec related scans against this branch
+
       - enabled: true
         name: MCP Notify
-        instructions: >
-          - Use MCP server Notify to deliver CodeRabbit findings and Risk Score in the High Level Summary.
-            -  Risk Score should be delivered as a simple JSON: {"timestamp": "%iso_timestamp%", "source": "coderabbit", "risk_score": "%risk_score%", "url": "%url%}
-            -  Findings should be delivered as a simple JSON: {"timestamp": "%iso_timestamp%", "source": "coderabbit", "finding": "%finding_ summary%", "url": "%url%}
+        instructions: |
+          # MCP Settings
+          - Use MCP tool `notify` to send structured review events.
+          - Call `notify` once for the final risk score.
+          - Call `notify` once for each finding you emit.
+          - Use exactly these argument shapes:
+            - Risk score: {"event_type":"risk_score","timestamp":"<ISO-8601>","source":"coderabbit","url":"<PR URL>","risk_score":"<one of: Extremely Low - Auto-merge | Low - Address Requested Changes | Medium - Human Review Required | High - Escalation Required>"}
+            - Finding: {"event_type":"finding","timestamp":"<ISO-8601>","source":"coderabbit","url":"<PR URL>","finding":"<concise summary, max 500 chars>"}
+          - Do not wrap arguments in markdown or send raw prose.
+          - If the tool returns an error, read the error message and retry with corrected arguments.
+
       - enabled: true
         name: Fixall
         instructions: |
           - Address most recent pipeline failres and findings in a new PR/MR
+
   # Review behavior settings
   high_level_summary_placeholder: '@coderabbitai summary'
   high_level_summary_in_walkthrough: false
