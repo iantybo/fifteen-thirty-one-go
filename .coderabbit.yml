@@ -259,7 +259,8 @@ knowledge_base:
     scope: "global"
   jira:
     usage: "enabled"
-    project_keys: []
+    project_keys:
+      - KAN
   linear:
     usage: "enabled"
     team_keys: []
