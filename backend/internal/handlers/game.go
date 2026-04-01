@@ -80,6 +80,19 @@ func MoveHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
 			return
 		}
+
+		// Pre-validate move request before acquiring game state lock.
+		if err := ValidateMoveRequest(req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Check for stale runtime state and attempt reconciliation.
+		if stale, reason := DetectStaleRuntime(db, gameID); stale {
+			log.Printf("MoveHandler: stale runtime detected before move: game_id=%d reason=%s", gameID, reason)
+			ReconcileRuntimeState(db, gameID)
+		}
+
 		resp, err := ApplyMove(db, gameID, userID, req)
 		if err != nil {
 			writeAPIError(c, err)
@@ -277,6 +290,12 @@ func QuitGameHandler(db *sql.DB) gin.HandlerFunc {
 		// Drop in-memory runtime state so a future game doesn't accidentally reuse it.
 		defaultGameManager.Delete(gameID)
 
+		// Record player quit event.
+		models.RecordGameEvent(db, gameID, models.EventPlayerLeft, &userID, map[string]any{
+			"lobby_id": g.LobbyID,
+			"reason":   "quit",
+		})
+
 		broadcastGameUpdate(db, gameID)
 		c.Status(http.StatusNoContent)
 	}
@@ -386,6 +405,12 @@ func NextHandHandler(db *sql.DB) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "deal failed"})
 				return
 			}
+
+			// Validate game integrity after dealing.
+			if issues := cribbage.ValidateGameIntegrity(&working); len(issues) > 0 {
+				log.Printf("NextHandHandler: integrity issues after deal: game_id=%d issues=%v", gameID, issues)
+			}
+
 			// Persist all newly dealt hands.
 			for _, p := range players {
 				posIdx := int(p.Position)
@@ -403,6 +428,12 @@ func NextHandHandler(db *sql.DB) gin.HandlerFunc {
 					return
 				}
 			}
+
+			// Record round dealt event.
+			models.RecordGameEvent(db, gameID, models.EventRoundDealt, nil, map[string]any{
+				"round":        len(working.History) + 1,
+				"dealer_index": working.DealerIndex,
+			})
 		}
 		sb, err := json.Marshal(working)
 		if err != nil {

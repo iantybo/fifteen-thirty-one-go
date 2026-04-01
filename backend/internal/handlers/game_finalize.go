@@ -122,5 +122,30 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 		return fmt.Errorf("maybeFinalizeGame: commit transaction: %w", err)
 	}
 	committed = true
+
+	// Record game finished event for audit trail.
+	winnerUsername := ""
+	for _, r := range rows {
+		if r.userID == winnerID {
+			winnerUsername = r.username
+			break
+		}
+	}
+	models.RecordGameEvent(db, gameID, models.EventGameFinished, &winnerID, map[string]any{
+		"winner_username": winnerUsername,
+		"final_scores":    scores,
+		"player_count":    len(rows),
+	})
+
+	// Update player scores in game_players to match final engine state.
+	go func() {
+		persister := models.NewGameStatePersister(db, models.DefaultPersistenceConfig)
+		scoreMap := make(map[int64]int64)
+		for _, r := range rows {
+			scoreMap[r.userID] = r.score
+		}
+		persister.BatchUpdatePlayerScores(context.Background(), gameID, scoreMap)
+	}()
+
 	return nil
 }
