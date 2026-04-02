@@ -47,6 +47,28 @@ func getHubProvider() (*ws.Hub, bool) {
 	return hubProvider()
 }
 
+// RegisterTournamentRoutes wires tournament endpoints.
+func RegisterTournamentRoutes(rg *gin.RouterGroup, db *sql.DB) {
+	rg.GET("/tournaments", ListTournamentsHandler(db))
+	rg.GET("/tournaments/search", SearchTournamentsHandler(db))
+	rg.POST("/tournaments", CreateTournamentHandler(db))
+	rg.GET("/tournaments/:id", GetTournamentHandler(db))
+	rg.POST("/tournaments/:id/join", JoinTournamentHandler(db))
+	rg.POST("/tournaments/:id/leave", LeaveTournamentHandler(db))
+	rg.POST("/tournaments/:id/start", StartTournamentHandler(db))
+	rg.POST("/tournaments/:id/cancel", CancelTournamentHandler(db))
+	rg.GET("/tournaments/:id/bracket", GetBracketHandler(db))
+	rg.GET("/tournaments/:id/standings", GetStandingsHandler(db))
+	rg.GET("/tournaments/:id/stats", GetTournamentStatsHandler(db))
+	rg.GET("/tournaments/:id/export", ExportTournamentHandler(db))
+	rg.GET("/tournaments/:id/validate", ValidateBracketHandler(db))
+	rg.POST("/tournaments/:id/matches/:matchId/result", RecordMatchResultHandler(db))
+	rg.POST("/tournaments/:id/matches/bulk", BulkUpdateMatchesHandler(db))
+	rg.GET("/tournaments/:id/chat", GetTournamentChatHandler(db))
+	rg.POST("/tournaments/:id/chat", SendTournamentChatHandler(db))
+	rg.GET("/users/:userId/tournament-history", TournamentHistoryHandler(db))
+}
+
 // RegisterGameRoutes wires game endpoints. Implemented fully in Phase 3/5.
 func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	// Preferences

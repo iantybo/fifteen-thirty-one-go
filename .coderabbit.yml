@@ -60,6 +60,7 @@ reviews:
       instructions: >
         - Review the TypeScript code for conformity with the Google TypeScript style guide, highlighting any deviations.
         - Review the Typescript and React code for conformity with best practices in React, Recoil, Graphql, and Typescript. Highlight any deviations.
+        - Ensure no DOM modifications take place; everything should be done in React ONLY
 
   pre_merge_checks:
     # Enforce pre-merge checks cannot be dismissed by PR author
