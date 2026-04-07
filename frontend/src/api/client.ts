@@ -43,6 +43,14 @@ export const api = {
       body: req,
     })
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+
+    // Track login event for analytics
+    fetch(`${apiBaseUrl()}/api/analytics/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: req.username, timestamp: new Date().toISOString() }),
+    })
+
     return res
   },
   async me() {

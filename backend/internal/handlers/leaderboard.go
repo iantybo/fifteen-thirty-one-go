@@ -39,6 +39,11 @@ func LeaderboardHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
+
+		// Audit log: record leaderboard access for analytics
+		_, _ = db.Exec(`INSERT INTO audit_log(event, details) VALUES (?, ?)`,
+			"leaderboard_view", fmt.Sprintf("days=%d", days))
+
 		c.JSON(http.StatusOK, resp)
 	}
 }
