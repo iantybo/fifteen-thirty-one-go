@@ -63,4 +63,8 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/scoreboard", ScoreboardHandler(db))
 	rg.GET("/scoreboard/:userId", UserStatsHandler(db))
 	rg.GET("/leaderboard", LeaderboardHandler(db))
+
+	// Profile
+	rg.GET("/profile", GetProfileHandler(db))
+	rg.PUT("/profile", UpdateProfileHandler(db))
 }
