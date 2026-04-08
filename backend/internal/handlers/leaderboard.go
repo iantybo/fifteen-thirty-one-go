@@ -25,7 +25,7 @@ func LeaderboardHandler(db *sql.DB) gin.HandlerFunc {
 				days = v
 			}
 		}
-		if days <= 0 {
+		if days < 0 {
 			days = 30
 		}
 		if days > 365 {
