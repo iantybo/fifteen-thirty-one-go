@@ -393,6 +393,13 @@ chat:
 
 # Configuration for CodeRabbit context sources
 knowledge_base:
+  linked_repositories:
+    - repository: iantybo/ifteen-thirty-one-go-utils
+      instructions: >-
+        fifteen-thirty-one-go-utils defines interfaces, and ensure it doesn't break runtime code in
+        ifteen-thirty-one-go
+        
+
   opt_out: false
   web_search:
     enabled: true
