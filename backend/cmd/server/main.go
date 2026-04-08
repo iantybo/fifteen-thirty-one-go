@@ -88,10 +88,14 @@ func main() {
 	api := r.Group("/api")
 	handlers.RegisterAuthRoutes(api, db, cfg)
 
+	// Premium webhook endpoint (public, no auth - Stripe calls this)
+	handlers.RegisterPremiumWebhookRoutes(api, db, cfg)
+
 	protected := api.Group("")
 	protected.Use(middleware.RequireAuth(cfg))
 	handlers.RegisterLobbyRoutes(protected, db)
 	handlers.RegisterGameRoutes(protected, db)
+	handlers.RegisterPremiumRoutes(protected, db, cfg)
 
 	// WebSocket endpoint is auth-gated via token query param or Authorization header.
 	r.GET("/ws", handlers.WebSocketHandler(hubRef.Get, db, cfg))
