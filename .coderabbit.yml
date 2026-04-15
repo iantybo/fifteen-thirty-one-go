@@ -419,9 +419,15 @@ knowledge_base:
   linked_repositories:
     - repository: iantybo/fifteen-thirty-one-go-utils
       instructions: >-
-        Shared card types and analysis helpers for cribbage scoring. When reviewing
-        server or game changes here, consider whether they stay compatible with
-        pkg/cards and pkg/analysis in that repository.
+        - Treat pkg/runtimeinterop.ScoreFromCodes as a strict cross-repo contract.
+        - Validate runtime card encoding matches utils parser exactly: ten MUST be "10"
+          (not "T"), and the full code format must remain rank+suit (e.g. AS, 10H, KD).
+        - Flag any runtime mapper or serialization changes that alter inputs sent to
+          fifteen-thirty-one-go-utils scoring APIs.
+        - Reject silent fallbacks on interop parse/scoring errors; runtime must emit explicit
+          errors instead of returning zero-value score breakdowns.
+        - Require or update parity tests that include ten cards, nobs, crib flush rules,
+          and malformed input cases to catch cross-repo drift.
 
 
 # Configuration for CodeRabbit code-gen capabilities
