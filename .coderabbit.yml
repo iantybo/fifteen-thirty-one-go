@@ -2,11 +2,50 @@
 
 language: en-US
 tone_instructions: >
-  -  Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not.
+  - Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not.
 
 early_access: true
 enable_free_tier: true
 inheritance: true
+
+# Configuration for CodeRabbit context sources
+knowledge_base:
+  mcp:
+    usage: enabled
+    disabled_servers: []
+  linked_repositories:
+    - repository: iantybo/fifteen-thirty-one-go-utils
+      instructions: >-
+        - Treat pkg/runtimeinterop.ScoreFromCodes as a strict cross-repo contract.
+        - Validate runtime card encoding matches utils parser exactly: ten MUST be "10"
+          (not "T"), and the full code format must remain rank+suit (e.g. AS, 10H, KD).
+        - Flag any runtime mapper or serialization changes that alter inputs sent to
+          fifteen-thirty-one-go-utils scoring APIs.
+        - Reject silent fallbacks on interop parse/scoring errors; runtime must emit explicit
+          errors instead of returning zero-value score breakdowns.
+        - Require or update parity tests that include ten cards, nobs, crib flush rules,
+          and malformed input cases to catch cross-repo drift.
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - docs/FRONTEND-DESIGN-GUIDE.md
+      - docs/infosec/SECURITY-*.md
+      - agents/*AGENT*.md
+  web_search:
+    enabled: true
+  learnings:
+    scope: global
+  issues:
+    scope: global
+  jira:
+    usage: enabled
+    project_keys: []
+  linear:
+    usage: enabled
+    team_keys: []
+  pull_requests:
+    scope: global
+
 
 reviews:
   profile: assertive # more nit-picky
@@ -111,12 +150,6 @@ reviews:
     # Custom checks defined by maintainers that code quality must meet before merge
     custom_checks:
       - mode: error
-        name: Linked JIRA ticket meets criteria
-        instructions: >-
-          Make sure there is a Jira ticket linked in the PR/MR AND that it
-          satisfies the text of that JIRA ticket
-
-      - mode: error
         name: Ensure no "exec" type commands run
         instructions: >-
           Make sure no tools wrap external shell scripts and bash commands,
@@ -125,47 +158,45 @@ reviews:
           that external commands are not hidden.
 
       - mode: error
+        name: Performance and Algorithmic Complexity Review
+        instructions: >
+          - Carefully review this code for performance regressions, unnecessary algorithmic complexity, and hot-path inefficiencies.
+          - This is a BLOCKING check: any significant issue that could materially degrade latency, throughput, or resource usage must prevent merge.
+          - Flag O(n^2), O(n^3), or worse behavior when input sizes may be non-trivial, especially in request handlers, background jobs, rendering paths, or loops over collections.
+          - Flag hidden nested work inside loops, including repeated scans, filtering, sorting, serialization, regex compilation, JSON parsing, DB lookups, HTTP calls, DOM queries, or recomputation of invariant values.
+          - Detect N+1 query patterns and require batching, joins, preloading, or set-based retrieval where appropriate.
+          - Flag repeated recalculation of deterministic values in hot paths when caching, memoization, precomputation, or moving work outside the loop would be appropriate.
+          - Flag inefficient data structure choices, such as linear membership checks on arrays when sets/maps are more appropriate, repeated copying, repeated concatenation, or frequent front insertions.
+          - Flag unbounded growth, memory leaks, retained listeners/subscriptions, accumulating buffers, or caches without eviction or cleanup.
+          - Flag avoidable allocation churn in hot paths, including repeated object creation, string building, cloning, intermediate arrays, or conversions that increase GC pressure.
+          - Flag repeated sorting or repeated full passes over large collections when a single pass, indexing, partial selection, or precomputation would suffice.
+          - Flag recursive implementations that risk excessive recomputation, poor asymptotic behavior, or stack overflows when iterative or memoized approaches are safer.
+          - Flag over-fetching or over-processing when code retrieves, deserializes, or processes more data than necessary.
+          - Flag expensive synchronous work in critical paths, including compression, encryption, hashing, parsing, template rendering, logging, analytics, or debug-only work that should be deferred, sampled, batched, or removed.
+          - Flag missing guardrails such as pagination, size limits, timeouts, concurrency limits, backpressure, or batching for large or adversarial inputs.
+          - In frontend code, flag unnecessary rerenders, repeated expensive selectors, large list rendering without virtualization, unstable memoization dependencies, or recomputation during render.
+          - Treat nominally linear work as blocking when it is performed at high frequency, on large inputs, or redundantly across many calls such that caching, indexing, batching, or memoization is clearly warranted.
+          - Flag process problems that generate excessive intermediate structures, duplicate traversals, discard reusable results, or turn simple iterative work into unnecessarily expensive recursive or tree-recursive work.
+          - Ignore micro-optimizations and speculative concerns.
+          - Only report meaningful, merge-blocking performance issues.
+          - For each issue, include file path, line numbers, the concrete performance risk, the expected complexity or scaling problem, and the fix category.
+          - If no material performance risks are found, mark this check as PASSED and remain brief.
+
+      - mode: error
         name: GDPR and PII Data Protection Compliance
-        instructions: >-
-          Carefully scan all code for GDPR violations and improper handling of
-          Personally Identifiable Information (PII). This is a BLOCKING check -
-          any violation must prevent merge. Check for:
+        instructions: >
+          - Carefully scan all code for GDPR violations and improper handling of Personally Identifiable Information (PII).
+          - This is a BLOCKING check: any violation must prevent merge.
+          - Ensure no PII fields such as mothers_maiden_name, billing_address, phone_number, date_of_birth, annual_income, email, address, or full_name are transmitted via WebSocket broadcasts, public APIs, logs, analytics, or third-party services without authorization.
+          - Verify that PII is never logged in plaintext. User IDs may be acceptable, but actual PII values must not appear in logs.
+          - Confirm that database queries select only the minimum fields necessary for the operation and do not retrieve unrelated PII.
+          - Flag any collection or processing of PII without a clear and legitimate purpose directly related to core functionality.
+          - Ensure User A’s PII is never visible to User B through API responses, broadcasts, pub/sub systems, cache entries, or shared channels.
+          - Verify that API responses and WebSocket messages use allowlists of safe fields rather than denylists to prevent PII leakage.
+          - Ensure frontend code does not store PII in localStorage, sessionStorage, or cookies, except properly secured httpOnly authentication cookies where appropriate.
+          - If any violation is found, mark this check as FAILED and describe the specific issue with file path and line numbers.
+          - The MR cannot be merged until all violationare resolved.
 
-          1. PII Data Transmission: Ensure no PII fields (mothers_maiden_name,
-          billing_address, phone_number,
-             date_of_birth, annual_income, email, address, full_name) are being transmitted via WebSocket broadcasts,
-             public APIs, logs, or any mechanism that exposes them to unauthorized parties (other users, analytics systems,
-             third-party services).
-
-          2. Logging Violations: Verify that PII is NEVER logged in plaintext.
-          Check all log statements (log.Printf,
-             console.log, etc.) to ensure they do not include sensitive fields. Structured logging of user IDs is acceptable,
-             but never log actual PII values.
-
-          3. Data Minimization: Confirm that database queries only SELECT the
-          minimum fields necessary for the operation.
-             If a function needs username and games_played, it should NOT query annual_income or other unnecessary PII fields.
-
-          4. Consent and Purpose Limitation: Flag any code that collects or
-          processes PII without a clear, legitimate purpose
-             directly related to core functionality. Income data collection for a card game is highly suspicious unless
-             explicitly required for payment processing.
-
-          5. Cross-User Data Exposure: Ensure User A's PII is never visible to
-          User B. Check all broadcast/multicast
-             mechanisms (WebSocket rooms, pub/sub, cache entries) to verify they don't leak PII across user boundaries.
-
-          6. API Response Sanitization: Verify that API responses and WebSocket
-          messages properly filter out PII fields
-             before sending to clients. Use allowlists (explicit safe fields) rather than denylists.
-
-          7. Frontend Storage: Check that frontend code doesn't store PII in
-          localStorage, sessionStorage, or cookies
-             (except for properly secured httpOnly authentication cookies).
-
-          If ANY of these violations are found, mark this check as FAILED and
-          describe the specific violation with file path and line numbers. The
-          PR cannot be merged until all violations are resolved.
 
       - mode: warning
         name: Enforce Feature Flag
@@ -390,44 +421,6 @@ chat:
       usage: enabled
     linear:
       usage: enabled
-
-# Configuration for CodeRabbit context sources
-knowledge_base:
-  code_guidelines:
-    enabled: true
-    filePatterns:
-      - docs/FRONTEND-DESIGN-GUIDE.md
-      - docs/infosec/SECURITY-*.md
-      - agents/*AGENT*.md
-  web_search:
-    enabled: true
-  learnings:
-    scope: global
-  issues:
-    scope: global
-  jira:
-    usage: enabled
-    project_keys: []
-  linear:
-    usage: enabled
-    team_keys: []
-  pull_requests:
-    scope: global
-  mcp:
-    usage: enabled
-    disabled_servers: []
-  linked_repositories:
-    - repository: iantybo/fifteen-thirty-one-go-utils
-      instructions: >-
-        - Treat pkg/runtimeinterop.ScoreFromCodes as a strict cross-repo contract.
-        - Validate runtime card encoding matches utils parser exactly: ten MUST be "10"
-          (not "T"), and the full code format must remain rank+suit (e.g. AS, 10H, KD).
-        - Flag any runtime mapper or serialization changes that alter inputs sent to
-          fifteen-thirty-one-go-utils scoring APIs.
-        - Reject silent fallbacks on interop parse/scoring errors; runtime must emit explicit
-          errors instead of returning zero-value score breakdowns.
-        - Require or update parity tests that include ten cards, nobs, crib flush rules,
-          and malformed input cases to catch cross-repo drift.
 
 
 # Configuration for CodeRabbit code-gen capabilities
