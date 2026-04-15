@@ -1,10 +1,10 @@
 # Agent notes (repo conventions)
 
 # CodeRabbit post-change reviews
-Whenever a code change is made, run coderabbit CLI:
+When you are done making changes, run CodeRabbit CLI which is located below until there are no findings. If multiple files have been changed in the repo under different directories, use the --dir flag and split out a subagent for each dir and then run coderabbit.
 
 ```
-coderabbit review --plain --no-color --type all --base main
+/Users/ianbowers/.local/bin/coderabbit
 ```
 
 Apply the results, make any additional changes, and re-run until there are no findings.
