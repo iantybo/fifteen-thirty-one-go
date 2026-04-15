@@ -14,17 +14,6 @@ knowledge_base:
     usage: enabled
     disabled_servers: []
   linked_repositories:
-    - repository: iantybo/fifteen-thirty-one-go-utils
-      instructions: >-
-        - Treat pkg/runtimeinterop.ScoreFromCodes as a strict cross-repo contract.
-        - Validate runtime card encoding matches utils parser exactly: ten MUST be "10"
-          (not "T"), and the full code format must remain rank+suit (e.g. AS, 10H, KD).
-        - Flag any runtime mapper or serialization changes that alter inputs sent to
-          fifteen-thirty-one-go-utils scoring APIs.
-        - Reject silent fallbacks on interop parse/scoring errors; runtime must emit explicit
-          errors instead of returning zero-value score breakdowns.
-        - Require or update parity tests that include ten cards, nobs, crib flush rules,
-          and malformed input cases to catch cross-repo drift.
     - repository: iantype/fifteen-thirty-one-go-utils
       instructions: >-
         - Treat pkg/runtimeinterop.ScoreFromCodes as a strict cross-repo contract.
