@@ -394,15 +394,13 @@ chat:
 # Configuration for CodeRabbit context sources
 knowledge_base:
   code_guidelines:
+    enabled: true
     filePatterns:
       - docs/FRONTEND-DESIGN-GUIDE.md
       - docs/infosec/SECURITY-*.md
       - agents/*AGENT*.md
   web_search:
     enabled: true
-  code_guidelines:
-    enabled: true
-    filePatterns: []
   learnings:
     scope: global
   issues:
