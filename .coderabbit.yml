@@ -393,7 +393,11 @@ chat:
 
 # Configuration for CodeRabbit context sources
 knowledge_base:
-  opt_out: false
+  code_guidelines:
+    filePatterns:
+      - docs/FRONTEND-DESIGN-GUIDE.md
+      - docs/infosec/SECURITY-*.md
+      - agents/*AGENT*.md
   web_search:
     enabled: true
   code_guidelines:
@@ -414,7 +418,12 @@ knowledge_base:
   mcp:
     usage: enabled
     disabled_servers: []
-  linked_repositories: []
+  linked_repositories:
+    - repository: iantybo/fifteen-thirty-one-go-utils
+      instructions: >-
+        Shared card types and analysis helpers for cribbage scoring. When reviewing
+        server or game changes here, consider whether they stay compatible with
+        pkg/cards and pkg/analysis in that repository.
 
 
 # Configuration for CodeRabbit code-gen capabilities
