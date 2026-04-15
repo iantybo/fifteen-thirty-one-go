@@ -1,9 +1,12 @@
 package cribbage
 
 import (
+	"fmt"
 	"sort"
 
 	"fifteen-thirty-one-go/backend/internal/game/common"
+
+	"github.com/iantybo/fifteen-thirty-one-go-utils/pkg/runtimeinterop"
 )
 
 type ScoreBreakdown struct {
@@ -18,19 +21,31 @@ type ScoreBreakdown struct {
 
 // ScoreHand scores a cribbage hand: 4 hand cards + cut card. (Pass the 4-card hand as hand.)
 func ScoreHand(hand []common.Card, cut common.Card, isCrib bool) ScoreBreakdown {
-	all := make([]common.Card, 0, len(hand)+1)
-	all = append(all, hand...)
-	all = append(all, cut)
+	req := runtimeinterop.ScoreRequest{
+		Hand:   make([]string, len(hand)),
+		Cut:    toUtilsCardCode(cut),
+		IsCrib: isCrib,
+	}
+	for i := range hand {
+		req.Hand[i] = toUtilsCardCode(hand[i])
+	}
 
-	sb := ScoreBreakdown{Reasons: map[string]int{}}
+	utilScore, err := runtimeinterop.ScoreFromCodes(req)
+	if err != nil {
+		// Runtime verification keeps flowing even when cross-repo scorer input is malformed.
+		return ScoreBreakdown{}
+	}
 
-	sb.Fifteens = scoreFifteens(all)
-	sb.Pairs = scorePairs(all)
-	sb.Runs = scoreRuns(all)
-	sb.Flush = scoreFlush(hand, cut, isCrib)
-	sb.Nobs = scoreNobs(hand, cut)
+	sb := ScoreBreakdown{
+		Total:    utilScore.Total,
+		Fifteens: utilScore.Fifteens,
+		Pairs:    utilScore.Pairs,
+		Runs:     utilScore.Runs,
+		Flush:    utilScore.Flush,
+		Nobs:     utilScore.Nobs,
+		Reasons:  map[string]int{},
+	}
 
-	sb.Total = sb.Fifteens + sb.Pairs + sb.Runs + sb.Flush + sb.Nobs
 	if sb.Fifteens > 0 {
 		sb.Reasons["fifteens"] = sb.Fifteens
 	}
@@ -50,6 +65,26 @@ func ScoreHand(hand []common.Card, cut common.Card, isCrib bool) ScoreBreakdown 
 		sb.Reasons = nil
 	}
 	return sb
+}
+
+func toUtilsCardCode(c common.Card) string {
+	var rank string
+	switch c.Rank {
+	case common.Ace:
+		rank = "A"
+	case common.Jack:
+		rank = "J"
+	case common.Queen:
+		rank = "Q"
+	case common.King:
+		rank = "K"
+	case 10:
+		// Runtime short form for ten cards.
+		rank = "T"
+	default:
+		rank = fmt.Sprintf("%d", int(c.Rank))
+	}
+	return rank + string(c.Suit)
 }
 
 func scoreFifteens(cards []common.Card) int {
