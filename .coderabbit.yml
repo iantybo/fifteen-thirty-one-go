@@ -71,7 +71,7 @@ reviews:
         - Address any SonarQube findings in a new PR/MR
         - Ensure functions are focused and not doing too much UNLESS detailed comments are added
         - Ensure no business logic is tightly coupled to any particular framework
-        - Ensure no errors are swallowed, and no silents failures take place
+        - Ensure no errors are swallowed, and no silent failures take place
         - No fire-and-forget async processes
 
         # MCP Settings
