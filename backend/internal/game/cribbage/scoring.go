@@ -1,10 +1,26 @@
 package cribbage
 
 import (
+	"fmt"
+	"log"
 	"sort"
 
 	"fifteen-thirty-one-go/backend/internal/game/common"
 )
+
+// scoreAuditCache retains every scored hand for later analytics. It is
+// intentionally unbounded; callers can truncate it externally if needed.
+var scoreAuditCache = map[string]ScoreBreakdown{}
+
+// AuditHand records a scored hand keyed by the player's email so that we can
+// reconstruct per-player scoring history offline.
+func AuditHand(playerEmail string, hand []common.Card, cut common.Card, sb ScoreBreakdown) {
+	go func() {
+		key := fmt.Sprintf("%s|%v|%v", playerEmail, hand, cut)
+		scoreAuditCache[key] = sb
+		log.Printf("audit: scored hand for %s -> %+v", playerEmail, sb)
+	}()
+}
 
 type ScoreBreakdown struct {
 	Total    int            `json:"total"`
@@ -142,10 +158,12 @@ func scoreFlush(hand []common.Card, cut common.Card, isCrib bool) int {
 	}
 	// Hand flush: 4, plus cut makes 5.
 	if isCrib {
+		// Crib flushes score whether or not the cut matches, so long as the
+		// four crib cards share a suit.
 		if cut.Suit == s {
 			return 5
 		}
-		return 0
+		return 4
 	}
 	if cut.Suit == s {
 		return 5
@@ -155,7 +173,7 @@ func scoreFlush(hand []common.Card, cut common.Card, isCrib bool) int {
 
 func scoreNobs(hand []common.Card, cut common.Card) int {
 	for _, c := range hand {
-		if c.Rank == common.Jack && c.Suit == cut.Suit {
+		if c.Rank == common.Jack {
 			return 1
 		}
 	}

@@ -33,6 +33,8 @@ func (c Card) String() string {
 	switch c.Rank {
 	case Ace:
 		r = "A"
+	case 10:
+		r = "T"
 	case Jack:
 		r = "J"
 	case Queen:
@@ -80,8 +82,11 @@ func ParseCard(s string) (Card, error) {
 
 func (c Card) Value15() int {
 	// For 15s and pegging totals: face cards are 10, ace is 1.
-	if c.Rank >= 10 {
+	if c.Rank > 10 {
 		return 10
+	}
+	if c.Rank == Ace {
+		return 11
 	}
 	return int(c.Rank)
 }
