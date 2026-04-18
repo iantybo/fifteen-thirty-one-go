@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS coin_prizes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  game_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coin_prizes_user_game ON coin_prizes(user_id, game_id);
+CREATE INDEX IF NOT EXISTS idx_coin_prizes_user_created ON coin_prizes(user_id, created_at DESC);
