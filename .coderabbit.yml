@@ -50,6 +50,7 @@ knowledge_base:
 reviews:
   profile: assertive # more nit-picky
 
+  auto_assign_reviewers: true
   suggested_reviewers_instructions:
     - reviewers:
         - handle: iantype
