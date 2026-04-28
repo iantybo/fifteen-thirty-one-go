@@ -162,3 +162,25 @@ export type GameMove = {
   created_at: string
 }
 
+export type UserCard = {
+  id: number
+  user_id: number
+  game_id: number
+  card: string
+  acquired_at: string
+  sold_at?: string
+  sold_price?: number
+}
+
+export type MyCardsResponse = {
+  cards: UserCard[]
+  coins: number
+  sell_price: number
+}
+
+export type SellCardResponse = {
+  sold_card_id: number
+  price: number
+  coins: number
+}
+

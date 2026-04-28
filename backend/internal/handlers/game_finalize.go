@@ -37,12 +37,7 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 	scores := append([]int(nil), st.Scores...)
 	unlock()
 
-	type row struct {
-		userID   int64
-		pos      int64
-		score    int64
-		username string
-	}
+	type row = finalizeRow
 	rows := make([]row, 0, len(players))
 	for _, p := range players {
 		pos := int(p.Position)
@@ -50,7 +45,7 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 		if pos >= 0 && pos < len(scores) {
 			sc = int64(scores[pos])
 		}
-		rows = append(rows, row{userID: p.UserID, pos: p.Position, score: sc, username: p.Username})
+		rows = append(rows, row{userID: p.UserID, pos: p.Position, score: sc, username: p.Username, isBot: p.IsBot})
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].score != rows[j].score {
@@ -111,6 +106,10 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET games_won = games_won + 1 WHERE id = ?`, winnerID); err != nil {
 		return fmt.Errorf("maybeFinalizeGame: update games_won (winner_id=%d game_id=%d): %w", winnerID, gameID, err)
 	}
+
+	if err := awardUsedCardsTx(ctx, tx, gameID, rows); err != nil {
+		return fmt.Errorf("maybeFinalizeGame: awardUsedCardsTx (game_id=%d): %w", gameID, err)
+	}
 	if err := models.SetGameStatusTx(tx, gameID, "finished"); err != nil {
 		return fmt.Errorf("maybeFinalizeGame: SetGameStatusTx finished failed (game_id=%d): %w", gameID, err)
 	}
@@ -122,5 +121,78 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 		return fmt.Errorf("maybeFinalizeGame: commit transaction: %w", err)
 	}
 	committed = true
+	return nil
+}
+
+type finalizeRow struct {
+	userID   int64
+	pos      int64
+	score    int64
+	username string
+	isBot    bool
+}
+
+// awardUsedCardsTx inserts one user_cards row per distinct card each player
+// played (move_type = 'play_card') during this game. Uses the uncorrected move
+// where available: if a move was corrected, the correction carries the
+// authoritative card_played. INSERT OR IGNORE on the unique (user_id, game_id,
+// card) index keeps this idempotent.
+func awardUsedCardsTx(ctx context.Context, tx *sql.Tx, gameID int64, players []finalizeRow) error {
+	rs, err := tx.QueryContext(
+		ctx,
+		`SELECT player_id, card_played
+		 FROM game_moves
+		 WHERE game_id = ?
+		   AND move_type = 'play_card'
+		   AND card_played IS NOT NULL
+		   AND is_corrected = 0`,
+		gameID,
+	)
+	if err != nil {
+		return fmt.Errorf("query played cards: %w", err)
+	}
+	defer rs.Close()
+
+	realPlayer := make(map[int64]struct{}, len(players))
+	for _, p := range players {
+		if p.isBot {
+			continue
+		}
+		realPlayer[p.userID] = struct{}{}
+	}
+
+	cardsByUser := map[int64]map[string]struct{}{}
+	for rs.Next() {
+		var pid int64
+		var card sql.NullString
+		if err := rs.Scan(&pid, &card); err != nil {
+			return fmt.Errorf("scan played card: %w", err)
+		}
+		if !card.Valid || card.String == "" {
+			continue
+		}
+		if _, ok := realPlayer[pid]; !ok {
+			continue
+		}
+		m, ok := cardsByUser[pid]
+		if !ok {
+			m = map[string]struct{}{}
+			cardsByUser[pid] = m
+		}
+		m[card.String] = struct{}{}
+	}
+	if err := rs.Err(); err != nil {
+		return fmt.Errorf("iterate played cards: %w", err)
+	}
+
+	for userID, set := range cardsByUser {
+		list := make([]string, 0, len(set))
+		for c := range set {
+			list = append(list, c)
+		}
+		if err := models.AwardCardsForGameTx(ctx, tx, userID, gameID, list); err != nil {
+			return fmt.Errorf("award cards (user_id=%d game_id=%d): %w", userID, gameID, err)
+		}
+	}
 	return nil
 }

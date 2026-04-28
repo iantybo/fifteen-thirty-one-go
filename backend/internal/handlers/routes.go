@@ -64,3 +64,9 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/scoreboard/:userId", UserStatsHandler(db))
 	rg.GET("/leaderboard", LeaderboardHandler(db))
 }
+
+// RegisterCardRoutes wires the "sell used cards" feature.
+func RegisterCardRoutes(rg *gin.RouterGroup, db *sql.DB) {
+	rg.GET("/cards", ListMyCardsHandler(db))
+	rg.POST("/cards/:id/sell", SellCardHandler(db))
+}

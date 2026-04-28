@@ -133,6 +133,7 @@ reviews:
 
     - path: '**/*.go'
       instructions: >
+        - All Go files MUST be formatted with gofmt. Flag any file that is not gofmt-clean as a blocking finding and require running `gofmt -w` (or `go fmt ./...`) before merge. This includes import grouping/ordering via goimports-compatible formatting, tab indentation, and canonical whitespace.
         - Use proper error handling with error wrapping using fmt.Errorf with %w verb
         - Ensure all public functions have godoc comments
         - Follow Go naming conventions (exported names start with capital letter)
@@ -201,6 +202,17 @@ reviews:
           - If any violation is found, mark this check as FAILED and describe the specific issue with file path and line numbers.
           - The MR cannot be merged until all violationare resolved.
 
+
+      - mode: error
+        name: Enforce gofmt on Go files
+        instructions: >-
+          BLOCKING: All changed *.go files must be gofmt-clean. FAIL if any Go
+          file in the diff would be modified by `gofmt -l` / `gofmt -d` (i.e.,
+          has non-canonical formatting, wrong indentation, bad import grouping,
+          or extraneous whitespace). PASS only when every changed Go file is
+          already gofmt-formatted. On failure, list each offending file and
+          instruct the author to run `gofmt -w <file>` (or `go fmt ./...`) and
+          recommit before merge.
 
       - mode: warning
         name: Enforce Feature Flag

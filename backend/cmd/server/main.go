@@ -92,6 +92,7 @@ func main() {
 	protected.Use(middleware.RequireAuth(cfg))
 	handlers.RegisterLobbyRoutes(protected, db)
 	handlers.RegisterGameRoutes(protected, db)
+	handlers.RegisterCardRoutes(protected, db)
 
 	// WebSocket endpoint is auth-gated via token query param or Authorization header.
 	r.GET("/ws", handlers.WebSocketHandler(hubRef.Get, db, cfg))

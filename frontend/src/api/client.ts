@@ -8,7 +8,9 @@ import type {
   LeaderboardResponse,
   Lobby,
   LobbyChatMessage,
+  MyCardsResponse,
   PresenceStatus,
+  SellCardResponse,
   SpectatorInfo,
   User,
   UserStats,
@@ -180,6 +182,20 @@ export const api = {
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
+  // Cards / inventory
+  async listMyCards() {
+    const res = await apiFetch<MyCardsResponse>(`${apiBaseUrl()}/api/cards`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async sellCard(cardId: number) {
+    const res = await apiFetch<SellCardResponse>(`${apiBaseUrl()}/api/cards/${cardId}/sell`, {
+      method: 'POST',
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+
   async getUserPresence(userId: number) {
     const res = await apiFetch<PresenceStatus>(`${apiBaseUrl()}/api/users/${userId}/presence`)
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
