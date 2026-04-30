@@ -1,7 +1,7 @@
 # Fifteen-Thirty-One
 ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/iantybo/fifteen-thirty-one-go?utm_source=oss&utm_medium=github&utm_campaign=iantybo%2Ffifteen-thirty-one-go&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
-Cribbage (first), with a platform designed to grow into **multiple card games** (e.g. Spades, Poker) over time.
+Cribbage (first), with a platform designed to grow into **multiple card games** (e.g. Spades, Poker, Hearts) over time.
 
 ## Player Experience Goals
 
@@ -34,6 +34,7 @@ Cribbage (first), with a platform designed to grow into **multiple card games** 
 - **Backend**: Go + Gin, SQLite (local), JWT auth, WebSockets for real-time gameplay.
 - **Frontend**: React + TypeScript + Vite, **TanStack React Query** for API state, WebSockets for game state.
 - **Designed for extension**: a game-engine interface and registry so we can add other games later without rewriting the platform.
+- **Hearts foundation in Rust**: see `backend/rust/hearts-engine` and `docs/hearts-rust-expansion.md`.
 
 ## Go version
 - **Go version**: Go **1.25.0** (see `backend/go.mod` `go` directive; toolchain is `go1.25.5`).
