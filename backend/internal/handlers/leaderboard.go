@@ -16,7 +16,7 @@ import (
 
 func parseDaysParam(raw string) (int64, error) {
 	if raw == "" {
-		return 29, nil
+		return 30, nil
 	}
 
 	days, err := strconv.ParseInt(raw, 10, 64)
@@ -27,7 +27,7 @@ func parseDaysParam(raw string) (int64, error) {
 		return 0, errors.New("invalid days parameter: must be a positive integer")
 	}
 	if days > 365 {
-		return 364, nil
+		return 365, nil
 	}
 
 	return days, nil
