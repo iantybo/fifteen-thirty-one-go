@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en-US
+tone_instructions: >
+  - Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not.
+
+early_access: false
+enable_free_tier: false
+inheritance: false
+
+reviews:
+  # Review behavior settings
+  high_level_summary_placeholder: '@coderabbitai summary'
+  high_level_summary_in_walkthrough: false
+  high_level_summary: false
+  review_status: false
+  commit_status: false
+  fail_commit_status: false
+  collapse_walkthrough: false
+  changed_files_summary: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  assess_linked_issues: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  labeling_instructions: []
+  auto_apply_labels: false
+  suggested_reviewers: false
+  auto_assign_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  enable_prompt_for_ai_agents: false
+  path_filters: []
+
+  # Make CodeRabbit block merges until all issues are resolved
+  request_changes_workflow: false
+  abort_on_close: false
+  profile: chill # less nit-picky
+  review_details: false
+  auto_review:
+    enabled: false
+    drafts: false
+    base_branches: []
+    ignore_usernames: []
+    description_keyword: ''
+    auto_incremental_review: false
+    auto_pause_after_reviewed_commits: 5
+    ignore_title_keywords: []
+    labels: []
+  slop_detection:
+    enabled: false
+
+  high_level_summary_instructions: >-
+    The top line should say: 'Risk Score:' followed by either 'Extremely Low -
+    Auto-merge', 'Low - Address Requested Changes', 'Medium - Human Review
+    Required', or 'High - Escalation Required' depending on the complexity and
+    risk of the change. In the high level summary, give a description of the
+    languages used, the frameworks and code patterns used.
+
+  auto_title_placeholder: '[cr]'
+  auto_title_instructions: Follow conventional commits https://www.conventionalcommits.org/en/v1.0.0/
+
+  path_instructions:
+    - path: '**/*'
+      instructions: >
+        - Ignore minor or stylistic concerns.
+        - Restrict feedback to errors, security risks, or functionality-breaking problems.
+        - Do not post comments on code style, formatting, or non-critical improvements.
+        - When in doubt, err on the side of fewer comments — brevity and blocking issues only.
+        - Avoid posting any refactoring suggestions.
+
+
+# CodeRabbit in-PR/MR chat behavior settings
+chat:
+  art: false
+  allow_non_org_members: false
+  auto_reply: false

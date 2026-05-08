@@ -61,8 +61,7 @@ reviews:
     Auto-merge', 'Low - Address Requested Changes', 'Medium - Human Review
     Required', or 'High - Escalation Required' depending on the complexity and
     risk of the change. In the high level summary, give a description of the
-    langauges used, the frameworks and code patterns used, and then a brief
-    description in 50 words or less.
+    langauges used, the frameworks and code patterns used.
 
   auto_title_placeholder: '[cr]'
   auto_title_instructions: Follow conventional commits https://www.conventionalcommits.org/en/v1.0.0/
@@ -281,7 +280,7 @@ reviews:
   review_details: true
   commit_status: true
   fail_commit_status: true
-  collapse_walkthrough: true
+  collapse_walkthrough: false
   changed_files_summary: true
   sequence_diagrams: true
   estimate_code_review_effort: true
