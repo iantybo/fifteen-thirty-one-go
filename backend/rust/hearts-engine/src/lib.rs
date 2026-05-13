@@ -33,7 +33,16 @@ pub struct RoundResult {
 /// Calculates round scores for Hearts and detects shoot-the-moon.
 ///
 /// Input must represent all players in seat order.
+///
+/// # Player count
+/// Hearts is playable with 3–6 participants. The standard 4-player game deals
+/// 13 cards each; with other counts the deck is adjusted (e.g. one low card
+/// removed for 3 players, two for 5 players). This function validates the
+/// player count but does not validate the dealt-card adjustment — callers are
+/// responsible for ensuring the 13-heart invariant still holds after adjustment.
 pub fn score_round(players: &[RoundInput], variant: HeartsVariant) -> Result<RoundResult, String> {
+    // 3–6 players: below 3 is not a recognised Hearts variant; above 6 causes
+    // too many deck adjustments to maintain meaningful gameplay.
     if players.len() < 3 || players.len() > 6 {
         return Err("hearts supports between 3 and 6 players".to_owned());
     }
