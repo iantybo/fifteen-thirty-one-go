@@ -7,4 +7,9 @@ license = "MIT"
 
 [lib]
 name = "hearts_engine"
+# rlib: pure-Rust library, suitable for Rust-internal use and tests.
+# When Go↔Rust FFI is needed, change to ["cdylib"] (dynamic) or
+# ["staticlib"] (static linking) and add a #[no_mangle] extern "C" surface
+# in src/lib.rs.  The current integration plan favours a dedicated service
+# process over direct FFI, so rlib is correct for this stage.
 crate-type = ["rlib"]

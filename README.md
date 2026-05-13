@@ -34,7 +34,7 @@ Cribbage (first), with a platform designed to grow into **multiple card games** 
 - **Backend**: Go + Gin, SQLite (local), JWT auth, WebSockets for real-time gameplay.
 - **Frontend**: React + TypeScript + Vite, **TanStack React Query** for API state, WebSockets for game state.
 - **Designed for extension**: a game-engine interface and registry so we can add other games later without rewriting the platform.
-- **Hearts foundation in Rust**: see `backend/rust/hearts-engine` and `docs/hearts-rust-expansion.md`.
+- **Hearts foundation (experimental, not yet integrated)**: a Rust scoring spike lives at `backend/rust/hearts-engine`; see `docs/hearts-rust-expansion.md` for status and integration plan. Hearts is not yet playable on the platform.
 
 ## Go version
 - **Go version**: Go **1.25.0** (see `backend/go.mod` `go` directive; toolchain is `go1.25.5`).
