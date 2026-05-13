@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Lobby } from '../api/types'
@@ -7,9 +7,13 @@ import { usePresence } from '../hooks/usePresence'
 
 const LUNCH_VOTE_STORAGE_KEY = 'lunch_vote_results'
 const LUNCH_OPTIONS = ['Pizza', 'Sushi', 'Tacos', 'Sandwiches'] as const
+const LOBBY_STATUS_OPTIONS = ['all', 'waiting', 'in_progress', 'finished'] as const
+const LOBBY_SORT_OPTIONS = ['newest', 'oldest', 'name', 'open_seats'] as const
 
 type LunchOption = typeof LUNCH_OPTIONS[number]
 type LunchVoteResults = Record<LunchOption, number>
+type LobbyStatusFilter = typeof LOBBY_STATUS_OPTIONS[number]
+type LobbySort = typeof LOBBY_SORT_OPTIONS[number]
 
 function buildEmptyLunchVotes(): LunchVoteResults {
   return {
@@ -40,6 +44,32 @@ function loadLunchVotes(): LunchVoteResults {
   }
 }
 
+function lobbyStatusLabel(status: LobbyStatusFilter) {
+  switch (status) {
+    case 'all':
+      return 'All statuses'
+    case 'in_progress':
+      return 'In progress'
+    case 'waiting':
+      return 'Waiting'
+    case 'finished':
+      return 'Finished'
+  }
+}
+
+function lobbySortLabel(sort: LobbySort) {
+  switch (sort) {
+    case 'newest':
+      return 'Newest first'
+    case 'oldest':
+      return 'Oldest first'
+    case 'name':
+      return 'Name A-Z'
+    case 'open_seats':
+      return 'Most open seats'
+  }
+}
+
 export function LobbiesPage() {
   const { user, clearAuth } = useAuth()
   const nav = useNavigate()
@@ -49,6 +79,9 @@ export function LobbiesPage() {
   const [quickBusy, setQuickBusy] = useState(false)
   const [lunchVotes, setLunchVotes] = useState<LunchVoteResults>(() => loadLunchVotes())
   const [lunchVoteMsg, setLunchVoteMsg] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<LobbyStatusFilter>('all')
+  const [sort, setSort] = useState<LobbySort>('newest')
   const { onlineUsers, connected } = usePresence()
 
   useEffect(() => {
@@ -107,6 +140,27 @@ export function LobbiesPage() {
   }
 
   const totalLunchVotes = LUNCH_OPTIONS.reduce((total, option) => total + lunchVotes[option], 0)
+  const visibleLobbies = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return lobbies
+      .filter((lobby) => {
+        const matchesSearch = query === '' || lobby.name.toLowerCase().includes(query)
+        const matchesStatus = statusFilter === 'all' || lobby.status === statusFilter
+        return matchesSearch && matchesStatus
+      })
+      .sort((a, b) => {
+        switch (sort) {
+          case 'oldest':
+            return Date.parse(a.created_at) - Date.parse(b.created_at)
+          case 'name':
+            return a.name.localeCompare(b.name)
+          case 'open_seats':
+            return (b.max_players - b.current_players) - (a.max_players - a.current_players)
+          case 'newest':
+            return Date.parse(b.created_at) - Date.parse(a.created_at)
+        }
+      })
+  }, [lobbies, search, sort, statusFilter])
 
   return (
     <div style={{
@@ -228,13 +282,58 @@ export function LobbiesPage() {
 
         {err && <div style={{ color: 'crimson', marginBottom: '16px' }}>{err}</div>}
         {loading && <div>Loading lobbies...</div>}
+        {!loading && !err && lobbies.length > 0 && (
+          <section style={{
+            marginBottom: '18px',
+            padding: '16px',
+            background: '#ffffff',
+            borderRadius: '8px',
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', alignItems: 'end' }}>
+              <label style={{ display: 'grid', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
+                Search lobbies
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Find a table by name"
+                  style={{ fontWeight: 400 }}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
+                Status
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as LobbyStatusFilter)}>
+                  {LOBBY_STATUS_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{lobbyStatusLabel(option)}</option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'grid', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
+                Sort
+                <select value={sort} onChange={(e) => setSort(e.target.value as LobbySort)}>
+                  {LOBBY_SORT_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{lobbySortLabel(option)}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div style={{ marginTop: '10px', fontSize: '14px', opacity: 0.75 }}>
+              Showing {visibleLobbies.length} of {lobbies.length} lobbies
+            </div>
+          </section>
+        )}
         {!loading && !err && lobbies.length === 0 && (
           <div style={{ marginTop: 12, opacity: 0.8 }}>
             No lobbies yet. <Link to="/lobbies/new">Create one</Link>.
           </div>
         )}
+        {!loading && !err && lobbies.length > 0 && visibleLobbies.length === 0 && (
+          <div style={{ marginTop: 12, opacity: 0.8 }}>
+            No lobbies match those filters.
+          </div>
+        )}
         <ul style={{ listStyle: 'none', padding: 0 }}>
-          {lobbies.map((l) => (
+          {visibleLobbies.map((l) => (
             <li key={l.id} style={{
               margin: '12px 0',
               padding: '16px',
