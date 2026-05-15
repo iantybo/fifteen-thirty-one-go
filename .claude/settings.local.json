@@ -1,8 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git checkout *)",
-      "Bash(xargs ls -la)"
+      "Bash(git checkout *)"
     ]
   }
 }
