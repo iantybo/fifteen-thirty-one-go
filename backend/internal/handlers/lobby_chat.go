@@ -71,9 +71,7 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 
 		ctx := c.Request.Context()
 
-		// Get username
-		var username string
-		err = db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", userID).Scan(&username)
+		username, err := getUsername(ctx, db, userID)
 		if err != nil {
 			wrappedErr := fmt.Errorf("SendLobbyChatMessage: get username (user_id=%d): %w", userID, err)
 			log.Printf("%v", wrappedErr)
@@ -81,21 +79,14 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 			return
 		}
 
-		// Verify user is in the lobby
-		var playerCount int
-		err = db.QueryRowContext(ctx, `
-			SELECT COUNT(*)
-			FROM game_players gp
-			JOIN games g ON g.id = gp.game_id
-			WHERE g.lobby_id = ? AND gp.user_id = ? AND g.status IN ('waiting', 'in_progress')
-		`, lobbyID, userID).Scan(&playerCount)
+		isMember, err := isActiveLobbyMember(ctx, db, lobbyID, userID)
 		if err != nil {
 			wrappedErr := fmt.Errorf("SendLobbyChatMessage: check membership (lobby_id=%d user_id=%d): %w", lobbyID, userID, err)
 			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
-		if playerCount == 0 {
+		if !isMember {
 			c.JSON(http.StatusForbidden, gin.H{"error": "you are not in this lobby"})
 			return
 		}
@@ -132,7 +123,7 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 		// Broadcast to lobby room
 		hub, ok := hubProvider()
 		if ok && hub != nil {
-			hub.Broadcast(fmt.Sprintf("lobby:%d", lobbyID), "lobby:chat", chatMsg)
+			hub.Broadcast(lobbyRoomKey(lobbyID), "lobby:chat", chatMsg)
 		}
 
 		c.JSON(http.StatusOK, chatMsg)
@@ -272,9 +263,7 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 		return
 	}
 
-	// Get username
-	var username string
-	err := db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", client.UserID).Scan(&username)
+	username, err := getUsername(ctx, db, client.UserID)
 	if err != nil {
 		wrappedErr := fmt.Errorf("handleLobbyChatWS: get username (user_id=%d): %w", client.UserID, err)
 		log.Printf("%v", wrappedErr)
@@ -285,15 +274,8 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 		return
 	}
 
-	// Verify user is in the lobby
-	var playerCount int
-	err = db.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM game_players gp
-		JOIN games g ON g.id = gp.game_id
-		WHERE g.lobby_id = ? AND gp.user_id = ? AND g.status IN ('waiting', 'in_progress')
-	`, req.LobbyID, client.UserID).Scan(&playerCount)
-	if err != nil || playerCount == 0 {
+	isMember, err := isActiveLobbyMember(ctx, db, req.LobbyID, client.UserID)
+	if err != nil || !isMember {
 		if err != nil {
 			wrappedErr := fmt.Errorf("handleLobbyChatWS: check membership (lobby_id=%d user_id=%d): %w", req.LobbyID, client.UserID, err)
 			log.Printf("%v", wrappedErr)
@@ -337,7 +319,7 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 	}
 
 	// Broadcast to lobby room
-	hub.Broadcast(fmt.Sprintf("lobby:%d", req.LobbyID), "lobby:chat", chatMsg)
+	hub.Broadcast(lobbyRoomKey(req.LobbyID), "lobby:chat", chatMsg)
 }
 
 // SendSystemMessage inserts a system message into the lobby chat and broadcasts it via WebSocket if hub is provided.
@@ -371,7 +353,7 @@ func SendSystemMessage(ctx context.Context, db *sql.DB, hub *ws.Hub, lobbyID int
 	}
 
 	if hub != nil {
-		hub.Broadcast(fmt.Sprintf("lobby:%d", lobbyID), "lobby:chat", chatMsg)
+		hub.Broadcast(lobbyRoomKey(lobbyID), "lobby:chat", chatMsg)
 	}
 
 	return nil

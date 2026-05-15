@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Card, GameMove, GameSnapshot, UserStats } from '../api/types'
@@ -10,6 +10,13 @@ import type React from 'react'
 const CARD_W = 70
 const CARD_H = 98
 const CARD_R = 12
+
+// Hoisted static style objects. Inline literals in JSX allocate every render and
+// break referential equality for memoised children.
+const scoreBreakdownNoneStyle: React.CSSProperties = { opacity: 0.8 }
+const scoreBreakdownWrapperStyle: React.CSSProperties = { opacity: 0.92 }
+const scoreBreakdownTotalStyle: React.CSSProperties = { fontWeight: 900 }
+const scoreBreakdownPartsStyle: React.CSSProperties = { opacity: 0.9 }
 
 type ScoreBreakdown = {
   total: number
@@ -27,24 +34,42 @@ type PlayerProfileState = {
   error?: string
 }
 
-function ScoreBreakdownLine({ b }: { b: ScoreBreakdown | undefined }) {
-  if (!b) return <span style={{ opacity: 0.8 }}>(no breakdown)</span>
-  const parts: Array<[string, number]> = (
-    [
-      ['15s', b.fifteens],
-      ['pairs', b.pairs],
-      ['runs', b.runs],
-      ['flush', b.flush],
-      ['nobs', b.nobs],
-    ] as Array<[string, number]>
-  ).filter(([, v]) => v > 0)
-  return (
-    <span style={{ opacity: 0.92 }}>
-      <span style={{ fontWeight: 900 }}>+{b.total}</span>
-      {parts.length > 0 ? <span style={{ opacity: 0.9 }}> ({parts.map(([k, v]) => `${k} ${v}`).join(' · ')})</span> : null}
-    </span>
-  )
-}
+const ScoreBreakdownLine = memo(
+  function ScoreBreakdownLine({ b }: { b: ScoreBreakdown | undefined }) {
+    if (!b) return <span style={scoreBreakdownNoneStyle}>(no breakdown)</span>
+    const parts: Array<[string, number]> = (
+      [
+        ['15s', b.fifteens],
+        ['pairs', b.pairs],
+        ['runs', b.runs],
+        ['flush', b.flush],
+        ['nobs', b.nobs],
+      ] as Array<[string, number]>
+    ).filter(([, v]) => v > 0)
+    return (
+      <span style={scoreBreakdownWrapperStyle}>
+        <span style={scoreBreakdownTotalStyle}>+{b.total}</span>
+        {parts.length > 0 ? <span style={scoreBreakdownPartsStyle}> ({parts.map(([k, v]) => `${k} ${v}`).join(' · ')})</span> : null}
+      </span>
+    )
+  },
+  // Custom comparator: parent rebuilds the breakdown object each render, so
+  // referential equality is useless. Compare the fields that affect output.
+  (prev, next) => {
+    const a = prev.b
+    const b = next.b
+    if (a === b) return true
+    if (!a || !b) return false
+    return (
+      a.total === b.total &&
+      a.fifteens === b.fifteens &&
+      a.pairs === b.pairs &&
+      a.runs === b.runs &&
+      a.flush === b.flush &&
+      a.nobs === b.nobs
+    )
+  },
+)
 
 function playerInitials(name: string): string {
   const trimmed = name.trim()
@@ -64,25 +89,25 @@ function profilePalette(slot: number) {
   return palettes[Math.abs(slot) % palettes.length]
 }
 
-function PlayerProfileCard({
-  player,
-  profile,
-  isDealer,
-  isYou,
-}: {
+type PlayerProfileCardProps = {
   player: GameSnapshot['players'][number]
   profile: PlayerProfileState | undefined
   isDealer: boolean
   isYou: boolean
-}) {
-  const palette = profilePalette(player.position)
+}
+
+function PlayerProfileCardImpl({ player, profile, isDealer, isYou }: PlayerProfileCardProps) {
+  const palette = useMemo(() => profilePalette(player.position), [player.position])
   const stats = profile?.stats
-  const gamesPlayed = stats?.games_played ?? 0
-  const wins = stats?.games_won ?? 0
-  const losses = Math.max(0, gamesPlayed - wins)
-  const winRate = gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : null
-  const rank =
-    gamesPlayed >= 20 ? (winRate !== null && winRate >= 60 ? 'Ace' : winRate !== null && winRate >= 45 ? 'Pro' : 'Regular') : 'Rookie'
+  const { gamesPlayed, wins, losses, winRate, rank } = useMemo(() => {
+    const gp = stats?.games_played ?? 0
+    const w = stats?.games_won ?? 0
+    const l = Math.max(0, gp - w)
+    const wr = gp > 0 ? Math.round((w / gp) * 100) : null
+    const r =
+      gp >= 20 ? (wr !== null && wr >= 60 ? 'Ace' : wr !== null && wr >= 45 ? 'Pro' : 'Regular') : 'Rookie'
+    return { gamesPlayed: gp, wins: w, losses: l, winRate: wr, rank: r }
+  }, [stats?.games_played, stats?.games_won])
 
   return (
     <div
@@ -220,6 +245,27 @@ function PlayerProfileCard({
     </div>
   )
 }
+
+const PlayerProfileCard = memo(PlayerProfileCardImpl, (prev, next) => {
+  // Parent rebuilds profile objects on each WS update; compare by content.
+  if (prev.isDealer !== next.isDealer || prev.isYou !== next.isYou) return false
+  if (prev.player !== next.player) {
+    // Player object may be rebuilt — compare displayed fields.
+    if (
+      prev.player.user_id !== next.player.user_id ||
+      prev.player.position !== next.player.position ||
+      prev.player.username !== next.player.username
+    ) {
+      return false
+    }
+  }
+  const a = prev.profile
+  const b = next.profile
+  if (a === b) return true
+  if (!a || !b) return false
+  if (a.loading !== b.loading || a.error !== b.error) return false
+  return a.stats?.games_played === b.stats?.games_played && a.stats?.games_won === b.stats?.games_won
+})
 
 function rankLabel(rank: number): string {
   return rank === 1 ? 'A' : rank === 11 ? 'J' : rank === 12 ? 'Q' : rank === 13 ? 'K' : String(rank)
@@ -695,17 +741,27 @@ export function GamePage() {
     void fetchSnapshot()
     void fetchMoves()
 
+    // Coalesce bursts of game_update events. A flurry of broadcasts during e.g. round
+    // transitions would otherwise fire one HTTP round-trip per event.
+    let refetchTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleRefetch = () => {
+      if (refetchTimer !== null) return
+      refetchTimer = setTimeout(() => {
+        refetchTimer = null
+        void fetchSnapshot()
+        void fetchMoves()
+      }, 75)
+    }
+
     ws.connect(`game:${gameId}`)
     const offOpen = ws.on('ws_open', () => setStatus('connected'))
     const offClose = ws.on('ws_close', () => setStatus('disconnected'))
     // WS broadcasts a public snapshot (hands hidden). Treat updates as an invalidation signal
     // and re-fetch the user-specific snapshot via HTTP so "your hand" stays populated.
-    const offUpdate = ws.on('game_update', () => {
-      void fetchSnapshot()
-      void fetchMoves()
-    })
+    const offUpdate = ws.on('game_update', scheduleRefetch)
     return () => {
       cancelled = true
+      if (refetchTimer !== null) clearTimeout(refetchTimer)
       offOpen()
       offClose()
       offUpdate()

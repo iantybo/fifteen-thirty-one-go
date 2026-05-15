@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+const broadcastQueueSize = 1024
 
 // Hub manages websocket clients and room-based broadcasts.
 type Hub struct {
@@ -18,6 +21,8 @@ type Hub struct {
 
 	stopOnce sync.Once
 	stop     chan struct{}
+
+	droppedBroadcasts atomic.Uint64
 }
 
 type joinReq struct {
@@ -36,7 +41,7 @@ func NewHub() *Hub {
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		join:       make(chan joinReq),
-		broadcast:  make(chan Broadcast, 256),
+		broadcast:  make(chan Broadcast, broadcastQueueSize),
 		rooms:      map[string]map[*Client]bool{},
 		stop:       make(chan struct{}),
 	}
@@ -107,17 +112,32 @@ func (h *Hub) Join(c *Client, room string) {
 }
 
 func (h *Hub) Broadcast(room, typ string, payload any) {
+	msg := Broadcast{Room: room, Type: typ, Payload: payload}
 	select {
 	case <-h.stop:
 		return
-	case h.broadcast <- Broadcast{Room: room, Type: typ, Payload: payload}:
+	case h.broadcast <- msg:
 		return
 	default:
-		// Drop rather than block forever (e.g., if Run() has exited and the
-		// channel buffer fills).
+	}
+	// Buffer full. Block briefly so we don't silently drop under load, but
+	// stay responsive to Stop() and bail if the queue is genuinely saturated.
+	select {
+	case <-h.stop:
 		return
+	case h.broadcast <- msg:
+	case <-time.After(50 * time.Millisecond):
+		n := h.droppedBroadcasts.Add(1)
+		// Log only occasionally to avoid flooding.
+		if n == 1 || n%100 == 0 {
+			log.Printf("ws broadcast dropped: room=%s type=%s total_dropped=%d", room, typ, n)
+		}
 	}
 }
+
+// DroppedBroadcasts returns the cumulative count of broadcasts dropped due to
+// a saturated queue. Useful for metrics and tests.
+func (h *Hub) DroppedBroadcasts() uint64 { return h.droppedBroadcasts.Load() }
 
 func (h *Hub) removeClient(c *Client) {
 	if c == nil {

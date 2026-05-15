@@ -8,6 +8,8 @@ import { CreateLobbyPage } from './pages/CreateLobbyPage'
 import { LobbyDetailPage } from './pages/LobbyDetailPage'
 import { GamePage } from './pages/GamePage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
+import { FriendsPage } from './pages/FriendsPage'
+import { AchievementsPage } from './pages/AchievementsPage'
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
         <Route path="/lobbies" element={<LobbiesPage />} />
         <Route path="/lobbies/new" element={<CreateLobbyPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
+        <Route path="/friends" element={<FriendsPage />} />
+        <Route path="/achievements" element={<AchievementsPage />} />
         <Route path="/lobbies/:id" element={<LobbyDetailPage />} />
         <Route path="/games/:id" element={<GamePage />} />
       </Route>

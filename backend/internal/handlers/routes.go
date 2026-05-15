@@ -64,3 +64,31 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/scoreboard/:userId", UserStatsHandler(db))
 	rg.GET("/leaderboard", LeaderboardHandler(db))
 }
+
+// RegisterFriendsRoutes wires the friends/blocks endpoints. All routes
+// require authentication (handlers reject unauthenticated requests).
+func RegisterFriendsRoutes(rg *gin.RouterGroup, db *sql.DB) {
+	rg.GET("/friends", ListFriendsHandler(db))
+	rg.POST("/friends/requests", SendFriendRequestHandler(db))
+	rg.POST("/friends/requests/:id/accept", AcceptFriendRequestHandler(db))
+	rg.POST("/friends/requests/:id/decline", DeclineFriendRequestHandler(db))
+	rg.DELETE("/friends/:user_id", RemoveFriendHandler(db))
+
+	rg.GET("/friends/blocks", ListBlockedHandler(db))
+	rg.POST("/friends/blocks", BlockUserHandler(db))
+	rg.DELETE("/friends/blocks/:user_id", UnblockUserHandler(db))
+}
+
+// RegisterAchievementsRoutes wires the achievements endpoints.
+func RegisterAchievementsRoutes(rg *gin.RouterGroup, db *sql.DB) {
+	rg.GET("/achievements/catalogue", GetCatalogueHandler())
+	rg.GET("/achievements", GetMyAchievementsHandler(db))
+	rg.POST("/achievements/evaluate", EvaluateMyAchievementsHandler(db))
+	rg.GET("/users/:id/achievements", GetUserAchievementsHandler(db))
+}
+
+// RegisterChatReactionsRoutes wires emoji reactions for lobby chat messages.
+func RegisterChatReactionsRoutes(rg *gin.RouterGroup, db *sql.DB) {
+	rg.POST("/lobbies/:id/chat/:msg_id/react", ToggleReactionHandler(db, getHubProvider))
+	rg.GET("/lobbies/:id/chat/:msg_id/reactions", GetMessageReactionsHandler(db))
+}
