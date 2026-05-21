@@ -25,6 +25,7 @@ knowledge_base:
           errors instead of returning zero-value score breakdowns.
         - Require or update parity tests that include ten cards, nobs, crib flush rules,
           and malformed input cases to catch cross-repo drift.
+        - And some other stuff
   code_guidelines:
     enabled: true
     filePatterns:
