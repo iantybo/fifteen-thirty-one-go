@@ -17,7 +17,41 @@ func ScoreboardHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.ScoreboardHandler")
 		defer span.End()
 
-		items, err := models.ListScoreboard(db, 50)
+		limit := int64(50)
+		if s := c.Query("limit"); s != "" {
+			if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+				limit = v
+			}
+		}
+
+		items, err := models.ListScoreboard(db, limit)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"items": items})
+	}
+}
+
+func UserHistoryHandler(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, span := tracing.StartSpan(c.Request.Context(), "handlers.UserHistoryHandler")
+		defer span.End()
+
+		userID, err := strconv.ParseInt(c.Param("userId"), 10, 64)
+		if err != nil || userID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+			return
+		}
+
+		limit := int64(50)
+		if s := c.Query("limit"); s != "" {
+			if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+				limit = v
+			}
+		}
+
+		items, err := models.ListUserHistory(db, userID, limit)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
