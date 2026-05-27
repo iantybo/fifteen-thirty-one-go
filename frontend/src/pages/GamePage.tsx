@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Card, GameMove, GameSnapshot, UserStats } from '../api/types'
+import type { Card, CardTheme, GameMove, GameSnapshot, ReactionEvent, UserStats } from '../api/types'
 import { useAuth } from '../auth/auth'
 import { WsClient } from '../ws/wsClient'
 import type React from 'react'
@@ -271,7 +271,19 @@ function rankLabel(rank: number): string {
   return rank === 1 ? 'A' : rank === 11 ? 'J' : rank === 12 ? 'Q' : rank === 13 ? 'K' : String(rank)
 }
 
-function suitSymbol(suit: Card['suit']): string {
+function suitSymbol(suit: Card['suit'], theme: CardTheme = 'classic'): string {
+  if (theme === 'emoji') {
+    switch (suit) {
+      case 'S':
+        return '🗡️'
+      case 'H':
+        return '❤️'
+      case 'D':
+        return '💎'
+      case 'C':
+        return '🍀'
+    }
+  }
   switch (suit) {
     case 'S':
       return '♠'
@@ -284,8 +296,43 @@ function suitSymbol(suit: Card['suit']): string {
   }
 }
 
-function suitColor(suit: Card['suit']): string {
+function suitColor(suit: Card['suit'], theme: CardTheme = 'classic'): string {
+  if (theme === 'neon') {
+    return suit === 'H' || suit === 'D' ? '#ff2bd6' : '#22d3ee'
+  }
+  if (theme === 'minimal') {
+    return '#111827'
+  }
   return suit === 'H' || suit === 'D' ? '#dc2626' : '#0f172a'
+}
+
+type CardThemeStyle = {
+  background: string
+  border: string
+  rankFontWeight: number
+  fontFamily?: string
+  suitFontSize?: number
+}
+
+function themeStyle(theme: CardTheme, selected: boolean): CardThemeStyle {
+  if (selected) {
+    return { background: '#2563eb', border: '1px solid #1d4ed8', rankFontWeight: 700 }
+  }
+  switch (theme) {
+    case 'neon':
+      return {
+        background: 'linear-gradient(135deg, #0f172a, #312e81)',
+        border: '1px solid #818cf8',
+        rankFontWeight: 800,
+      }
+    case 'minimal':
+      return { background: '#ffffff', border: '1px solid #e5e7eb', rankFontWeight: 500 }
+    case 'emoji':
+      return { background: '#fffbeb', border: '1px solid #fcd34d', rankFontWeight: 700, suitFontSize: 30 }
+    case 'classic':
+    default:
+      return { background: '#ffffff', border: '1px solid #cbd5e1', rankFontWeight: 700 }
+  }
 }
 
 function cardToCode(c: Card): string {
@@ -308,6 +355,7 @@ function CardIcon({
   muted,
   onClick,
   title,
+  theme = 'classic',
 }: {
   card: Card
   selected?: boolean
@@ -315,26 +363,34 @@ function CardIcon({
   muted?: boolean
   onClick?: () => void
   title?: string
+  theme?: CardTheme
 }) {
   const rank = rankLabel(card.rank)
-  const suit = suitSymbol(card.suit)
-  const color = suitColor(card.suit)
+  const suit = suitSymbol(card.suit, theme)
+  const color = suitColor(card.suit, theme)
   const interactive = !!onClick && !disabled
+  const ts = themeStyle(theme, !!selected)
 
   const outerStyle: React.CSSProperties = {
     width: CARD_W,
     height: CARD_H,
     padding: 0,
     borderRadius: CARD_R,
-    border: '1px solid #cbd5e1',
-    background: selected ? '#2563eb' : '#ffffff',
+    border: ts.border,
+    background: ts.background,
     cursor: interactive ? 'pointer' : 'default',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: selected ? '0 0 0 2px rgba(37,99,235,0.25)' : undefined,
+    boxShadow: selected
+      ? '0 0 0 2px rgba(37,99,235,0.25)'
+      : theme === 'neon'
+        ? '0 0 12px rgba(129,140,248,0.55)'
+        : undefined,
     opacity: muted ? 0.55 : 1,
   }
+
+  const textColor = selected ? 'white' : color
 
   const inner = (
     <div
@@ -343,7 +399,7 @@ function CardIcon({
         height: '100%',
         position: 'relative',
         borderRadius: CARD_R,
-        background: selected ? '#2563eb' : '#ffffff',
+        background: 'transparent',
       }}
     >
       <div
@@ -352,9 +408,9 @@ function CardIcon({
           top: 7,
           left: 8,
           fontSize: 14,
-          fontWeight: 700,
+          fontWeight: ts.rankFontWeight,
           lineHeight: 1,
-          color: selected ? 'white' : color,
+          color: textColor,
         }}
       >
         {rank}
@@ -366,9 +422,9 @@ function CardIcon({
           left: 0,
           right: 0,
           textAlign: 'center',
-          fontSize: 36,
+          fontSize: ts.suitFontSize ?? 36,
           lineHeight: 1,
-          color: selected ? 'white' : color,
+          color: textColor,
         }}
       >
         {suit}
@@ -379,10 +435,10 @@ function CardIcon({
           bottom: 7,
           right: 8,
           fontSize: 14,
-          fontWeight: 700,
+          fontWeight: ts.rankFontWeight,
           lineHeight: 1,
           transform: 'rotate(180deg)',
-          color: selected ? 'white' : color,
+          color: textColor,
         }}
       >
         {rank}
@@ -690,6 +746,113 @@ function PegTrack({
 
 // (BreakdownView removed; counting/finished UI now focuses on recap + readiness inside the table.)
 
+const CARD_THEME_OPTIONS: Array<{ value: CardTheme; label: string }> = [
+  { value: 'classic', label: 'Classic' },
+  { value: 'neon', label: 'Neon' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'emoji', label: 'Emoji' },
+]
+
+function CardThemePicker({ theme, onChange }: { theme: CardTheme; onChange: (t: CardTheme) => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 13, opacity: 0.7 }}>Card theme:</span>
+      {CARD_THEME_OPTIONS.map((opt) => {
+        const active = opt.value === theme
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 999,
+              border: active ? '1px solid #2563eb' : '1px solid #cbd5e1',
+              background: active ? '#2563eb' : '#ffffff',
+              color: active ? '#ffffff' : '#0f172a',
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const REACTION_EMOJIS = ['👍', '😂', '🔥', '🎉', '🤔', '😎', '🍀', '💯']
+const VALID_REACTION_EMOJIS = new Set<string>(REACTION_EMOJIS)
+const VALID_CARD_THEMES = new Set<CardTheme>(['classic', 'neon', 'minimal', 'emoji'])
+function isValidCardTheme(value: unknown): value is CardTheme {
+  return typeof value === 'string' && VALID_CARD_THEMES.has(value as CardTheme)
+}
+
+function ReactionBar({ onReact, disabled }: { onReact: (emoji: string) => void; disabled?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 13, opacity: 0.7 }}>React:</span>
+      {REACTION_EMOJIS.map((e) => (
+        <button
+          key={e}
+          type="button"
+          disabled={disabled}
+          onClick={() => onReact(e)}
+          aria-label={`React with ${e}`}
+          style={{
+            padding: '2px 8px',
+            borderRadius: 999,
+            border: '1px solid #cbd5e1',
+            background: '#ffffff',
+            fontSize: 18,
+            lineHeight: 1.2,
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.5 : 1,
+          }}
+        >
+          {e}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+const MAX_FLOATING_REACTIONS = 50
+
+function FloatingReactionsLayer({ reactions }: { reactions: Array<{ id: string; emoji: string; userId: number }> }) {
+  if (reactions.length === 0) return null
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 8,
+        pointerEvents: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        zIndex: 10,
+      }}
+    >
+      {reactions.map((r) => (
+        <div
+          key={r.id}
+          style={{
+            fontSize: 28,
+            animation: 'reaction-float 2.5s ease-out forwards',
+            textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+          }}
+        >
+          {r.emoji}
+        </div>
+      ))}
+      <style>{`@keyframes reaction-float { 0% { opacity: 0; transform: translateY(8px) scale(0.9); } 15% { opacity: 1; transform: translateY(0) scale(1.1); } 80% { opacity: 1; transform: translateY(-24px) scale(1); } 100% { opacity: 0; transform: translateY(-40px) scale(0.95); } }`}</style>
+    </div>
+  )
+}
+
 export function GamePage() {
   const { id } = useParams()
   const gameId = Number(id)
@@ -710,10 +873,59 @@ export function GamePage() {
   const [profilesByUserId, setProfilesByUserId] = useState<Record<number, PlayerProfileState>>({})
   const profileFetchRef = useRef<Set<number>>(new Set())
   const lastCueMoveIDRef = useRef<number | null>(null)
+  const [cardTheme, setCardTheme] = useState<CardTheme>('classic')
+  const [floatingReactions, setFloatingReactions] = useState<Array<{ id: string; emoji: string; userId: number }>>([])
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .getPreferences()
+      .then((prefs) => {
+        if (!cancelled && isValidCardTheme(prefs.card_theme)) {
+          setCardTheme(prefs.card_theme)
+        }
+      })
+      .catch((e: unknown) => {
+        // best-effort; default theme is fine, but log for debugging
+        console.warn('Failed to load user preferences', e)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleSetCardTheme = (theme: CardTheme) => {
+    const previousTheme = cardTheme
+    setCardTheme(theme) // optimistic
+    void api.setCardTheme(theme).catch((e: unknown) => {
+      console.warn('Failed to persist card theme preference', e)
+      setCardTheme(previousTheme) // revert on failure
+      setMoveErr('Failed to save theme preference. Please try again.')
+    })
+  }
+
+  const sendReaction = (emoji: string) => {
+    if (!isValidId) return
+    void api
+      .sendReaction(gameId, emoji)
+      .then((res) => {
+        if (!res.ok) {
+          console.warn('Reaction not accepted by server')
+          setMoveErr('Reaction not sent.')
+        }
+      })
+      .catch((e: unknown) => {
+        console.warn('Failed to send reaction', e)
+        setMoveErr('Failed to send reaction.')
+      })
+  }
+
+  const reactionTimeoutsRef = useRef<Set<number>>(new Set())
 
   useEffect(() => {
     if (!user || !isValidId) return
     let cancelled = false
+    const reactionTimeouts = reactionTimeoutsRef.current
 
     async function fetchSnapshot() {
       setErr(null)
@@ -758,13 +970,48 @@ export function GamePage() {
     const offClose = ws.on('ws_close', () => setStatus('disconnected'))
     // WS broadcasts a public snapshot (hands hidden). Treat updates as an invalidation signal
     // and re-fetch the user-specific snapshot via HTTP so "your hand" stays populated.
+<<<<<<< Updated upstream
     const offUpdate = ws.on('game_update', scheduleRefetch)
+=======
+    const offUpdate = ws.on('game_update', () => {
+      void fetchSnapshot()
+      void fetchMoves()
+    })
+    const offReaction = ws.on('reaction', (payload: unknown) => {
+      const r = payload as Partial<ReactionEvent> | null
+      if (
+        !r ||
+        typeof r.emoji !== 'string' ||
+        typeof r.user_id !== 'number' ||
+        r.user_id <= 0 ||
+        !VALID_REACTION_EMOJIS.has(r.emoji)
+      )
+        return
+      const id = `${r.user_id}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+      const userId = r.user_id
+      const emoji = r.emoji
+      setFloatingReactions((prev) => {
+        const updated = [...prev, { id, emoji, userId }]
+        return updated.length > MAX_FLOATING_REACTIONS
+          ? updated.slice(-MAX_FLOATING_REACTIONS)
+          : updated
+      })
+      const timeoutId = window.setTimeout(() => {
+        reactionTimeouts.delete(timeoutId)
+        setFloatingReactions((prev) => prev.filter((x) => x.id !== id))
+      }, 2500)
+      reactionTimeouts.add(timeoutId)
+    })
+>>>>>>> Stashed changes
     return () => {
       cancelled = true
       if (refetchTimer !== null) clearTimeout(refetchTimer)
       offOpen()
       offClose()
       offUpdate()
+      offReaction()
+      reactionTimeouts.forEach((t) => window.clearTimeout(t))
+      reactionTimeouts.clear()
       ws.disconnect()
     }
   }, [user, gameId, isValidId, ws])
@@ -889,7 +1136,8 @@ export function GamePage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '24px auto', padding: '0 16px' }}>
+    <div style={{ maxWidth: 900, margin: '24px auto', padding: '0 16px', position: 'relative' }}>
+      <FloatingReactionsLayer reactions={floatingReactions} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
         <h1>Game {isValidId ? gameId : 'Invalid ID'}</h1>
         <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
@@ -914,6 +1162,8 @@ export function GamePage() {
         />
         <div style={{ opacity: 0.8 }}>{loading ? 'Loading…' : ''}</div>
       </div>
+      <CardThemePicker theme={cardTheme} onChange={handleSetCardTheme} />
+      <ReactionBar onReact={sendReaction} disabled={!isValidId} />
       {err && <div style={{ color: 'crimson', marginTop: 8 }}>{err}</div>}
 
       {!snap ? (
@@ -994,7 +1244,7 @@ export function GamePage() {
                           filter: cutPulse ? 'drop-shadow(0 10px 18px rgba(245,158,11,0.55))' : 'none',
                         }}
                       >
-                        <CardIcon card={state.cut} disabled title={cardToCode(state.cut)} />
+                        <CardIcon card={state.cut} disabled title={cardToCode(state.cut)} theme={cardTheme} />
                       </div>
                     ) : (
                       <div style={{ opacity: 0.85 }}>{stage === 'discard' ? '(not cut yet)' : '(none)'}</div>
@@ -1011,7 +1261,7 @@ export function GamePage() {
                     ) : (
                       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 4 }}>
                         {(state?.pegging_seq ?? []).map((c, i) => (
-                          <CardIcon key={`pegseq:${i}:${cardToCode(c)}`} card={c} disabled title={cardToCode(c)} />
+                          <CardIcon key={`pegseq:${i}:${cardToCode(c)}`} card={c} disabled title={cardToCode(c)} theme={cardTheme} />
                         ))}
                       </div>
                     )
@@ -1083,7 +1333,7 @@ export function GamePage() {
                                   </div>
                                   <div style={{ marginTop: 8, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
                                     {hand.map((c, j) => (
-                                      <CardIcon key={`kh:${idx}:${j}:${cardToCode(c)}`} card={c} disabled title={cardToCode(c)} />
+                                      <CardIcon key={`kh:${idx}:${j}:${cardToCode(c)}`} card={c} disabled title={cardToCode(c)} theme={cardTheme} />
                                     ))}
                                   </div>
                                 </div>
@@ -1113,7 +1363,7 @@ export function GamePage() {
                             </div>
                             <div style={{ marginTop: 8, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
                               {state.crib.map((c, i) => (
-                                <CardIcon key={`crib:${i}:${cardToCode(c)}`} card={c} disabled title={cardToCode(c)} />
+                                <CardIcon key={`crib:${i}:${cardToCode(c)}`} card={c} disabled title={cardToCode(c)} theme={cardTheme} />
                               ))}
                             </div>
                           </div>
@@ -1248,6 +1498,7 @@ export function GamePage() {
                                     <div key={code} style={{ display: 'inline-block' }}>
                                       <CardIcon
                                         card={c}
+                                        theme={cardTheme}
                                         selected={isSelected}
                                         disabled={disabled}
                                         onClick={() => {
@@ -1282,6 +1533,7 @@ export function GamePage() {
                                   <div key={code} style={{ display: 'inline-block' }}>
                                     <CardIcon
                                       card={c}
+                                      theme={cardTheme}
                                       disabled={disabled}
                                       muted={disabled}
                                       onClick={canPlay ? () => submitMove({ type: 'play_card', card: code }) : undefined}

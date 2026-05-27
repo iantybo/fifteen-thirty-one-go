@@ -150,6 +150,21 @@ export type GameSnapshot = {
   state: CribbageState
 }
 
+export type CardTheme = 'classic' | 'neon' | 'minimal' | 'emoji'
+
+export type UserPreferences = {
+  user_id: number
+  auto_count_mode: 'off' | 'suggest' | 'auto'
+  card_theme: CardTheme
+  updated_at: string
+}
+
+export type ReactionEvent = {
+  user_id: number
+  emoji: string
+  ts: string
+}
+
 export type GameMove = {
   id: number
   game_id: number

@@ -4,9 +4,13 @@ import type {
   Achievement,
   AchievementsSnapshot,
   AuthResponse,
+<<<<<<< Updated upstream
   FriendSummary,
   FriendsListResponse,
   Friendship,
+=======
+  CardTheme,
+>>>>>>> Stashed changes
   Game,
   GameMove,
   GameSnapshot,
@@ -17,6 +21,7 @@ import type {
   SpectatorInfo,
   ToggleReactionResponse,
   User,
+  UserPreferences,
   UserStats,
 } from './types'
 
@@ -245,5 +250,30 @@ export const api = {
         url(`/api/lobbies/${lobbyId}/chat/${msgId}/reactions`),
       ),
     )
+  },
+
+  // Preferences
+  async getPreferences() {
+    const res = await apiFetch<UserPreferences>(`${apiBaseUrl()}/api/me/preferences`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async setCardTheme(theme: CardTheme) {
+    const res = await apiFetch<UserPreferences>(`${apiBaseUrl()}/api/me/preferences`, {
+      method: 'PUT',
+      body: { card_theme: theme },
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+
+  // Reactions
+  async sendReaction(gameId: number, emoji: string) {
+    const res = await apiFetch<{ ok: boolean }>(`${apiBaseUrl()}/api/games/${gameId}/reaction`, {
+      method: 'POST',
+      body: { emoji },
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
   },
 }

@@ -32,7 +32,8 @@ func GetPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 }
 
 type putPreferencesRequest struct {
-	AutoCountMode string `json:"auto_count_mode"`
+	AutoCountMode *string `json:"auto_count_mode"`
+	CardTheme     *string `json:"card_theme"`
 }
 
 func PutPreferencesHandler(db *sql.DB) gin.HandlerFunc {
@@ -51,14 +52,24 @@ func PutPreferencesHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
 			return
 		}
-		prefs, err := models.SetUserAutoCountModeAndGetPreferencesTx(db, userID, req.AutoCountMode)
+		if req.AutoCountMode == nil && req.CardTheme == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
+			return
+		}
+
+		prefs, err := models.UpdateUserPreferencesTx(db, userID, req.AutoCountMode, req.CardTheme)
 		if err != nil {
 			if errors.Is(err, models.ErrInvalidMode) {
 				log.Printf("PutPreferencesHandler invalid mode: user_id=%d err=%v", userID, err)
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mode"})
 				return
 			}
-			log.Printf("SetUserAutoCountModeAndGetPreferencesTx failed: user_id=%d err=%v", userID, err)
+			if errors.Is(err, models.ErrInvalidCardTheme) {
+				log.Printf("PutPreferencesHandler invalid card_theme: user_id=%d err=%v", userID, err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid card_theme"})
+				return
+			}
+			log.Printf("UpdateUserPreferencesTx failed: user_id=%d err=%v", userID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
