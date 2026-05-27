@@ -98,7 +98,7 @@ func ToggleReactionHandler(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.H
 		// Authorise: the actor must be in the lobby or a spectator.
 		ok, err = canActInLobby(ctx, db, lobbyID, userID)
 		if err != nil {
-			log.Printf("ToggleReactionHandler: auth check: %v", err)
+			log.Printf("ToggleReactionHandler: auth check failed: lobby_id=%d user_id=%d err=%v", lobbyID, userID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
