@@ -3,6 +3,7 @@
 language: en-US
 tone_instructions: >
   - Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not.
+  - Follow conventional comments: https://conventionalcomments.org/
 
 early_access: true
 enable_free_tier: true
