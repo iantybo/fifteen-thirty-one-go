@@ -74,31 +74,31 @@ func NewEngine(cfg RatingConfig) *Engine {
 }
 
 // Get returns the current rating for a player (starting value if unseen).
-func (e *Engine) Get(playerID string) int {
-	if v, ok := e.ratings[playerID]; ok {
-		return v
+func (eng *Engine) Get(playerID string) int {
+	if rating, ok := eng.ratings[playerID]; ok {
+		return rating
 	}
-	return e.cfg.StartingValue
+	return eng.cfg.StartingValue
 }
 
 // Set sets the rating for a player (clamped to config).
-func (e *Engine) Set(playerID string, r int) {
-	if e.cfg.Floor > 0 && r < e.cfg.Floor {
-		r = e.cfg.Floor
+func (eng *Engine) Set(playerID string, rating int) {
+	if eng.cfg.Floor > 0 && rating < eng.cfg.Floor {
+		rating = eng.cfg.Floor
 	}
-	if e.cfg.Ceiling > 0 && r > e.cfg.Ceiling {
-		r = e.cfg.Ceiling
+	if eng.cfg.Ceiling > 0 && rating > eng.cfg.Ceiling {
+		rating = eng.cfg.Ceiling
 	}
-	e.ratings[playerID] = r
+	eng.ratings[playerID] = rating
 }
 
 // Record applies a game to the engine, returning the post-game ratings.
-func (e *Engine) Record(g Game) (newPlayer, newOpp int) {
-	ra := e.Get(g.PlayerID)
-	rb := e.Get(g.OpponentID)
-	dA := Update(e.cfg, ra, rb, g.Result)
+func (eng *Engine) Record(game Game) (newPlayer, newOpp int) {
+	ratingA := eng.Get(game.PlayerID)
+	ratingB := eng.Get(game.OpponentID)
+	deltaA := Update(eng.cfg, ratingA, ratingB, game.Result)
 	var oppResult GameResult
-	switch g.Result {
+	switch game.Result {
 	case ResultWin:
 		oppResult = ResultLoss
 	case ResultLoss:
@@ -108,96 +108,96 @@ func (e *Engine) Record(g Game) (newPlayer, newOpp int) {
 	default:
 		oppResult = ResultUnknown
 	}
-	dB := Update(e.cfg, rb, ra, oppResult)
-	newPlayer = ra + dA
-	newOpp = rb + dB
-	e.Set(g.PlayerID, newPlayer)
-	e.Set(g.OpponentID, newOpp)
-	e.history[g.PlayerID] = append(e.history[g.PlayerID], RatingPoint{
-		At: g.EndedAt, Rating: newPlayer, GameID: g.ID,
+	deltaB := Update(eng.cfg, ratingB, ratingA, oppResult)
+	newPlayer = ratingA + deltaA
+	newOpp = ratingB + deltaB
+	eng.Set(game.PlayerID, newPlayer)
+	eng.Set(game.OpponentID, newOpp)
+	eng.history[game.PlayerID] = append(eng.history[game.PlayerID], RatingPoint{
+		At: game.EndedAt, Rating: newPlayer, GameID: game.ID,
 	})
-	e.history[g.OpponentID] = append(e.history[g.OpponentID], RatingPoint{
-		At: g.EndedAt, Rating: newOpp, GameID: g.ID,
+	eng.history[game.OpponentID] = append(eng.history[game.OpponentID], RatingPoint{
+		At: game.EndedAt, Rating: newOpp, GameID: game.ID,
 	})
 	return
 }
 
 // Series returns the rating history for a player.
-func (e *Engine) Series(playerID string) RatingSeries {
-	pts := e.history[playerID]
+func (eng *Engine) Series(playerID string) RatingSeries {
+	pts := eng.history[playerID]
 	cp := make([]RatingPoint, len(pts))
 	copy(cp, pts)
-	sort.Slice(cp, func(i, j int) bool { return cp[i].At.Before(cp[j].At) })
+	sort.Slice(cp, func(ii, jj int) bool { return cp[ii].At.Before(cp[jj].At) })
 	return RatingSeries{PlayerID: playerID, Points: cp}
 }
 
 // Snapshot returns all current ratings as a map copy.
-func (e *Engine) Snapshot() map[string]int {
-	out := make(map[string]int, len(e.ratings))
-	for k, v := range e.ratings {
-		out[k] = v
+func (eng *Engine) Snapshot() map[string]int {
+	out := make(map[string]int, len(eng.ratings))
+	for playerID, rating := range eng.ratings {
+		out[playerID] = rating
 	}
 	return out
 }
 
 // Reset clears all ratings and history.
-func (e *Engine) Reset() {
-	e.ratings = make(map[string]int)
-	e.history = make(map[string][]RatingPoint)
+func (eng *Engine) Reset() {
+	eng.ratings = make(map[string]int)
+	eng.history = make(map[string][]RatingPoint)
 }
 
 // PeakRating returns the maximum rating ever attained for a player.
-func (e *Engine) PeakRating(playerID string) int {
-	pts := e.history[playerID]
-	peak := e.cfg.StartingValue
-	for _, p := range pts {
-		if p.Rating > peak {
-			peak = p.Rating
+func (eng *Engine) PeakRating(playerID string) int {
+	pts := eng.history[playerID]
+	peak := eng.cfg.StartingValue
+	for _, pt := range pts {
+		if pt.Rating > peak {
+			peak = pt.Rating
 		}
 	}
 	return peak
 }
 
 // LowRating returns the minimum rating ever attained for a player.
-func (e *Engine) LowRating(playerID string) int {
-	pts := e.history[playerID]
+func (eng *Engine) LowRating(playerID string) int {
+	pts := eng.history[playerID]
 	if len(pts) == 0 {
-		return e.cfg.StartingValue
+		return eng.cfg.StartingValue
 	}
 	low := pts[0].Rating
-	for _, p := range pts[1:] {
-		if p.Rating < low {
-			low = p.Rating
+	for _, pt := range pts[1:] {
+		if pt.Rating < low {
+			low = pt.Rating
 		}
 	}
 	return low
 }
 
 // AverageRatingSince returns a weighted average rating since the given time.
-func (e *Engine) AverageRatingSince(playerID string, since time.Time) float64 {
-	pts := e.history[playerID]
+func (eng *Engine) AverageRatingSince(playerID string, since time.Time) float64 {
+	pts := eng.history[playerID]
 	var sum float64
-	var n int
-	for _, p := range pts {
-		if !p.At.Before(since) {
-			sum += float64(p.Rating)
-			n++
+	var count int
+	for _, pt := range pts {
+		if !pt.At.Before(since) {
+			sum += float64(pt.Rating)
+			count++
 		}
 	}
-	if n == 0 {
+	if count == 0 {
 		return 0
 	}
-	return sum / float64(n)
+	return sum / float64(count)
 }
 
 // Volatility returns the standard deviation of rating values in window.
-func (e *Engine) Volatility(playerID string, window time.Duration, now time.Time) float64 {
-	pts := e.history[playerID]
+func (eng *Engine) Volatility(playerID string, window time.Duration, now time.Time) float64 {
+	pts := eng.history[playerID]
 	cutoff := now.Add(-window)
 	var values []float64
-	for _, p := range pts {
-		if !p.At.Before(cutoff) {
-			values = append(values, float64(p.Rating))
+	for _, pt := range pts {
+		if !pt.At.Before(cutoff) {
+			values = append(values, float64(pt.Rating))
 		}
 	}
 	return stdDev(values)
@@ -208,27 +208,27 @@ func stdDev(xs []float64) float64 {
 		return 0
 	}
 	var sum float64
-	for _, v := range xs {
-		sum += v
+	for _, val := range xs {
+		sum += val
 	}
 	mean := sum / float64(len(xs))
 	var sqSum float64
-	for _, v := range xs {
-		d := v - mean
-		sqSum += d * d
+	for _, val := range xs {
+		diff := val - mean
+		sqSum += diff * diff
 	}
 	return math.Sqrt(sqSum / float64(len(xs)-1))
 }
 
 // Decay applies a per-day decay to ratings of players whose last activity is older
 // than the cutoff. Each decayed player moves toward the starting value.
-func (e *Engine) Decay(decayPerDay float64, cutoff time.Time, now time.Time) int {
+func (eng *Engine) Decay(decayPerDay float64, cutoff time.Time, now time.Time) int {
 	if decayPerDay <= 0 {
 		return 0
 	}
 	var changed int
-	for player, rating := range e.ratings {
-		hist := e.history[player]
+	for player, rating := range eng.ratings {
+		hist := eng.history[player]
 		if len(hist) == 0 {
 			continue
 		}
@@ -241,20 +241,20 @@ func (e *Engine) Decay(decayPerDay float64, cutoff time.Time, now time.Time) int
 			continue
 		}
 		delta := decayPerDay * days
-		target := float64(e.cfg.StartingValue)
-		newR := float64(rating)
-		if newR > target {
-			newR -= delta
-			if newR < target {
-				newR = target
+		target := float64(eng.cfg.StartingValue)
+		newRating := float64(rating)
+		if newRating > target {
+			newRating -= delta
+			if newRating < target {
+				newRating = target
 			}
-		} else if newR < target {
-			newR += delta
-			if newR > target {
-				newR = target
+		} else if newRating < target {
+			newRating += delta
+			if newRating > target {
+				newRating = target
 			}
 		}
-		e.ratings[player] = int(math.Round(newR))
+		eng.ratings[player] = int(math.Round(newRating))
 		changed++
 	}
 	return changed

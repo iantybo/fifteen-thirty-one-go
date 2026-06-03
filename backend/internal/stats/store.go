@@ -9,11 +9,11 @@ import (
 
 // Store provides thread-safe storage and querying for game records.
 type Store struct {
-	mu      sync.RWMutex
-	games   []Game
-	byID    map[string]int
-	byPlay  map[string][]int
-	byMode  map[GameMode][]int
+	mu     sync.RWMutex
+	games  []Game
+	byID   map[string]int
+	byPlay map[string][]int
+	byMode map[GameMode][]int
 }
 
 // NewStore returns an empty store.
@@ -26,193 +26,193 @@ func NewStore() *Store {
 }
 
 // Insert adds a game to the store. The game ID must be non-empty.
-func (s *Store) Insert(g Game) error {
-	if g.ID == "" {
+func (st *Store) Insert(game Game) error {
+	if game.ID == "" {
 		return errors.New("missing game id")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.byID[g.ID]; exists {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if _, exists := st.byID[game.ID]; exists {
 		return errors.New("game already exists")
 	}
-	idx := len(s.games)
-	s.games = append(s.games, g)
-	s.byID[g.ID] = idx
-	s.byPlay[g.PlayerID] = append(s.byPlay[g.PlayerID], idx)
-	if g.OpponentID != "" && g.OpponentID != g.PlayerID {
-		s.byPlay[g.OpponentID] = append(s.byPlay[g.OpponentID], idx)
+	gameIdx := len(st.games)
+	st.games = append(st.games, game)
+	st.byID[game.ID] = gameIdx
+	st.byPlay[game.PlayerID] = append(st.byPlay[game.PlayerID], gameIdx)
+	if game.OpponentID != "" && game.OpponentID != game.PlayerID {
+		st.byPlay[game.OpponentID] = append(st.byPlay[game.OpponentID], gameIdx)
 	}
-	s.byMode[g.Mode] = append(s.byMode[g.Mode], idx)
+	st.byMode[game.Mode] = append(st.byMode[game.Mode], gameIdx)
 	return nil
 }
 
 // InsertBatch inserts a slice of games and stops on the first error.
-func (s *Store) InsertBatch(games []Game) (int, error) {
-	for i, g := range games {
-		if err := s.Insert(g); err != nil {
-			return i, err
+func (st *Store) InsertBatch(games []Game) (int, error) {
+	for idx, game := range games {
+		if err := st.Insert(game); err != nil {
+			return idx, err
 		}
 	}
 	return len(games), nil
 }
 
 // Get retrieves a game by ID.
-func (s *Store) Get(id string) (Game, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	i, ok := s.byID[id]
+func (st *Store) Get(id string) (Game, bool) {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	gameIdx, ok := st.byID[id]
 	if !ok {
 		return Game{}, false
 	}
-	return s.games[i], true
+	return st.games[gameIdx], true
 }
 
 // Delete removes a game by ID and rebuilds indexes.
-func (s *Store) Delete(id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	idx, ok := s.byID[id]
+func (st *Store) Delete(id string) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	gameIdx, ok := st.byID[id]
 	if !ok {
 		return false
 	}
-	last := len(s.games) - 1
-	if idx != last {
-		s.games[idx] = s.games[last]
+	last := len(st.games) - 1
+	if gameIdx != last {
+		st.games[gameIdx] = st.games[last]
 	}
-	s.games = s.games[:last]
-	s.rebuildIndexesLocked()
+	st.games = st.games[:last]
+	st.rebuildIndexesLocked()
 	return true
 }
 
-func (s *Store) rebuildIndexesLocked() {
-	s.byID = make(map[string]int, len(s.games))
-	s.byPlay = make(map[string][]int)
-	s.byMode = make(map[GameMode][]int)
-	for i, g := range s.games {
-		s.byID[g.ID] = i
-		s.byPlay[g.PlayerID] = append(s.byPlay[g.PlayerID], i)
-		if g.OpponentID != "" && g.OpponentID != g.PlayerID {
-			s.byPlay[g.OpponentID] = append(s.byPlay[g.OpponentID], i)
+func (st *Store) rebuildIndexesLocked() {
+	st.byID = make(map[string]int, len(st.games))
+	st.byPlay = make(map[string][]int)
+	st.byMode = make(map[GameMode][]int)
+	for idx, game := range st.games {
+		st.byID[game.ID] = idx
+		st.byPlay[game.PlayerID] = append(st.byPlay[game.PlayerID], idx)
+		if game.OpponentID != "" && game.OpponentID != game.PlayerID {
+			st.byPlay[game.OpponentID] = append(st.byPlay[game.OpponentID], idx)
 		}
-		s.byMode[g.Mode] = append(s.byMode[g.Mode], i)
+		st.byMode[game.Mode] = append(st.byMode[game.Mode], idx)
 	}
 }
 
 // All returns a copy of all games in insertion order.
-func (s *Store) All() []Game {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]Game, len(s.games))
-	copy(out, s.games)
+func (st *Store) All() []Game {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	out := make([]Game, len(st.games))
+	copy(out, st.games)
 	return out
 }
 
 // Count returns the number of games stored.
-func (s *Store) Count() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.games)
+func (st *Store) Count() int {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	return len(st.games)
 }
 
 // ForPlayer returns the games involving a specific player.
-func (s *Store) ForPlayer(playerID string) []Game {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	idxs := s.byPlay[playerID]
+func (st *Store) ForPlayer(playerID string) []Game {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	idxs := st.byPlay[playerID]
 	out := make([]Game, len(idxs))
-	for i, j := range idxs {
-		out[i] = s.games[j]
+	for outIdx, gameIdx := range idxs {
+		out[outIdx] = st.games[gameIdx]
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].EndedAt.Before(out[j].EndedAt) })
+	sort.Slice(out, func(ii, jj int) bool { return out[ii].EndedAt.Before(out[jj].EndedAt) })
 	return out
 }
 
 // ForMode returns games in a specific mode.
-func (s *Store) ForMode(m GameMode) []Game {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	idxs := s.byMode[m]
+func (st *Store) ForMode(mode GameMode) []Game {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	idxs := st.byMode[mode]
 	out := make([]Game, len(idxs))
-	for i, j := range idxs {
-		out[i] = s.games[j]
+	for outIdx, gameIdx := range idxs {
+		out[outIdx] = st.games[gameIdx]
 	}
 	return out
 }
 
 // Query returns games that match the supplied filter.
-func (s *Store) Query(f Filter) []Game {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (st *Store) Query(fl Filter) []Game {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
 	var out []Game
-	if f.PlayerID != "" {
-		for _, i := range s.byPlay[f.PlayerID] {
-			g := s.games[i]
-			if f.AppliesTo(g) {
-				out = append(out, g)
+	if fl.PlayerID != "" {
+		for _, gameIdx := range st.byPlay[fl.PlayerID] {
+			game := st.games[gameIdx]
+			if fl.AppliesTo(game) {
+				out = append(out, game)
 			}
 		}
 	} else {
-		for _, g := range s.games {
-			if f.AppliesTo(g) {
-				out = append(out, g)
+		for _, game := range st.games {
+			if fl.AppliesTo(game) {
+				out = append(out, game)
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].EndedAt.Before(out[j].EndedAt) })
+	sort.Slice(out, func(ii, jj int) bool { return out[ii].EndedAt.Before(out[jj].EndedAt) })
 	return out
 }
 
 // Players returns all distinct player IDs known to the store.
-func (s *Store) Players() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]string, 0, len(s.byPlay))
-	for k := range s.byPlay {
-		out = append(out, k)
+func (st *Store) Players() []string {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	out := make([]string, 0, len(st.byPlay))
+	for playerKey := range st.byPlay {
+		out = append(out, playerKey)
 	}
 	sort.Strings(out)
 	return out
 }
 
 // LastN returns the last n games (most recent first).
-func (s *Store) LastN(n int) []Game {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	cp := make([]Game, len(s.games))
-	copy(cp, s.games)
-	sort.Slice(cp, func(i, j int) bool { return cp[i].EndedAt.After(cp[j].EndedAt) })
-	if n > 0 && n < len(cp) {
-		cp = cp[:n]
+func (st *Store) LastN(count int) []Game {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	cp := make([]Game, len(st.games))
+	copy(cp, st.games)
+	sort.Slice(cp, func(ii, jj int) bool { return cp[ii].EndedAt.After(cp[jj].EndedAt) })
+	if count > 0 && count < len(cp) {
+		cp = cp[:count]
 	}
 	return cp
 }
 
 // Range returns the inclusive [from,to) range of stored games' EndedAt.
-func (s *Store) Range() (time.Time, time.Time) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.games) == 0 {
+func (st *Store) Range() (time.Time, time.Time) {
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	if len(st.games) == 0 {
 		return time.Time{}, time.Time{}
 	}
-	mn := s.games[0].EndedAt
-	mx := s.games[0].EndedAt
-	for _, g := range s.games[1:] {
-		if g.EndedAt.Before(mn) {
-			mn = g.EndedAt
+	minTime := st.games[0].EndedAt
+	maxTime := st.games[0].EndedAt
+	for _, game := range st.games[1:] {
+		if game.EndedAt.Before(minTime) {
+			minTime = game.EndedAt
 		}
-		if g.EndedAt.After(mx) {
-			mx = g.EndedAt
+		if game.EndedAt.After(maxTime) {
+			maxTime = game.EndedAt
 		}
 	}
-	return mn, mx
+	return minTime, maxTime
 }
 
 // Clear removes all games from the store.
-func (s *Store) Clear() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.games = nil
-	s.byID = make(map[string]int)
-	s.byPlay = make(map[string][]int)
-	s.byMode = make(map[GameMode][]int)
+func (st *Store) Clear() {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.games = nil
+	st.byID = make(map[string]int)
+	st.byPlay = make(map[string][]int)
+	st.byMode = make(map[GameMode][]int)
 }
