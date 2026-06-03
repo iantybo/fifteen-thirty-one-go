@@ -6,70 +6,70 @@ import (
 
 // ComputeHeadToHead computes head-to-head stats between two players.
 func ComputeHeadToHead(games []Game, playerA, playerB string) HeadToHead {
-	h := HeadToHead{PlayerA: playerA, PlayerB: playerB}
+	result := HeadToHead{PlayerA: playerA, PlayerB: playerB}
 	var marginSum float64
-	for _, g := range games {
-		if !isMatchup(g, playerA, playerB) {
+	for _, game := range games {
+		if !isMatchup(game, playerA, playerB) {
 			continue
 		}
-		h.Games++
-		if g.EndedAt.After(h.LastMet) {
-			h.LastMet = g.EndedAt
+		result.Games++
+		if game.EndedAt.After(result.LastMet) {
+			result.LastMet = game.EndedAt
 		}
-		fromA := g.PlayerID == playerA
+		fromA := game.PlayerID == playerA
 		var resForA GameResult
 		var marginForA int
 		if fromA {
-			resForA = g.Result
-			marginForA = g.PlayerScore - g.OppScore
+			resForA = game.Result
+			marginForA = game.PlayerScore - game.OppScore
 		} else {
-			resForA = flip(g.Result)
-			marginForA = g.OppScore - g.PlayerScore
+			resForA = flip(game.Result)
+			marginForA = game.OppScore - game.PlayerScore
 		}
 		switch resForA {
 		case ResultWin:
-			h.AWins++
+			result.AWins++
 		case ResultLoss:
-			h.BWins++
+			result.BWins++
 		case ResultDraw:
-			h.Draws++
+			result.Draws++
 		}
 		marginSum += float64(marginForA)
 	}
-	if h.Games > 0 {
-		h.AvgMargin = marginSum / float64(h.Games)
+	if result.Games > 0 {
+		result.AvgMargin = marginSum / float64(result.Games)
 	}
-	return h
+	return result
 }
 
-func isMatchup(g Game, a, b string) bool {
-	return (g.PlayerID == a && g.OpponentID == b) ||
-		(g.PlayerID == b && g.OpponentID == a)
+func isMatchup(game Game, playerA, playerB string) bool {
+	return (game.PlayerID == playerA && game.OpponentID == playerB) ||
+		(game.PlayerID == playerB && game.OpponentID == playerA)
 }
 
-func flip(r GameResult) GameResult {
-	switch r {
+func flip(result GameResult) GameResult {
+	switch result {
 	case ResultWin:
 		return ResultLoss
 	case ResultLoss:
 		return ResultWin
 	default:
-		return r
+		return result
 	}
 }
 
 // HeadToHeadMatrix builds an all-pairs matrix for the supplied players.
 func HeadToHeadMatrix(games []Game, players []string) map[string]map[string]HeadToHead {
 	out := make(map[string]map[string]HeadToHead, len(players))
-	for _, a := range players {
+	for _, playerA := range players {
 		row := make(map[string]HeadToHead, len(players))
-		for _, b := range players {
-			if a == b {
+		for _, playerB := range players {
+			if playerA == playerB {
 				continue
 			}
-			row[b] = ComputeHeadToHead(games, a, b)
+			row[playerB] = ComputeHeadToHead(games, playerA, playerB)
 		}
-		out[a] = row
+		out[playerA] = row
 	}
 	return out
 }
@@ -77,53 +77,53 @@ func HeadToHeadMatrix(games []Game, players []string) map[string]map[string]Head
 // RivalryRanking returns opponents sorted by total games played.
 func RivalryRanking(games []Game, playerA string) []HeadToHead {
 	counts := make(map[string]int)
-	for _, g := range games {
+	for _, game := range games {
 		switch {
-		case g.PlayerID == playerA:
-			counts[g.OpponentID]++
-		case g.OpponentID == playerA:
-			counts[g.PlayerID]++
+		case game.PlayerID == playerA:
+			counts[game.OpponentID]++
+		case game.OpponentID == playerA:
+			counts[game.PlayerID]++
 		}
 	}
 	opps := make([]string, 0, len(counts))
-	for k := range counts {
-		opps = append(opps, k)
+	for oppID := range counts {
+		opps = append(opps, oppID)
 	}
-	sort.Slice(opps, func(i, j int) bool {
-		if counts[opps[i]] != counts[opps[j]] {
-			return counts[opps[i]] > counts[opps[j]]
+	sort.Slice(opps, func(ii, jj int) bool {
+		if counts[opps[ii]] != counts[opps[jj]] {
+			return counts[opps[ii]] > counts[opps[jj]]
 		}
-		return opps[i] < opps[j]
+		return opps[ii] < opps[jj]
 	})
 	out := make([]HeadToHead, 0, len(opps))
-	for _, o := range opps {
-		out = append(out, ComputeHeadToHead(games, playerA, o))
+	for _, opp := range opps {
+		out = append(out, ComputeHeadToHead(games, playerA, opp))
 	}
 	return out
 }
 
 // DominanceScore returns a 0..1 score of how dominant A is over B.
-func (h HeadToHead) DominanceScore() float64 {
-	if h.Games == 0 {
+func (h2h HeadToHead) DominanceScore() float64 {
+	if h2h.Games == 0 {
 		return 0
 	}
-	wins := float64(h.AWins) + 0.5*float64(h.Draws)
-	return wins / float64(h.Games)
+	wins := float64(h2h.AWins) + 0.5*float64(h2h.Draws)
+	return wins / float64(h2h.Games)
 }
 
 // IsRival reports whether two players have played at least the threshold games.
-func (h HeadToHead) IsRival(threshold int) bool {
-	return h.Games >= threshold
+func (h2h HeadToHead) IsRival(threshold int) bool {
+	return h2h.Games >= threshold
 }
 
 // SwingFactor measures how lopsided a head-to-head is (1.0 = totally lopsided, 0.0 = even).
-func (h HeadToHead) SwingFactor() float64 {
-	if h.Games == 0 {
+func (h2h HeadToHead) SwingFactor() float64 {
+	if h2h.Games == 0 {
 		return 0
 	}
-	diff := h.AWins - h.BWins
+	diff := h2h.AWins - h2h.BWins
 	if diff < 0 {
 		diff = -diff
 	}
-	return float64(diff) / float64(h.Games)
+	return float64(diff) / float64(h2h.Games)
 }

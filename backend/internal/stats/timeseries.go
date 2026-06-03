@@ -17,25 +17,25 @@ const (
 )
 
 // Truncate snaps a time down to the granularity boundary.
-func (g Granularity) Truncate(t time.Time) time.Time {
-	switch g {
+func (gran Granularity) Truncate(ts time.Time) time.Time {
+	switch gran {
 	case GranularityHour:
-		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, t.Location())
+		return time.Date(ts.Year(), ts.Month(), ts.Day(), ts.Hour(), 0, 0, 0, ts.Location())
 	case GranularityDay:
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+		return time.Date(ts.Year(), ts.Month(), ts.Day(), 0, 0, 0, 0, ts.Location())
 	case GranularityWeek:
-		d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-		offset := int(d.Weekday())
-		return d.AddDate(0, 0, -offset)
+		weekStart := time.Date(ts.Year(), ts.Month(), ts.Day(), 0, 0, 0, 0, ts.Location())
+		offset := int(weekStart.Weekday())
+		return weekStart.AddDate(0, 0, -offset)
 	case GranularityMonth:
-		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
+		return time.Date(ts.Year(), ts.Month(), 1, 0, 0, 0, 0, ts.Location())
 	}
-	return t
+	return ts
 }
 
 // Step returns the duration of one bucket.
-func (g Granularity) Step() time.Duration {
-	switch g {
+func (gran Granularity) Step() time.Duration {
+	switch gran {
 	case GranularityHour:
 		return time.Hour
 	case GranularityDay:
@@ -50,9 +50,9 @@ func (g Granularity) Step() time.Duration {
 
 // SeriesPoint is one point in a time-bucketed series.
 type SeriesPoint struct {
-	At     time.Time
-	Value  float64
-	Count  int
+	At    time.Time
+	Value float64
+	Count int
 }
 
 // Series is a list of time-bucketed points.
@@ -63,8 +63,8 @@ type Series struct {
 
 // SeriesBuilder accumulates per-bucket counts and sums.
 type SeriesBuilder struct {
-	gran     Granularity
-	buckets  map[time.Time]*bucketData
+	gran    Granularity
+	buckets map[time.Time]*bucketData
 }
 
 type bucketData struct {
@@ -73,186 +73,186 @@ type bucketData struct {
 }
 
 // NewSeriesBuilder builds a new SeriesBuilder.
-func NewSeriesBuilder(g Granularity) *SeriesBuilder {
+func NewSeriesBuilder(gran Granularity) *SeriesBuilder {
 	return &SeriesBuilder{
-		gran:    g,
+		gran:    gran,
 		buckets: make(map[time.Time]*bucketData),
 	}
 }
 
-// Add adds a single value at time t.
-func (b *SeriesBuilder) Add(t time.Time, value float64) {
-	key := b.gran.Truncate(t)
-	bd, ok := b.buckets[key]
+// Add adds a single value at time ts.
+func (builder *SeriesBuilder) Add(ts time.Time, value float64) {
+	key := builder.gran.Truncate(ts)
+	bd, ok := builder.buckets[key]
 	if !ok {
 		bd = &bucketData{}
-		b.buckets[key] = bd
+		builder.buckets[key] = bd
 	}
 	bd.sum += value
 	bd.count++
 }
 
 // Build returns a sorted series. If avg is true, values are averaged per bucket.
-func (b *SeriesBuilder) Build(avg bool) Series {
-	pts := make([]SeriesPoint, 0, len(b.buckets))
-	for k, v := range b.buckets {
-		val := v.sum
-		if avg && v.count > 0 {
-			val = v.sum / float64(v.count)
+func (builder *SeriesBuilder) Build(avg bool) Series {
+	pts := make([]SeriesPoint, 0, len(builder.buckets))
+	for bucketKey, bucketVal := range builder.buckets {
+		val := bucketVal.sum
+		if avg && bucketVal.count > 0 {
+			val = bucketVal.sum / float64(bucketVal.count)
 		}
-		pts = append(pts, SeriesPoint{At: k, Value: val, Count: v.count})
+		pts = append(pts, SeriesPoint{At: bucketKey, Value: val, Count: bucketVal.count})
 	}
-	sort.Slice(pts, func(i, j int) bool { return pts[i].At.Before(pts[j].At) })
-	return Series{Granularity: b.gran, Points: pts}
+	sort.Slice(pts, func(ii, jj int) bool { return pts[ii].At.Before(pts[jj].At) })
+	return Series{Granularity: builder.gran, Points: pts}
 }
 
 // FillGaps inserts zero-value points for any missing buckets in [from,to].
-func (s Series) FillGaps(from, to time.Time) Series {
-	if len(s.Points) == 0 {
-		return s
+func (series Series) FillGaps(from, to time.Time) Series {
+	if len(series.Points) == 0 {
+		return series
 	}
-	step := s.Granularity.Step()
-	existing := make(map[time.Time]SeriesPoint, len(s.Points))
-	for _, p := range s.Points {
-		existing[p.At] = p
+	step := series.Granularity.Step()
+	existing := make(map[time.Time]SeriesPoint, len(series.Points))
+	for _, pt := range series.Points {
+		existing[pt.At] = pt
 	}
 	var out []SeriesPoint
-	for t := s.Granularity.Truncate(from); !t.After(to); t = t.Add(step) {
-		if p, ok := existing[t]; ok {
-			out = append(out, p)
+	for ts := series.Granularity.Truncate(from); !ts.After(to); ts = ts.Add(step) {
+		if pt, ok := existing[ts]; ok {
+			out = append(out, pt)
 		} else {
-			out = append(out, SeriesPoint{At: t})
+			out = append(out, SeriesPoint{At: ts})
 		}
 	}
-	return Series{Granularity: s.Granularity, Points: out}
+	return Series{Granularity: series.Granularity, Points: out}
 }
 
 // MovingAverage returns a new series smoothed via a sliding window.
-func (s Series) MovingAverage(window int) Series {
+func (series Series) MovingAverage(window int) Series {
 	if window <= 1 {
-		return s
+		return series
 	}
-	out := make([]SeriesPoint, len(s.Points))
-	for i := range s.Points {
-		lo := i - window + 1
+	out := make([]SeriesPoint, len(series.Points))
+	for idx := range series.Points {
+		lo := idx - window + 1
 		if lo < 0 {
 			lo = 0
 		}
 		var sum float64
-		var n int
-		for j := lo; j <= i; j++ {
-			sum += s.Points[j].Value
-			n++
+		var count int
+		for jj := lo; jj <= idx; jj++ {
+			sum += series.Points[jj].Value
+			count++
 		}
-		out[i] = SeriesPoint{At: s.Points[i].At, Value: sum / float64(n), Count: s.Points[i].Count}
+		out[idx] = SeriesPoint{At: series.Points[idx].At, Value: sum / float64(count), Count: series.Points[idx].Count}
 	}
-	return Series{Granularity: s.Granularity, Points: out}
+	return Series{Granularity: series.Granularity, Points: out}
 }
 
 // CumulativeSum returns a series whose values are the running totals.
-func (s Series) CumulativeSum() Series {
-	out := make([]SeriesPoint, len(s.Points))
+func (series Series) CumulativeSum() Series {
+	out := make([]SeriesPoint, len(series.Points))
 	var run float64
-	for i, p := range s.Points {
-		run += p.Value
-		out[i] = SeriesPoint{At: p.At, Value: run, Count: p.Count}
+	for idx, pt := range series.Points {
+		run += pt.Value
+		out[idx] = SeriesPoint{At: pt.At, Value: run, Count: pt.Count}
 	}
-	return Series{Granularity: s.Granularity, Points: out}
+	return Series{Granularity: series.Granularity, Points: out}
 }
 
 // Max returns the maximum value in the series.
-func (s Series) Max() (SeriesPoint, bool) {
-	if len(s.Points) == 0 {
+func (series Series) Max() (SeriesPoint, bool) {
+	if len(series.Points) == 0 {
 		return SeriesPoint{}, false
 	}
-	m := s.Points[0]
-	for _, p := range s.Points[1:] {
-		if p.Value > m.Value {
-			m = p
+	maxPt := series.Points[0]
+	for _, pt := range series.Points[1:] {
+		if pt.Value > maxPt.Value {
+			maxPt = pt
 		}
 	}
-	return m, true
+	return maxPt, true
 }
 
 // Min returns the minimum value in the series.
-func (s Series) Min() (SeriesPoint, bool) {
-	if len(s.Points) == 0 {
+func (series Series) Min() (SeriesPoint, bool) {
+	if len(series.Points) == 0 {
 		return SeriesPoint{}, false
 	}
-	m := s.Points[0]
-	for _, p := range s.Points[1:] {
-		if p.Value < m.Value {
-			m = p
+	minPt := series.Points[0]
+	for _, pt := range series.Points[1:] {
+		if pt.Value < minPt.Value {
+			minPt = pt
 		}
 	}
-	return m, true
+	return minPt, true
 }
 
 // GamesPerPeriod builds a series of game counts.
-func GamesPerPeriod(games []Game, g Granularity) Series {
-	b := NewSeriesBuilder(g)
-	for _, gm := range games {
-		b.Add(gm.EndedAt, 1)
+func GamesPerPeriod(games []Game, gran Granularity) Series {
+	builder := NewSeriesBuilder(gran)
+	for _, game := range games {
+		builder.Add(game.EndedAt, 1)
 	}
-	return b.Build(false)
+	return builder.Build(false)
 }
 
 // WinRatePerPeriod builds a per-period win rate series for a given player.
-func WinRatePerPeriod(games []Game, playerID string, g Granularity) Series {
-	winBuilder := NewSeriesBuilder(g)
-	gameBuilder := NewSeriesBuilder(g)
-	for _, gm := range games {
-		if gm.PlayerID != playerID {
+func WinRatePerPeriod(games []Game, playerID string, gran Granularity) Series {
+	winBuilder := NewSeriesBuilder(gran)
+	gameBuilder := NewSeriesBuilder(gran)
+	for _, game := range games {
+		if game.PlayerID != playerID {
 			continue
 		}
-		gameBuilder.Add(gm.EndedAt, 1)
-		if gm.Result == ResultWin {
-			winBuilder.Add(gm.EndedAt, 1)
+		gameBuilder.Add(game.EndedAt, 1)
+		if game.Result == ResultWin {
+			winBuilder.Add(game.EndedAt, 1)
 		}
 	}
 	wins := winBuilder.Build(false)
-	gs := gameBuilder.Build(false)
-	winsByT := make(map[time.Time]SeriesPoint, len(wins.Points))
-	for _, p := range wins.Points {
-		winsByT[p.At] = p
+	gameSeries := gameBuilder.Build(false)
+	winsByTime := make(map[time.Time]SeriesPoint, len(wins.Points))
+	for _, pt := range wins.Points {
+		winsByTime[pt.At] = pt
 	}
-	out := make([]SeriesPoint, 0, len(gs.Points))
-	for _, p := range gs.Points {
-		w := winsByT[p.At]
+	out := make([]SeriesPoint, 0, len(gameSeries.Points))
+	for _, pt := range gameSeries.Points {
+		winPt := winsByTime[pt.At]
 		var rate float64
-		if p.Count > 0 {
-			rate = float64(w.Count) / float64(p.Count)
+		if pt.Count > 0 {
+			rate = float64(winPt.Count) / float64(pt.Count)
 		}
-		out = append(out, SeriesPoint{At: p.At, Value: rate, Count: p.Count})
+		out = append(out, SeriesPoint{At: pt.At, Value: rate, Count: pt.Count})
 	}
-	return Series{Granularity: g, Points: out}
+	return Series{Granularity: gran, Points: out}
 }
 
 // MergeSeries sums multiple series elementwise (aligned on truncated timestamps).
-func MergeSeries(series ...Series) (Series, error) {
-	if len(series) == 0 {
+func MergeSeries(allSeries ...Series) (Series, error) {
+	if len(allSeries) == 0 {
 		return Series{}, errors.New("no series")
 	}
-	g := series[0].Granularity
+	gran := allSeries[0].Granularity
 	totals := make(map[time.Time]*bucketData)
-	for _, s := range series {
-		if s.Granularity != g {
+	for _, ser := range allSeries {
+		if ser.Granularity != gran {
 			return Series{}, errors.New("granularity mismatch")
 		}
-		for _, p := range s.Points {
-			bd, ok := totals[p.At]
+		for _, pt := range ser.Points {
+			bd, ok := totals[pt.At]
 			if !ok {
 				bd = &bucketData{}
-				totals[p.At] = bd
+				totals[pt.At] = bd
 			}
-			bd.sum += p.Value
-			bd.count += p.Count
+			bd.sum += pt.Value
+			bd.count += pt.Count
 		}
 	}
 	pts := make([]SeriesPoint, 0, len(totals))
-	for k, v := range totals {
-		pts = append(pts, SeriesPoint{At: k, Value: v.sum, Count: v.count})
+	for bucketKey, bucketVal := range totals {
+		pts = append(pts, SeriesPoint{At: bucketKey, Value: bucketVal.sum, Count: bucketVal.count})
 	}
-	sort.Slice(pts, func(i, j int) bool { return pts[i].At.Before(pts[j].At) })
-	return Series{Granularity: g, Points: pts}, nil
+	sort.Slice(pts, func(ii, jj int) bool { return pts[ii].At.Before(pts[jj].At) })
+	return Series{Granularity: gran, Points: pts}, nil
 }

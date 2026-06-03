@@ -28,111 +28,111 @@ func NewAggregatorWithClock(now func() time.Time) *Aggregator {
 }
 
 // Add appends a single game.
-func (a *Aggregator) Add(g Game) {
-	a.games = append(a.games, g)
-	a.indexed = false
+func (agg *Aggregator) Add(game Game) {
+	agg.games = append(agg.games, game)
+	agg.indexed = false
 }
 
 // AddMany appends a batch of games.
-func (a *Aggregator) AddMany(gs []Game) {
-	a.games = append(a.games, gs...)
-	a.indexed = false
+func (agg *Aggregator) AddMany(games []Game) {
+	agg.games = append(agg.games, games...)
+	agg.indexed = false
 }
 
 // Len reports the number of games tracked.
-func (a *Aggregator) Len() int {
-	return len(a.games)
+func (agg *Aggregator) Len() int {
+	return len(agg.games)
 }
 
 // Reset removes all tracked games.
-func (a *Aggregator) Reset() {
-	a.games = a.games[:0]
-	a.byPlay = nil
-	a.indexed = false
+func (agg *Aggregator) Reset() {
+	agg.games = agg.games[:0]
+	agg.byPlay = nil
+	agg.indexed = false
 }
 
-func (a *Aggregator) ensureIndex() {
-	if a.indexed {
+func (agg *Aggregator) ensureIndex() {
+	if agg.indexed {
 		return
 	}
-	a.byPlay = make(map[string][]int, len(a.games)/2+1)
-	for i, g := range a.games {
-		a.byPlay[g.PlayerID] = append(a.byPlay[g.PlayerID], i)
+	agg.byPlay = make(map[string][]int, len(agg.games)/2+1)
+	for idx, game := range agg.games {
+		agg.byPlay[game.PlayerID] = append(agg.byPlay[game.PlayerID], idx)
 	}
-	a.indexed = true
+	agg.indexed = true
 }
 
 // Players returns the list of unique player IDs.
-func (a *Aggregator) Players() []string {
-	a.ensureIndex()
-	out := make([]string, 0, len(a.byPlay))
-	for k := range a.byPlay {
-		out = append(out, k)
+func (agg *Aggregator) Players() []string {
+	agg.ensureIndex()
+	out := make([]string, 0, len(agg.byPlay))
+	for playerKey := range agg.byPlay {
+		out = append(out, playerKey)
 	}
 	sort.Strings(out)
 	return out
 }
 
 // GamesFor returns the games associated with a player.
-func (a *Aggregator) GamesFor(playerID string) []Game {
-	a.ensureIndex()
-	idx := a.byPlay[playerID]
-	out := make([]Game, len(idx))
-	for i, j := range idx {
-		out[i] = a.games[j]
+func (agg *Aggregator) GamesFor(playerID string) []Game {
+	agg.ensureIndex()
+	gameIndices := agg.byPlay[playerID]
+	out := make([]Game, len(gameIndices))
+	for outIdx, gameIdx := range gameIndices {
+		out[outIdx] = agg.games[gameIdx]
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].EndedAt.Before(out[j].EndedAt)
+	sort.Slice(out, func(ii, jj int) bool {
+		return out[ii].EndedAt.Before(out[jj].EndedAt)
 	})
 	return out
 }
 
 // Summarize produces the aggregate statistics for one player.
-func (a *Aggregator) Summarize(playerID string) PlayerSummary {
-	games := a.GamesFor(playerID)
-	return summarizeGames(playerID, games, a.now())
+func (agg *Aggregator) Summarize(playerID string) PlayerSummary {
+	games := agg.GamesFor(playerID)
+	return summarizeGames(playerID, games, agg.now())
 }
 
 // SummarizeFiltered produces a summary applying a filter.
-func (a *Aggregator) SummarizeFiltered(f Filter) PlayerSummary {
-	a.ensureIndex()
+func (agg *Aggregator) SummarizeFiltered(fl Filter) PlayerSummary {
+	agg.ensureIndex()
 	var games []Game
-	if f.PlayerID != "" {
-		for _, i := range a.byPlay[f.PlayerID] {
-			g := a.games[i]
-			if f.AppliesTo(g) {
-				games = append(games, g)
+	if fl.PlayerID != "" {
+		for _, gameIdx := range agg.byPlay[fl.PlayerID] {
+			game := agg.games[gameIdx]
+			if fl.AppliesTo(game) {
+				games = append(games, game)
 			}
 		}
 	} else {
-		for _, g := range a.games {
-			if f.AppliesTo(g) {
-				games = append(games, g)
+		for _, game := range agg.games {
+			if fl.AppliesTo(game) {
+				games = append(games, game)
 			}
 		}
 	}
-	sort.Slice(games, func(i, j int) bool {
-		return games[i].EndedAt.Before(games[j].EndedAt)
+	sort.Slice(games, func(ii, jj int) bool {
+		return games[ii].EndedAt.Before(games[jj].EndedAt)
 	})
-	return summarizeGames(f.PlayerID, games, a.now())
+	return summarizeGames(fl.PlayerID, games, agg.now())
 }
 
 func summarizeGames(playerID string, games []Game, now time.Time) PlayerSummary {
-	s := PlayerSummary{
+	summary := PlayerSummary{
 		PlayerID:      playerID,
 		ModeBreakdown: make(map[GameMode]ModeStats),
 	}
 	if len(games) == 0 {
-		return s
+		return summary
 	}
 
 	var totalScore, totalOpp, totalMoves int
 	var totalDur time.Duration
-	s.PeakRating = games[0].RatingAfter
-	s.LowestRating = games[0].RatingAfter
-	s.FirstPlayed = games[0].EndedAt
-	s.LastPlayed = games[len(games)-1].EndedAt
-	s.CurrentRating = games[len(games)-1].RatingAfter
+	summary.PeakRating = games[0].RatingAfter
+	summary.LowestRating = games[0].RatingAfter
+	summary.FirstPlayed = games[0].EndedAt
+	summary.LastPlayed = games[len(games)-1].EndedAt
+	summary.CurrentRating = games[len(games)-1].RatingAfter
 
 	curStreakResult := games[0].Result
 	curStreakLen := 0
@@ -146,19 +146,19 @@ func summarizeGames(playerID string, games []Game, now time.Time) PlayerSummary 
 	var rating30Start, rating30End int
 	rating30Init := false
 
-	for _, g := range games {
-		s.Games++
-		switch g.Result {
+	for _, game := range games {
+		summary.Games++
+		switch game.Result {
 		case ResultWin:
-			s.Wins++
+			summary.Wins++
 			tmpWin++
 			tmpLoss = 0
 		case ResultLoss:
-			s.Losses++
+			summary.Losses++
 			tmpLoss++
 			tmpWin = 0
 		case ResultDraw:
-			s.Draws++
+			summary.Draws++
 			tmpWin = 0
 			tmpLoss = 0
 		}
@@ -169,76 +169,76 @@ func summarizeGames(playerID string, games []Game, now time.Time) PlayerSummary 
 			longestLoss = tmpLoss
 		}
 
-		if g.Result == curStreakResult {
+		if game.Result == curStreakResult {
 			curStreakLen++
 		} else {
-			curStreakResult = g.Result
+			curStreakResult = game.Result
 			curStreakLen = 1
-			curStreakStart = g.EndedAt
+			curStreakStart = game.EndedAt
 		}
 
-		totalScore += g.PlayerScore
-		totalOpp += g.OppScore
-		totalMoves += g.Moves
-		totalDur += g.Duration()
+		totalScore += game.PlayerScore
+		totalOpp += game.OppScore
+		totalMoves += game.Moves
+		totalDur += game.Duration()
 
-		if g.RatingAfter > s.PeakRating {
-			s.PeakRating = g.RatingAfter
+		if game.RatingAfter > summary.PeakRating {
+			summary.PeakRating = game.RatingAfter
 		}
-		if g.RatingAfter < s.LowestRating || s.LowestRating == 0 {
-			s.LowestRating = g.RatingAfter
+		if game.RatingAfter < summary.LowestRating || summary.LowestRating == 0 {
+			summary.LowestRating = game.RatingAfter
 		}
 
-		ms := s.ModeBreakdown[g.Mode]
-		ms.Mode = g.Mode
-		ms.Games++
-		switch g.Result {
+		modeStats := summary.ModeBreakdown[game.Mode]
+		modeStats.Mode = game.Mode
+		modeStats.Games++
+		switch game.Result {
 		case ResultWin:
-			ms.Wins++
+			modeStats.Wins++
 		case ResultLoss:
-			ms.Losses++
+			modeStats.Losses++
 		case ResultDraw:
-			ms.Draws++
+			modeStats.Draws++
 		}
-		ms.AvgScore += float64(g.PlayerScore)
-		s.ModeBreakdown[g.Mode] = ms
+		modeStats.AvgScore += float64(game.PlayerScore)
+		summary.ModeBreakdown[game.Mode] = modeStats
 
-		if !g.EndedAt.Before(thirtyDaysAgo) {
+		if !game.EndedAt.Before(thirtyDaysAgo) {
 			if !rating30Init {
-				rating30Start = g.RatingBefore
+				rating30Start = game.RatingBefore
 				rating30Init = true
 			}
-			rating30End = g.RatingAfter
+			rating30End = game.RatingAfter
 		}
 	}
 
-	s.WinRate = ratio(s.Wins, s.Games)
-	s.AvgScore = float64(totalScore) / float64(s.Games)
-	s.AvgOppScore = float64(totalOpp) / float64(s.Games)
-	s.AvgScoreDelta = s.AvgScore - s.AvgOppScore
-	s.AvgMoves = float64(totalMoves) / float64(s.Games)
-	s.TotalPlayTime = totalDur
-	s.AvgGameDuration = time.Duration(int64(totalDur) / int64(s.Games))
-	s.LongestWinStreak = longestWin
-	s.LongestLossStreak = longestLoss
-	s.CurrentStreak = Streak{
+	summary.WinRate = ratio(summary.Wins, summary.Games)
+	summary.AvgScore = float64(totalScore) / float64(summary.Games)
+	summary.AvgOppScore = float64(totalOpp) / float64(summary.Games)
+	summary.AvgScoreDelta = summary.AvgScore - summary.AvgOppScore
+	summary.AvgMoves = float64(totalMoves) / float64(summary.Games)
+	summary.TotalPlayTime = totalDur
+	summary.AvgGameDuration = time.Duration(int64(totalDur) / int64(summary.Games))
+	summary.LongestWinStreak = longestWin
+	summary.LongestLossStreak = longestLoss
+	summary.CurrentStreak = Streak{
 		Result: curStreakResult,
 		Length: curStreakLen,
 		Since:  curStreakStart,
 	}
 	if rating30Init {
-		s.RatingDelta30Day = rating30End - rating30Start
+		summary.RatingDelta30Day = rating30End - rating30Start
 	}
 
-	for k, v := range s.ModeBreakdown {
-		v.WinRate = ratio(v.Wins, v.Games)
-		if v.Games > 0 {
-			v.AvgScore = v.AvgScore / float64(v.Games)
+	for mode, modeStats := range summary.ModeBreakdown {
+		modeStats.WinRate = ratio(modeStats.Wins, modeStats.Games)
+		if modeStats.Games > 0 {
+			modeStats.AvgScore = modeStats.AvgScore / float64(modeStats.Games)
 		}
-		s.ModeBreakdown[k] = v
+		summary.ModeBreakdown[mode] = modeStats
 	}
 
-	return s
+	return summary
 }
 
 func ratio(num, denom int) float64 {
@@ -249,40 +249,40 @@ func ratio(num, denom int) float64 {
 }
 
 // AllSummaries returns a summary for every known player.
-func (a *Aggregator) AllSummaries() map[string]PlayerSummary {
-	a.ensureIndex()
-	out := make(map[string]PlayerSummary, len(a.byPlay))
-	now := a.now()
-	for p := range a.byPlay {
-		games := a.GamesFor(p)
-		out[p] = summarizeGames(p, games, now)
+func (agg *Aggregator) AllSummaries() map[string]PlayerSummary {
+	agg.ensureIndex()
+	out := make(map[string]PlayerSummary, len(agg.byPlay))
+	now := agg.now()
+	for playerKey := range agg.byPlay {
+		games := agg.GamesFor(playerKey)
+		out[playerKey] = summarizeGames(playerKey, games, now)
 	}
 	return out
 }
 
 // PlayerCount returns the count of unique players.
-func (a *Aggregator) PlayerCount() int {
-	a.ensureIndex()
-	return len(a.byPlay)
+func (agg *Aggregator) PlayerCount() int {
+	agg.ensureIndex()
+	return len(agg.byPlay)
 }
 
 // GamesInRange returns games whose end time falls within range.
-func (a *Aggregator) GamesInRange(r TimeRange) []Game {
+func (agg *Aggregator) GamesInRange(tr TimeRange) []Game {
 	var out []Game
-	for _, g := range a.games {
-		if r.Contains(g.EndedAt) {
-			out = append(out, g)
+	for _, game := range agg.games {
+		if tr.Contains(game.EndedAt) {
+			out = append(out, game)
 		}
 	}
 	return out
 }
 
 // GamesByMode returns all games for a given mode.
-func (a *Aggregator) GamesByMode(m GameMode) []Game {
+func (agg *Aggregator) GamesByMode(mode GameMode) []Game {
 	var out []Game
-	for _, g := range a.games {
-		if g.Mode == m {
-			out = append(out, g)
+	for _, game := range agg.games {
+		if game.Mode == mode {
+			out = append(out, game)
 		}
 	}
 	return out

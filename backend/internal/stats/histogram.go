@@ -21,61 +21,61 @@ func BuildHistogram(values []float64, opts HistogramOptions) (Histogram, error) 
 	if len(values) == 0 {
 		return Histogram{Buckets: make([]HistogramBucket, opts.Buckets)}, nil
 	}
-	mn := opts.Min
-	mx := opts.Max
-	if mn == 0 && mx == 0 {
-		mn, mx = minMax(values)
+	minVal := opts.Min
+	maxVal := opts.Max
+	if minVal == 0 && maxVal == 0 {
+		minVal, maxVal = minMax(values)
 	}
-	if mx <= mn {
-		mx = mn + 1
+	if maxVal <= minVal {
+		maxVal = minVal + 1
 	}
-	width := (mx - mn) / float64(opts.Buckets)
+	width := (maxVal - minVal) / float64(opts.Buckets)
 	buckets := make([]HistogramBucket, opts.Buckets)
-	for i := range buckets {
-		buckets[i].LowerInclusive = mn + float64(i)*width
-		buckets[i].UpperExclusive = mn + float64(i+1)*width
+	for idx := range buckets {
+		buckets[idx].LowerInclusive = minVal + float64(idx)*width
+		buckets[idx].UpperExclusive = minVal + float64(idx+1)*width
 	}
 	total := 0
-	for _, v := range values {
-		if v < mn || v >= mx {
-			if v == mx {
+	for _, val := range values {
+		if val < minVal || val >= maxVal {
+			if val == maxVal {
 				buckets[opts.Buckets-1].Count++
 				total++
 			}
 			continue
 		}
-		idx := int(math.Floor((v - mn) / width))
-		if idx < 0 {
-			idx = 0
+		bucketIdx := int(math.Floor((val - minVal) / width))
+		if bucketIdx < 0 {
+			bucketIdx = 0
 		}
-		if idx >= opts.Buckets {
-			idx = opts.Buckets - 1
+		if bucketIdx >= opts.Buckets {
+			bucketIdx = opts.Buckets - 1
 		}
-		buckets[idx].Count++
+		buckets[bucketIdx].Count++
 		total++
 	}
 	return Histogram{Buckets: buckets, Total: total}, nil
 }
 
 func minMax(xs []float64) (float64, float64) {
-	mn := xs[0]
-	mx := xs[0]
-	for _, x := range xs[1:] {
-		if x < mn {
-			mn = x
+	minVal := xs[0]
+	maxVal := xs[0]
+	for _, val := range xs[1:] {
+		if val < minVal {
+			minVal = val
 		}
-		if x > mx {
-			mx = x
+		if val > maxVal {
+			maxVal = val
 		}
 	}
-	return mn, mx
+	return minVal, maxVal
 }
 
 // ScoreHistogram builds a histogram of player scores for the supplied games.
 func ScoreHistogram(games []Game, buckets int) (Histogram, error) {
 	values := make([]float64, len(games))
-	for i, g := range games {
-		values[i] = float64(g.PlayerScore)
+	for idx, game := range games {
+		values[idx] = float64(game.PlayerScore)
 	}
 	return BuildHistogram(values, HistogramOptions{Buckets: buckets})
 }
@@ -83,8 +83,8 @@ func ScoreHistogram(games []Game, buckets int) (Histogram, error) {
 // DurationHistogram builds a histogram of game durations in seconds.
 func DurationHistogram(games []Game, buckets int) (Histogram, error) {
 	values := make([]float64, len(games))
-	for i, g := range games {
-		values[i] = g.Duration().Seconds()
+	for idx, game := range games {
+		values[idx] = game.Duration().Seconds()
 	}
 	return BuildHistogram(values, HistogramOptions{Buckets: buckets})
 }
@@ -94,11 +94,11 @@ func Mean(values []float64) float64 {
 	if len(values) == 0 {
 		return 0
 	}
-	var s float64
-	for _, v := range values {
-		s += v
+	var sum float64
+	for _, val := range values {
+		sum += val
 	}
-	return s / float64(len(values))
+	return sum / float64(len(values))
 }
 
 // Median returns the median (copies and sorts the slice).
@@ -109,28 +109,28 @@ func Median(values []float64) float64 {
 	cp := make([]float64, len(values))
 	copy(cp, values)
 	sort.Float64s(cp)
-	n := len(cp)
-	if n%2 == 1 {
-		return cp[n/2]
+	length := len(cp)
+	if length%2 == 1 {
+		return cp[length/2]
 	}
-	return (cp[n/2-1] + cp[n/2]) / 2.0
+	return (cp[length/2-1] + cp[length/2]) / 2.0
 }
 
 // Percentile computes the value at percentile p (0..100).
-func Percentile(values []float64, p float64) float64 {
+func Percentile(values []float64, pct float64) float64 {
 	if len(values) == 0 {
 		return 0
 	}
-	if p <= 0 {
+	if pct <= 0 {
 		return values[0]
 	}
-	if p >= 100 {
+	if pct >= 100 {
 		return values[len(values)-1]
 	}
 	cp := make([]float64, len(values))
 	copy(cp, values)
 	sort.Float64s(cp)
-	rank := (p / 100.0) * float64(len(cp)-1)
+	rank := (pct / 100.0) * float64(len(cp)-1)
 	lo := int(math.Floor(rank))
 	hi := int(math.Ceil(rank))
 	if lo == hi {
@@ -164,13 +164,13 @@ func Describe(values []float64) Summary {
 	if len(values) == 0 {
 		return Summary{}
 	}
-	mn, mx := minMax(values)
+	minVal, maxVal := minMax(values)
 	return Summary{
 		N:      len(values),
 		Mean:   Mean(values),
 		Median: Median(values),
-		Min:    mn,
-		Max:    mx,
+		Min:    minVal,
+		Max:    maxVal,
 		StdDev: StdDev(values),
 		P25:    Percentile(values, 25),
 		P75:    Percentile(values, 75),

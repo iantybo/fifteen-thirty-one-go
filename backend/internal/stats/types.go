@@ -12,8 +12,8 @@ const (
 	ResultDraw
 )
 
-func (r GameResult) String() string {
-	switch r {
+func (gr GameResult) String() string {
+	switch gr {
 	case ResultWin:
 		return "win"
 	case ResultLoss:
@@ -37,8 +37,8 @@ const (
 	ModeTournament
 )
 
-func (m GameMode) String() string {
-	switch m {
+func (gm GameMode) String() string {
+	switch gm {
 	case ModeStandard:
 		return "standard"
 	case ModeBlitz:
@@ -55,8 +55,8 @@ func (m GameMode) String() string {
 }
 
 // ParseMode converts a string to a GameMode.
-func ParseMode(s string) GameMode {
-	switch s {
+func ParseMode(modeStr string) GameMode {
+	switch modeStr {
 	case "standard":
 		return ModeStandard
 	case "blitz":
@@ -91,55 +91,55 @@ type Game struct {
 }
 
 // Duration returns the played duration as a time.Duration.
-func (g Game) Duration() time.Duration {
-	if g.DurationSec > 0 {
-		return time.Duration(g.DurationSec) * time.Second
+func (game Game) Duration() time.Duration {
+	if game.DurationSec > 0 {
+		return time.Duration(game.DurationSec) * time.Second
 	}
-	if !g.StartedAt.IsZero() && !g.EndedAt.IsZero() {
-		return g.EndedAt.Sub(g.StartedAt)
+	if !game.StartedAt.IsZero() && !game.EndedAt.IsZero() {
+		return game.EndedAt.Sub(game.StartedAt)
 	}
 	return 0
 }
 
 // ScoreDelta is the player's score minus the opponent's.
-func (g Game) ScoreDelta() int {
-	return g.PlayerScore - g.OppScore
+func (game Game) ScoreDelta() int {
+	return game.PlayerScore - game.OppScore
 }
 
 // RatingDelta is the rating change for the player.
-func (g Game) RatingDelta() int {
-	return g.RatingAfter - g.RatingBefore
+func (game Game) RatingDelta() int {
+	return game.RatingAfter - game.RatingBefore
 }
 
 // IsRanked reports whether the game affects rating.
-func (g Game) IsRanked() bool {
-	return g.Mode == ModeRanked || g.Mode == ModeTournament
+func (game Game) IsRanked() bool {
+	return game.Mode == ModeRanked || game.Mode == ModeTournament
 }
 
 // PlayerSummary captures aggregate per-player statistics.
 type PlayerSummary struct {
-	PlayerID         string
-	Games            int
-	Wins             int
-	Losses           int
-	Draws            int
-	WinRate          float64
-	AvgScore         float64
-	AvgOppScore      float64
-	AvgScoreDelta    float64
-	TotalPlayTime    time.Duration
-	AvgGameDuration  time.Duration
-	AvgMoves         float64
-	CurrentRating    int
-	PeakRating       int
-	LowestRating     int
-	RatingDelta30Day int
-	CurrentStreak    Streak
-	LongestWinStreak int
+	PlayerID          string
+	Games             int
+	Wins              int
+	Losses            int
+	Draws             int
+	WinRate           float64
+	AvgScore          float64
+	AvgOppScore       float64
+	AvgScoreDelta     float64
+	TotalPlayTime     time.Duration
+	AvgGameDuration   time.Duration
+	AvgMoves          float64
+	CurrentRating     int
+	PeakRating        int
+	LowestRating      int
+	RatingDelta30Day  int
+	CurrentStreak     Streak
+	LongestWinStreak  int
 	LongestLossStreak int
-	ModeBreakdown    map[GameMode]ModeStats
-	LastPlayed       time.Time
-	FirstPlayed      time.Time
+	ModeBreakdown     map[GameMode]ModeStats
+	LastPlayed        time.Time
+	FirstPlayed       time.Time
 }
 
 // ModeStats is aggregated statistics for a single mode.
@@ -162,13 +162,13 @@ type Streak struct {
 
 // LeaderboardEntry is a single row in a leaderboard.
 type LeaderboardEntry struct {
-	Rank      int
-	PlayerID  string
-	Rating    int
-	Games     int
-	WinRate   float64
-	LastSeen  time.Time
-	Trend     int
+	Rank     int
+	PlayerID string
+	Rating   int
+	Games    int
+	WinRate  float64
+	LastSeen time.Time
+	Trend    int
 }
 
 // Leaderboard is an ordered list of leaderboard entries.
@@ -222,12 +222,12 @@ type TimeRange struct {
 	To   time.Time
 }
 
-// Contains reports whether t falls within the range.
-func (r TimeRange) Contains(t time.Time) bool {
-	if !r.From.IsZero() && t.Before(r.From) {
+// Contains reports whether the given time falls within the range.
+func (tr TimeRange) Contains(ts time.Time) bool {
+	if !tr.From.IsZero() && ts.Before(tr.From) {
 		return false
 	}
-	if !r.To.IsZero() && !t.Before(r.To) {
+	if !tr.To.IsZero() && !ts.Before(tr.To) {
 		return false
 	}
 	return true
@@ -235,30 +235,30 @@ func (r TimeRange) Contains(t time.Time) bool {
 
 // Filter narrows the set of games considered when computing stats.
 type Filter struct {
-	PlayerID  string
-	Modes     []GameMode
-	Range     TimeRange
-	MinMoves  int
-	MaxMoves  int
-	Tags      []string
-	OnlyWins  bool
-	OnlyLoss  bool
+	PlayerID string
+	Modes    []GameMode
+	Range    TimeRange
+	MinMoves int
+	MaxMoves int
+	Tags     []string
+	OnlyWins bool
+	OnlyLoss bool
 }
 
 // AppliesTo returns true if the game matches the filter.
-func (f Filter) AppliesTo(g Game) bool {
-	if f.PlayerID != "" && g.PlayerID != f.PlayerID {
+func (fl Filter) AppliesTo(game Game) bool {
+	if fl.PlayerID != "" && game.PlayerID != fl.PlayerID {
 		return false
 	}
-	if !f.Range.From.IsZero() || !f.Range.To.IsZero() {
-		if !f.Range.Contains(g.EndedAt) {
+	if !fl.Range.From.IsZero() || !fl.Range.To.IsZero() {
+		if !fl.Range.Contains(game.EndedAt) {
 			return false
 		}
 	}
-	if len(f.Modes) > 0 {
+	if len(fl.Modes) > 0 {
 		found := false
-		for _, m := range f.Modes {
-			if g.Mode == m {
+		for _, mode := range fl.Modes {
+			if game.Mode == mode {
 				found = true
 				break
 			}
@@ -267,35 +267,35 @@ func (f Filter) AppliesTo(g Game) bool {
 			return false
 		}
 	}
-	if f.MinMoves > 0 && g.Moves < f.MinMoves {
+	if fl.MinMoves > 0 && game.Moves < fl.MinMoves {
 		return false
 	}
-	if f.MaxMoves > 0 && g.Moves > f.MaxMoves {
+	if fl.MaxMoves > 0 && game.Moves > fl.MaxMoves {
 		return false
 	}
-	if len(f.Tags) > 0 {
-		if !hasAnyTag(g.Tags, f.Tags) {
+	if len(fl.Tags) > 0 {
+		if !hasAnyTag(game.Tags, fl.Tags) {
 			return false
 		}
 	}
-	if f.OnlyWins && g.Result != ResultWin {
+	if fl.OnlyWins && game.Result != ResultWin {
 		return false
 	}
-	if f.OnlyLoss && g.Result != ResultLoss {
+	if fl.OnlyLoss && game.Result != ResultLoss {
 		return false
 	}
 	return true
 }
 
-func hasAnyTag(games []string, want []string) bool {
-	set := make(map[string]struct{}, len(games))
-	for _, t := range games {
-		set[t] = struct{}{}
+func hasAnyTag(gameTags []string, wantTags []string) bool {
+	set := make(map[string]struct{}, len(gameTags))
+	for _, tag := range gameTags {
+		set[tag] = struct{}{}
 	}
-	for _, w := range want {
-		if _, ok := set[w]; ok {
+	for _, wantTag := range wantTags {
+		if _, ok := set[wantTag]; ok {
 			return true
 		}
 	}
-	return false
+
 }
