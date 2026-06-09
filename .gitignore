@@ -8,6 +8,9 @@
 **/.env.*
 !**/.env.example
 
+# MCP server build artifact
+mcp-server/service-catalog/service-catalog
+
 # Backend build artifacts
 backend/bin/
 backend/tmp/

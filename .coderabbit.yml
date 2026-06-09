@@ -132,6 +132,46 @@ reviews:
         - Do not wrap arguments in markdown or send raw prose.
         - If the tool returns an error, read the error message and retry with corrected arguments.
 
+    - path: 'uservices/**'
+      instructions: >
+        # Service criticality via the "service-catalog" MCP server
+
+        This directory holds the microservice fleet. Each top-level folder under
+        `uservices/services/` is a single service whose name matches an entry in
+        the `service-catalog` MCP server (plant-, baseball-, and French-city-named
+        services). Use that MCP server to judge how critical a change is.
+
+        ## How to assess impact
+
+        - For every service folder touched by this PR, call the `service-catalog`
+          MCP tool `get_service` with the folder name (e.g. `yankees`, `paris`,
+          `basil`) to retrieve its `tier` and `argo_rollout` flag. If many
+          services changed, call `list_services` once and cross-reference.
+        - Interpret the tier as service impact severity, where **tier 1 is the
+          HIGHEST service impact (most critical) and tier 4 is the LOWEST**:
+            - tier 1  -> critical: a regression risks a production outage. Scrutinize
+              heavily and set the change's risk accordingly (lean toward
+              'High - Escalation Required' or 'Medium - Human Review Required').
+            - tier 2  -> important: degrades gracefully but user-visible.
+            - tier 3  -> supporting/internal: limited blast radius.
+            - tier 4  -> best-effort: negligible impact.
+        - When a service has `argo_rollout=yes`, note in the review that it ships
+          via a progressive Argo Rollout (canary/blue-green) and changes are rolled
+          out gradually; when `argo_rollout=no` it deploys via a plain Kubernetes
+          Deployment, so a bad change reaches all replicas at once and carries more
+          immediate risk.
+
+        ## Reporting
+
+        - In the review, state each touched service's catalog tier and rollout
+          mechanism, and weight findings on tier-1/tier-2 services more severely.
+        - Drive the overall PR Risk Score using the HIGHEST-impact (lowest-numbered)
+          tier among the touched services as a primary input.
+        - If the `service-catalog` MCP server is unavailable or a touched folder is
+          not found in the catalog, say so explicitly and treat the change as
+          tier-1 (highest impact) until proven otherwise. Do not silently skip the
+          lookup.
+
     - path: '**/*.go'
       instructions: >
         - Use proper error handling with error wrapping using fmt.Errorf with %w verb
