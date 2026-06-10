@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"fifteen-thirty-one-go/uservices/pkg/cribbage"
+	"fifteen-thirty-one-go/uservices/pkg/meshclient"
 	"fifteen-thirty-one-go/uservices/pkg/service"
 )
 
@@ -28,7 +29,8 @@ type comparison struct {
 	B cribbage.Hand `json:"b"`
 }
 
-// handleScore scores both hands via the aggregators and reports the winner.
+// handleScore scores both hands via the aggregators concurrently and reports
+// the winner.
 func handleScore(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var cmp comparison
@@ -40,11 +42,10 @@ func handleScore(svc *service.Service) http.HandlerFunc {
 		defer cancel()
 
 		var a, b cribbage.ScoreBreakdown
-		if err := svc.Mesh.Call(ctx, "maple", "/score", cmp.A, &a); err != nil {
-			service.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-			return
-		}
-		if err := svc.Mesh.Call(ctx, "ivy", "/score", cmp.B, &b); err != nil {
+		if err := svc.Mesh.CallAll(ctx,
+			meshclient.Fanout{Peer: "maple", Path: "/score", Req: cmp.A, Out: &a},
+			meshclient.Fanout{Peer: "ivy", Path: "/score", Req: cmp.B, Out: &b},
+		); err != nil {
 			service.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}

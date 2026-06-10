@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"fifteen-thirty-one-go/uservices/pkg/catalog"
@@ -96,4 +98,35 @@ func (c *Client) Call(ctx context.Context, peer, path string, req, out any) erro
 		}
 	}
 	return nil
+}
+
+// Fanout is a single peer call to issue as part of a concurrent fan-out: POST
+// Req to Peer's Path and decode the JSON response into the value Out points to.
+type Fanout struct {
+	Peer string
+	Path string
+	Req  any
+	Out  any
+}
+
+// CallAll issues every call in fanouts concurrently against the shared context
+// and waits for all of them to finish. Each call decodes into its own Out, so
+// callers can merge the results in a deterministic order afterwards. It returns
+// the joined error of every failed call (preserving fan-out order), or nil if
+// every call succeeded; ctx is shared, so one failure does not cancel the
+// others — the per-call timeout still bounds them. Callers that only need to
+// know whether the fan-out failed can compare the result against nil as usual,
+// while those that want every peer's failure can inspect it with errors.Is/As.
+func (c *Client) CallAll(ctx context.Context, fanouts ...Fanout) error {
+	errs := make([]error, len(fanouts))
+	var wg sync.WaitGroup
+	wg.Add(len(fanouts))
+	for i, f := range fanouts {
+		go func() {
+			defer wg.Done()
+			errs[i] = c.Call(ctx, f.Peer, f.Path, f.Req, f.Out)
+		}()
+	}
+	wg.Wait()
+	return errors.Join(errs...)
 }

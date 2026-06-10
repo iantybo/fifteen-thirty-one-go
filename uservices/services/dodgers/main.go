@@ -52,13 +52,16 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 		}
 	}
 	points := 4
+	detail := "four-card flush"
 	if hand.Starter.Suit == suit {
 		points = 5
+		detail = "five-card flush (starter matches)"
 	} else if hand.IsCrib {
 		return cribbage.ScoreBreakdown{} // crib flush needs all five
 	}
 	return cribbage.ScoreBreakdown{Components: []cribbage.ScoreComponent{{
 		Rule:   "flush",
+		Detail: detail,
 		Points: points,
 	}}}
 }
