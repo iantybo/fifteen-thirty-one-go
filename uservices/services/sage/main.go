@@ -15,6 +15,13 @@ import (
 
 const serviceName = "sage"
 
+// fifteenTarget is the pip-value sum that scores in cribbage; every subset of
+// cards adding up to it is worth fifteenPoints.
+const (
+	fifteenTarget = 15
+	fifteenPoints = 2
+)
+
 func main() {
 	svc := service.New(serviceName)
 	svc.Handle("/score", handleScore(svc))
@@ -52,7 +59,7 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 				sum += cards[i].PipValue()
 			}
 		}
-		if sum == 15 {
+		if sum == fifteenTarget {
 			count++
 		}
 	}
@@ -61,7 +68,7 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 	}
 	return cribbage.ScoreBreakdown{Components: []cribbage.ScoreComponent{{
 		Rule:   "fifteen",
-		Points: count * 2,
-		Detail: fmt.Sprintf("%d combination(s) summing to 15", count),
+		Points: count * fifteenPoints,
+		Detail: fmt.Sprintf("%d combination(s) summing to %d", count, fifteenTarget),
 	}}}
 }
