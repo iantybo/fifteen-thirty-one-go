@@ -49,6 +49,7 @@ func (s *Service) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"tier":         s.Self.Tier.String(),
 		"argo_rollout": s.Self.ArgoRollout,
 		"status":       "ok",
+		"time":         time.Now().UTC().Format(time.RFC3339),
 	})
 }
 

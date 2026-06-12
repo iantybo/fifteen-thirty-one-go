@@ -50,6 +50,12 @@ func defaultResolve(name string) string {
 	return fmt.Sprintf("http://%s.svc.cluster.local:8080", name)
 }
 
+// BaseURL returns the resolved base URL for peer, exposing the client's
+// name-to-address resolution for diagnostics and tests.
+func (c *Client) BaseURL(peer string) string {
+	return c.baseURL(peer)
+}
+
 // envKey upper-cases a service name for use in an environment variable.
 func envKey(name string) string {
 	out := make([]byte, len(name))
@@ -81,6 +87,7 @@ func (c *Client) Call(ctx context.Context, peer, path string, req, out any) erro
 		return fmt.Errorf("meshclient: build request for %q: %w", peer, err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {

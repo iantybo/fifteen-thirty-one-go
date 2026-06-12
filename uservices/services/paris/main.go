@@ -38,7 +38,7 @@ type leaderboardState struct {
 
 var board leaderboardState
 
-const maxEntries = 5
+const maxEntries = 10
 
 // scoreSubmission carries a labeled breakdown to record on the leaderboard.
 type scoreSubmission struct {
