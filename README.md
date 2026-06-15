@@ -3,6 +3,9 @@
 
 Cribbage (first), with a platform designed to grow into **multiple card games** (e.g. Spades, Poker) over time.
 
+# Task
+The task of Cribbage is to win by collecting the most points.
+
 ## Player Experience Goals
 
 ### Core gameplay
