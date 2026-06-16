@@ -254,6 +254,32 @@ reviews:
           Dockerfile, *.md, CI/workflow config, and other non-runtime
           tooling/config files.
 
+      - mode: error
+        name: Service Tier Label Enforcement
+        instructions: >-
+          - This is a BLOCKING check: it must FAIL (and block merge) if any required service tier
+            label is missing, and PASS only when every impacted service has its correct tier label applied.
+          - Goal: every service impacted by this PR must carry a tier label that matches that service's
+            tier in the service catalog. Valid labels are exactly: tier-1, tier-2, tier-3, tier-4.
+          - Step 1 — Determine impacted services. Inspect the changed files in this PR and map them to the
+            services they belong to (for example by top-level service directory, module, deployment unit,
+            or ownership boundary). A single PR may impact multiple services.
+          - Step 2 — Resolve each impacted service's tier. The MCP server named "service-catalog" is the
+            SOLE source of truth for service tiers. For every impacted service, query the "service-catalog"
+            MCP to look up that service's tier (1, 2, 3, or 4). Do NOT infer tiers from file paths, naming
+            conventions, prior PRs, comments, or any other heuristic — only the "service-catalog" MCP is authoritative.
+          - Step 3 — Compute the required label set. For each impacted service mapped to tier N, the label
+            "tier-N" is required. Deduplicate: if multiple impacted services share the same tier, that single
+            tier label covers them. If services of different tiers are impacted, ALL corresponding tier labels
+            are required. Example: if a tier-1 service and a tier-3 service are both impacted, BOTH "tier-1"
+            and "tier-3" labels must be present on the PR.
+          - Step 4 — Compare against the labels currently applied to the PR. FAIL if any required tier label
+            is missing. When failing, list each impacted service, its tier resolved from the "service-catalog"
+            MCP, the labels that are required, and which required labels are currently missing.
+          - If the "service-catalog" MCP is unavailable or a given service cannot be resolved to a tier, FAIL
+            the check and report the unresolved service(s) rather than guessing or skipping.
+          - If every required tier label is present, mark this check as PASSED and remain brief.
+
     # Pre-configured pre-merge checks
     docstrings:
       mode: warning
