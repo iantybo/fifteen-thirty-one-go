@@ -23,7 +23,7 @@ import (
 )
 
 func main() {
-	cfg err := config.LoadFromEnv()
+	cfg, err := config.LoadFromEnv()
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}

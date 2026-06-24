@@ -195,6 +195,16 @@ reviews:
     # Custom checks defined by maintainers that code quality must meet before merge
     custom_checks:
       - mode: error
+        name: Ensure go buildkite jobs succeed
+        instructions: >-
+          Use the buildkite-readonly MCP server and ensure all go CI jobs have passed
+
+      - mode: error
+        name: Ensure react buildkite jobs succeed
+        instructions: >-
+          Use the buildkite-readonly MCP server and ensure all react CI jobs have passed
+
+      - mode: error
         name: Ensure no "exec" type commands run
         instructions: >-
           Make sure no tools wrap external shell scripts and bash commands,

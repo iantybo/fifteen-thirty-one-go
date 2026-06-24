@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './auth/auth'
 
+// Application entry point: mounts the React tree under #root.
 const rootEl = document.getElementById('root')
 if (!rootEl) {
   throw new Error('Failed to initialize app: expected a DOM element with id="root".')

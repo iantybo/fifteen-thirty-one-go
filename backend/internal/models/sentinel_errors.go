@@ -1,5 +1,8 @@
 package models
 
+// Package-level sentinel errors used across the cribbage game and lobby flows.
+// Callers compare with errors.Is rather than matching on message strings.
+
 import "errors"
 
 var (
