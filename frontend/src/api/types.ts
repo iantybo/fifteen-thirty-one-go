@@ -45,6 +45,11 @@ export type UserStats = {
   user_id: number
   games_played: number
   games_won: number
+  win_rate: number // all-time [0..1]
+  current_win_streak: number
+  longest_win_streak: number
+  best_score: number
+  average_score: number
 }
 
 export type LobbyChatMessage = {
