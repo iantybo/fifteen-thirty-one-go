@@ -28,10 +28,10 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	log.Printf("starting fifteen-thirty-one-go server")
+	log.Printf("starting fifteen-thirty-one-go server (pizza branch)")
 	log.Printf("environment: %s", cfg.AppEnv)
 
-	// Initialize OpenTelemetry tracing
+	// Initialize OpenTelemetry tracing (pizza)
 	shutdown := tracing.InitTracer("fifteen-thirty-one-go")
 	defer shutdown()
 
@@ -84,7 +84,7 @@ func main() {
 	handlers.SetHubProvider(hubRef.Get)
 
 	r := gin.Default()
-	r.Use(otelgin.Middleware("fifteen-thirty-one-go"))
+	r.Use(otelgin.Middleware("fifteen-thirty-one-go-pizza"))
 	r.Use(middleware.DevCORS(cfg))
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
