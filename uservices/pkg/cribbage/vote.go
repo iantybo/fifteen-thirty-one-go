@@ -17,10 +17,18 @@ const (
 	Black Color = "black"
 )
 
-// Colors lists the valid card colors in a stable order. It is used both to
+// colors lists the valid card colors in a stable order. It is used both to
 // validate votes and to break ties deterministically, so callers never depend
 // on Go's randomized map iteration order.
-var Colors = []Color{Red, Black}
+var colors = []Color{Red, Black}
+
+// Colors returns a copy of the valid card colors in a stable order.
+// The returned slice is owned by the caller and may be modified freely.
+func Colors() []Color {
+	result := make([]Color, len(colors))
+	copy(result, colors)
+	return result
+}
 
 // ErrUnknownColor indicates a suit (or color string) could not be mapped to
 // one of the two card colors.
@@ -69,7 +77,7 @@ func (p *ColorPoll) Vote(c Color) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.votes == nil {
-		p.votes = make(map[Color]int, len(Colors))
+		p.votes = make(map[Color]int, len(colors))
 	}
 	p.votes[c]++
 	return nil
@@ -109,8 +117,8 @@ func (p *ColorPoll) Total() int {
 func (p *ColorPoll) Tally() map[Color]int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	out := make(map[Color]int, len(Colors))
-	for _, c := range Colors {
+	out := make(map[Color]int, len(colors))
+	for _, c := range colors {
 		out[c] = p.votes[c]
 	}
 	return out
@@ -127,7 +135,7 @@ func (p *ColorPoll) Leader() (Color, bool) {
 	var best Color
 	bestVotes := 0
 	tied := false
-	for _, c := range Colors {
+	for _, c := range colors {
 		switch n := p.votes[c]; {
 		case n > bestVotes:
 			best, bestVotes, tied = c, n, false

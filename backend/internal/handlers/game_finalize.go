@@ -112,7 +112,7 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 		if r.userID == winnerID {
 			coins = 10
 		}
-		if err := models.AwardCoinsTxContext(ctx, tx, r.userID, coins); err != nil && !errors.Is(err, models.ErrNotFound) {
+		if err := models.AwardCoinsTxContext(ctx, tx, r.userID, coins); err != nil {
 			return fmt.Errorf("maybeFinalizeGame: award coins (user_id=%d game_id=%d coins=%d): %w", r.userID, gameID, coins, err)
 		}
 	}
