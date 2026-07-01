@@ -197,12 +197,16 @@ reviews:
       - mode: error
         name: Ensure go buildkite jobs succeed
         instructions: >-
-          Use the buildkite-readonly MCP server and ensure all go CI jobs have passed
+          Use the buildkite-readonly MCP server and ensure all go CI jobs relevant to
+          changed Go files have passed. Scope the check to jobs that would be impacted
+          by the modified files rather than requiring all jobs to succeed.
 
       - mode: error
         name: Ensure react buildkite jobs succeed
         instructions: >-
-          Use the buildkite-readonly MCP server and ensure all react CI jobs have passed
+          Use the buildkite-readonly MCP server and ensure all react CI jobs relevant to
+          changed React/TypeScript files have passed. Scope the check to jobs that would be
+          impacted by the modified files rather than requiring all jobs to succeed.
 
       - mode: error
         name: Ensure no "exec" type commands run
