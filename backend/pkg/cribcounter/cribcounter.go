@@ -2,9 +2,9 @@
 //
 // It provides an ergonomic surface for scoring a cribbage hand (four hand cards
 // plus the cut/starter card) and for scoring a single pegging play. The counting
-// rules mirror the server-authoritative engine in
-// backend/internal/game/cribbage/scoring.go and reuse the shared card model in
-// backend/internal/game/common so results are consistent with the rest of the
+// rules come from the shared engine in backend/internal/game/scoring (the same
+// algorithms the server uses) and reuse the shared card model in
+// backend/internal/game/common, so results stay consistent with the rest of the
 // platform.
 //
 // The package is pure Go (no cgo, no database) so it builds and tests on every
@@ -14,29 +14,31 @@ package cribcounter
 
 import (
 	"errors"
-	"sort"
 	"strings"
 
 	"fifteen-thirty-one-go/backend/internal/game/common"
+	"fifteen-thirty-one-go/backend/internal/game/scoring"
 )
 
 // HandSize is the number of cards in a cribbage hand (excluding the cut card).
-const HandSize = 4
+const HandSize = scoring.HandSize
 
-// ErrHandSize is returned when a hand does not contain exactly HandSize cards.
-var ErrHandSize = errors.New("cribcounter: a cribbage hand must contain exactly 4 cards")
+// maxPeggingTotal is the highest legal running total during pegging.
+const maxPeggingTotal = 31
 
-// HandScore is the breakdown of points scored by a cribbage hand. Its JSON shape
-// matches cribbage.ScoreBreakdown so callers can consume either interchangeably.
-type HandScore struct {
-	Total    int            `json:"total"`
-	Fifteens int            `json:"fifteens"`
-	Pairs    int            `json:"pairs"`
-	Runs     int            `json:"runs"`
-	Flush    int            `json:"flush"`
-	Nobs     int            `json:"nobs"`
-	Reasons  map[string]int `json:"reasons,omitempty"`
-}
+var (
+	// ErrHandSize is returned when a hand does not contain exactly HandSize cards.
+	ErrHandSize = errors.New("cribcounter: a cribbage hand must contain exactly 4 cards")
+	// ErrDuplicateCard is returned when the hand and cut contain the same physical card twice.
+	ErrDuplicateCard = errors.New("cribcounter: hand and cut must not contain duplicate cards")
+	// ErrPeggingTotal is returned when a pegging total is negative, exceeds 31, or would exceed 31.
+	ErrPeggingTotal = errors.New("cribcounter: pegging total must stay between 0 and 31")
+)
+
+// HandScore is the breakdown of points scored by a cribbage hand. It is the same
+// type the server engine returns (cribbage.ScoreBreakdown), so callers can
+// consume either interchangeably.
+type HandScore = scoring.Breakdown
 
 // PeggingResult describes the outcome of a single pegging play.
 type PeggingResult struct {
@@ -65,7 +67,8 @@ func ParseCards(s string) ([]common.Card, error) {
 
 // CountHand scores a cribbage hand: the four hand cards plus the cut card. Set
 // isCrib to true when scoring the dealer's crib (a crib only earns a flush when
-// all five cards share a suit).
+// all five cards share a suit). It returns an error when the hand does not have
+// exactly four cards or when any physical card is repeated across hand and cut.
 func CountHand(hand []common.Card, cut common.Card, isCrib bool) (HandScore, error) {
 	if len(hand) != HandSize {
 		return HandScore{}, ErrHandSize
@@ -74,34 +77,11 @@ func CountHand(hand []common.Card, cut common.Card, isCrib bool) (HandScore, err
 	all := make([]common.Card, 0, len(hand)+1)
 	all = append(all, hand...)
 	all = append(all, cut)
+	if hasDuplicateCards(all) {
+		return HandScore{}, ErrDuplicateCard
+	}
 
-	hs := HandScore{Reasons: map[string]int{}}
-	hs.Fifteens = scoreFifteens(all)
-	hs.Pairs = scorePairs(all)
-	hs.Runs = scoreRuns(all)
-	hs.Flush = scoreFlush(hand, cut, isCrib)
-	hs.Nobs = scoreNobs(hand, cut)
-	hs.Total = hs.Fifteens + hs.Pairs + hs.Runs + hs.Flush + hs.Nobs
-
-	if hs.Fifteens > 0 {
-		hs.Reasons["fifteens"] = hs.Fifteens
-	}
-	if hs.Pairs > 0 {
-		hs.Reasons["pairs"] = hs.Pairs
-	}
-	if hs.Runs > 0 {
-		hs.Reasons["runs"] = hs.Runs
-	}
-	if hs.Flush > 0 {
-		hs.Reasons["flush"] = hs.Flush
-	}
-	if hs.Nobs > 0 {
-		hs.Reasons["nobs"] = hs.Nobs
-	}
-	if len(hs.Reasons) == 0 {
-		hs.Reasons = nil
-	}
-	return hs, nil
+	return scoring.Hand(hand, cut, isCrib), nil
 }
 
 // CountHandStrings is a convenience wrapper around CountHand that parses the hand
@@ -120,189 +100,33 @@ func CountHandStrings(hand, cut string, isCrib bool) (HandScore, error) {
 
 // CountPegging scores playing newCard onto the current pegging pile. playSeq are
 // the cards played since the last reset (oldest first) and currentTotal is the
-// running count before newCard is played.
-func CountPegging(playSeq []common.Card, newCard common.Card, currentTotal int) PeggingResult {
-	points, newTotal, reasons := peggingScore(playSeq, newCard, currentTotal)
-	return PeggingResult{Points: points, NewTotal: newTotal, Reasons: reasons}
-}
-
-func scoreFifteens(cards []common.Card) int {
-	n := len(cards)
-	points := 0
-	for mask := 1; mask < (1 << n); mask++ {
-		sum := 0
-		for i := 0; i < n; i++ {
-			if mask&(1<<i) != 0 {
-				sum += cards[i].Value15()
-			}
-		}
-		if sum == 15 {
-			points += 2
-		}
+// running count before newCard is played. It returns ErrPeggingTotal when
+// currentTotal is outside [0, 31] or when playing newCard would push the total
+// past 31.
+func CountPegging(playSeq []common.Card, newCard common.Card, currentTotal int) (PeggingResult, error) {
+	if currentTotal < 0 || currentTotal > maxPeggingTotal {
+		return PeggingResult{}, ErrPeggingTotal
 	}
-	return points
+	if currentTotal+newCard.Value15() > maxPeggingTotal {
+		return PeggingResult{}, ErrPeggingTotal
+	}
+	points, newTotal, reasons := scoring.Pegging(playSeq, newCard, currentTotal)
+	return PeggingResult{Points: points, NewTotal: newTotal, Reasons: reasons}, nil
 }
 
-func scorePairs(cards []common.Card) int {
-	count := map[common.Rank]int{}
+type cardKey struct {
+	rank common.Rank
+	suit common.Suit
+}
+
+func hasDuplicateCards(cards []common.Card) bool {
+	seen := make(map[cardKey]struct{}, len(cards))
 	for _, c := range cards {
-		count[c.Rank]++
-	}
-	points := 0
-	for _, n := range count {
-		if n >= 2 {
-			points += (n * (n - 1) / 2) * 2
+		key := cardKey{rank: c.Rank, suit: c.Suit}
+		if _, ok := seen[key]; ok {
+			return true
 		}
+		seen[key] = struct{}{}
 	}
-	return points
-}
-
-func scoreRuns(cards []common.Card) int {
-	count := map[int]int{}
-	var ranks []int
-	for _, c := range cards {
-		r := int(c.Rank)
-		if count[r] == 0 {
-			ranks = append(ranks, r)
-		}
-		count[r]++
-	}
-	sort.Ints(ranks)
-
-	bestLen := 0
-	bestMult := 0
-	for start := 0; start < len(ranks); start++ {
-		for end := start; end < len(ranks); end++ {
-			runLen := end - start + 1
-			if runLen < 3 {
-				continue
-			}
-			if ranks[end]-ranks[start] != runLen-1 {
-				continue
-			}
-			mult := 1
-			for i := start; i <= end; i++ {
-				mult *= count[ranks[i]]
-			}
-			if runLen > bestLen {
-				bestLen = runLen
-				bestMult = mult
-			} else if runLen == bestLen {
-				bestMult += mult
-			}
-		}
-	}
-	if bestLen == 0 {
-		return 0
-	}
-	return bestLen * bestMult
-}
-
-func scoreFlush(hand []common.Card, cut common.Card, isCrib bool) int {
-	if len(hand) != HandSize {
-		return 0
-	}
-	s := hand[0].Suit
-	for i := 1; i < HandSize; i++ {
-		if hand[i].Suit != s {
-			return 0
-		}
-	}
-	if isCrib {
-		if cut.Suit == s {
-			return 5
-		}
-		return 0
-	}
-	if cut.Suit == s {
-		return 5
-	}
-	return 4
-}
-
-func scoreNobs(hand []common.Card, cut common.Card) int {
-	for _, c := range hand {
-		if c.Rank == common.Jack && c.Suit == cut.Suit {
-			return 1
-		}
-	}
-	return 0
-}
-
-func peggingScore(playSeq []common.Card, newCard common.Card, currentTotal int) (points int, newTotal int, reasons []string) {
-	newTotal = currentTotal + newCard.Value15()
-	reasons = []string{}
-
-	if newTotal == 15 {
-		points += 2
-		reasons = append(reasons, "15")
-	}
-	if newTotal == 31 {
-		points += 2
-		reasons = append(reasons, "31")
-	}
-
-	same := 1
-	for i := len(playSeq) - 1; i >= 0; i-- {
-		if playSeq[i].Rank == newCard.Rank {
-			same++
-		} else {
-			break
-		}
-	}
-	switch same {
-	case 2:
-		points += 2
-		reasons = append(reasons, "pair")
-	case 3:
-		points += 6
-		reasons = append(reasons, "three-of-a-kind")
-	case 4:
-		points += 12
-		reasons = append(reasons, "four-of-a-kind")
-	}
-
-	last := append(append([]common.Card{}, playSeq...), newCard)
-	maxN := 7
-	if len(last) < maxN {
-		maxN = len(last)
-	}
-	for n := maxN; n >= 3; n-- {
-		window := last[len(last)-n:]
-		if isRun(window) {
-			points += n
-			reasons = append(reasons, "run")
-			break
-		}
-	}
-
-	return points, newTotal, reasons
-}
-
-func isRun(cards []common.Card) bool {
-	seen := map[int]bool{}
-	minR := 99
-	maxR := -99
-	for _, c := range cards {
-		r := int(c.Rank)
-		if seen[r] {
-			return false
-		}
-		seen[r] = true
-		if r < minR {
-			minR = r
-		}
-		if r > maxR {
-			maxR = r
-		}
-	}
-	if (maxR - minR + 1) != len(cards) {
-		return false
-	}
-	for r := minR; r <= maxR; r++ {
-		if !seen[r] {
-			return false
-		}
-	}
-	return true
+	return false
 }

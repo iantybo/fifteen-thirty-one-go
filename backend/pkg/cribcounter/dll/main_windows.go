@@ -73,7 +73,11 @@ func CribCountPegging(seq *C.char, card *C.char, currentTotal C.int) *C.char {
 	if err != nil {
 		return jsonError(err)
 	}
-	return jsonResult(cribcounter.CountPegging(playSeq, newCard, int(currentTotal)))
+	result, err := cribcounter.CountPegging(playSeq, newCard, int(currentTotal))
+	if err != nil {
+		return jsonError(err)
+	}
+	return jsonResult(result)
 }
 
 // CribFree releases a string previously returned by this library.

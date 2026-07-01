@@ -51,6 +51,14 @@ func TestCountHandSize(t *testing.T) {
 	}
 }
 
+func TestCountHandDuplicateCard(t *testing.T) {
+	// The cut duplicates a card already in the hand.
+	_, err := CountHandStrings("5H 5S 5D JC", "5H", false)
+	if err != ErrDuplicateCard {
+		t.Fatalf("expected ErrDuplicateCard, got %v", err)
+	}
+}
+
 func TestCountHand(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -208,9 +216,32 @@ func TestCountPegging(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := CountPegging(tc.seq, tc.card, tc.total)
+			got, err := CountPegging(tc.seq, tc.card, tc.total)
+			if err != nil {
+				t.Fatalf("CountPegging() unexpected error: %v", err)
+			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("CountPegging() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCountPeggingInvalidTotal(t *testing.T) {
+	cases := []struct {
+		name  string
+		card  common.Card
+		total int
+	}{
+		{"negative", mustParse(t, "5S"), -1},
+		{"above-31", mustParse(t, "5S"), 32},
+		{"would-exceed-31", mustParse(t, "10S"), 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := CountPegging(nil, tc.card, tc.total)
+			if err != ErrPeggingTotal {
+				t.Fatalf("expected ErrPeggingTotal, got %v", err)
 			}
 		})
 	}

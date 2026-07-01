@@ -29,4 +29,8 @@ bad = call(dll.CribCountHand, b"5H 5S", b"5C", 0)
 print("error case ->", bad)
 assert "error" in bad, bad
 
+bad_total = call(dll.CribCountPegging, b"", b"5S", 40)
+print("invalid pegging total ->", bad_total)
+assert "error" in bad_total, bad_total
+
 print("ALL DLL SMOKE TESTS PASSED")
