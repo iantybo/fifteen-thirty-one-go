@@ -284,15 +284,18 @@ reviews:
   in_progress_fortune: false
   poem: false
   enable_prompt_for_ai_agents: true
-  # Re-include image files so the analyze_image pre-merge check can inspect them;
-  # CodeRabbit excludes binary/image files (e.g. **/*.png) by default.
+  # Un-ignore image files so the analyze_image pre-merge check can inspect them.
+  # CodeRabbit excludes binary/image files (png/jpg/gif/webp) by default; a bare
+  # (non-"!") include pattern overrides that default exclusion. Because ANY
+  # positive include switches path_filters into allowlist mode (only matching
+  # files are reviewed), we also include '**' so every other file stays in scope.
   path_filters:
+    - '**'
     - '**/*.png'
     - '**/*.jpg'
     - '**/*.jpeg'
     - '**/*.gif'
     - '**/*.webp'
-    - '**/*.svg'
 
   # Make CodeRabbit block merges until all issues are resolved
   request_changes_workflow: true
