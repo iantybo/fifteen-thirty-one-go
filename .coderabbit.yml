@@ -79,25 +79,6 @@ reviews:
         - Ensure no errors are swallowed, and no silents failures take place
         - No fire-and-forget async processes
 
-        # MCP Settings
-
-        ## Image verification via the `analyze_image` MCP tool
-
-        When a pull request adds or changes an image, call the `analyze_image` tool
-        on this MCP server to verify the image actually matches its stated
-        description and isn't low-quality AI-generated "slop." Pass the image's alt
-        text, caption, or surrounding description as `description`, plus either a raw
-        https image URL as `source` (e.g.
-        https://raw.githubusercontent.com/<owner>/<repo>/<head-sha>/<path>, which the
-        server fetches itself) or the raw bytes inline as `image_base64` — provide
-        one, not both. The tool returns JSON with `verdict` (`match`, `mismatch`, or
-        `likely_ai_slop`), a `confidence` score from 0–100, and a short `reasoning`
-        string. If the verdict is `mismatch` or `likely_ai_slop`, leave a review
-        comment quoting the returned reasoning and confidence so the author can fix
-        or replace the image; if it's `match`, take no action. Do not call the tool
-        for non-image changes, and only flag findings at reasonable confidence to
-        avoid noisy comments on borderline cases.
-
     - path: '**/*.go'
       instructions: >
         - Use proper error handling with error wrapping using fmt.Errorf with %w verb
@@ -180,6 +161,59 @@ reviews:
           Dockerfile, *.md, CI/workflow config, and other non-runtime
           tooling/config files.
 
+      - mode: error
+        name: Image Verification via analyze_image MCP
+        instructions: >
+          - Goal: every image a PR adds or changes must be verified with the
+            `analyze_image` tool on the `image-mcp` MCP server, which confirms the
+            image genuinely depicts what its description claims and flags low-quality
+            AI-generated "slop" (garbled text, malformed hands/faces, impossible
+            anatomy, nonsense objects, or a subject unrelated to the caption).
+          - This is a BLOCKING check: it must FAIL (and block merge) if any added
+            or changed image fails verification, and PASS only when every such
+            image is verified as a `match` (or the PR changes no images).
+          - Step 1 — Identify images. Inspect the changed files and collect every
+            raster image the PR adds or modifies: `.png`, `.jpg`, `.jpeg`, `.gif`,
+            and `.webp` (these are the media types the server supports). Include
+            images embedded or referenced in Markdown/docs. Capture each image's
+            description from its Markdown alt text, HTML `alt`/`title`, nearby
+            caption, or surrounding prose.
+          - Step 2 — Verify each image. For every added or changed image, call the
+            `image-mcp` server's `analyze_image` tool with these arguments:
+              - `description` (required): the image's alt text / caption /
+                surrounding description — what the image is claimed to represent.
+              - Exactly ONE image source (provide one, never both):
+                - `source`: an `https` URL to the image that the server fetches
+                  itself — prefer the raw GitHub URL of the changed file at the PR
+                  head SHA, i.e.
+                  https://raw.githubusercontent.com/<owner>/<repo>/<head-sha>/<path>.
+                  Use this whenever the image is reachable by URL (public repo,
+                  pushed commit); remote fetches MUST be `https`.
+                - `image_base64`: the raw base64-encoded image bytes, inline, for
+                  when the image is not URL-reachable (private repo or unpushed).
+              - `media_type` (optional): one of `image/png`, `image/jpeg`,
+                `image/gif`, `image/webp`. Omit it and the server infers it from the
+                fetched Content-Type or extension; set it explicitly only if
+                inference would be wrong.
+            Note the server rejects images larger than 8 MiB; if an image exceeds
+            that, report it as unverifiable rather than truncating.
+          - Step 3 — Interpret the result. The tool returns JSON
+            `{"verdict": "...", "confidence": 0-100, "reasoning": "..."}` where
+            `verdict` is `match`, `mismatch`, or `likely_ai_slop`. Treat `mismatch`
+            and `likely_ai_slop` at reasonable `confidence` as violations; `match`
+            is a pass. Avoid flagging borderline, low-confidence cases.
+          - Step 4 — Report. FAIL the check if any added or changed image is a
+            `mismatch` or `likely_ai_slop` violation. When failing, list each
+            offending image's file path along with the returned `verdict`,
+            `confidence`, and `reasoning` (quoted verbatim) so the author can fix or
+            replace it.
+          - If the `image-mcp` server or its `analyze_image` tool is unavailable, or
+            an image cannot be fetched or analyzed (e.g. non-`https` source, over
+            8 MiB, unsupported media type), FAIL the check and report the unverified
+            image(s) rather than silently skipping verification.
+          - If the PR changes no images, or every added or changed image is verified
+            as a `match`, mark this check as PASSED and remain brief.
+
     # Pre-configured pre-merge checks
     docstrings:
       mode: warning
@@ -250,7 +284,15 @@ reviews:
   in_progress_fortune: false
   poem: false
   enable_prompt_for_ai_agents: true
-  path_filters: []
+  # Re-include image files so the analyze_image pre-merge check can inspect them;
+  # CodeRabbit excludes binary/image files (e.g. **/*.png) by default.
+  path_filters:
+    - '**/*.png'
+    - '**/*.jpg'
+    - '**/*.jpeg'
+    - '**/*.gif'
+    - '**/*.webp'
+    - '**/*.svg'
 
   # Make CodeRabbit block merges until all issues are resolved
   request_changes_workflow: true
