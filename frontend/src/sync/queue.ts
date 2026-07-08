@@ -21,53 +21,20 @@
  */
 
 import type { QueuedAction, QueuedActionStatus, SyncAction, Revision } from './types'
+import { backoffDelayMs } from './backoff'
+import { deserializeQueue, serializeQueue } from './serialization'
+import { MemoryStore, resolveStore, SYNC_QUEUE_PREFIX, type KeyValueStore } from './storage'
 
-/** localStorage key prefix. Exported for tests and cleanup routines. */
-export const SYNC_QUEUE_PREFIX = 'fifteen-thirty-one:sync-queue:'
+// Backward-compatible re-exports. These primitives moved to focused modules
+// (`backoff.ts`, `serialization.ts`, `storage/`) during the split, but historical
+// importers pull them from `./queue`, so we keep the names available here.
+export { backoffDelayMs }
+export { MemoryStore, SYNC_QUEUE_PREFIX, type KeyValueStore }
+export type { QueuedAction, QueuedActionStatus }
 
-/**
- * Minimal storage contract. `window.localStorage` satisfies this directly; tests
- * inject an in-memory implementation. Kept this narrow so we never accidentally
- * depend on the full Web Storage API surface.
- */
-export interface KeyValueStore {
-  getItem(key: string): string | null
-  setItem(key: string, value: string): void
-  removeItem(key: string): void
-}
-
-/** An in-memory `KeyValueStore` for tests and SSR/no-DOM environments. */
-export class MemoryStore implements KeyValueStore {
-  private map = new Map<string, string>()
-  getItem(key: string): string | null {
-    return this.map.has(key) ? (this.map.get(key) as string) : null
-  }
-  setItem(key: string, value: string): void {
-    this.map.set(key, value)
-  }
-  removeItem(key: string): void {
-    this.map.delete(key)
-  }
-}
-
-/**
- * Resolve a storage backend. Falls back to an ephemeral `MemoryStore` when
- * `localStorage` is unavailable (private browsing quota errors, SSR, tests) so
- * the engine degrades to "optimistic but not durable" instead of crashing.
- */
+/** Resolve the default storage backend (browser localStorage or in-memory). */
 export function defaultStore(): KeyValueStore {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      // Probe: some environments expose the object but throw on write.
-      const probe = `${SYNC_QUEUE_PREFIX}__probe__`
-      localStorage.setItem(probe, '1')
-      localStorage.removeItem(probe)
-      return localStorage
-    }
-  } catch {
-    // fall through to memory
-  }
-  return new MemoryStore()
+  return resolveStore()
 }
 
 function storageKey(gameId: number): string {
@@ -75,27 +42,12 @@ function storageKey(gameId: number): string {
 }
 
 /**
- * Type guard for a persisted `QueuedAction`. Persistence is a trust boundary:
- * a user could hand-edit localStorage, or an old build could have written an
- * incompatible shape. We validate defensively and silently drop malformed
- * entries rather than letting them poison the engine.
+ * True when a raw payload is a legitimately-empty array (`"[]"` with optional
+ * whitespace). Used to distinguish "persisted, but empty" (keep the key) from
+ * "corrupt/incompatible, produced nothing" (drop the key).
  */
-function isQueuedAction(v: unknown): v is QueuedAction {
-  if (!v || typeof v !== 'object') return false
-  const a = v as Record<string, unknown>
-  const statusOk =
-    a.status === 'pending' || a.status === 'inflight' || a.status === 'confirmed' || a.status === 'rejected'
-  return (
-    typeof a.clientId === 'string' &&
-    typeof a.gameId === 'number' &&
-    typeof a.seq === 'number' &&
-    typeof a.baseRevision === 'number' &&
-    typeof a.createdAt === 'number' &&
-    typeof a.attempts === 'number' &&
-    statusOk &&
-    !!a.action &&
-    typeof a.action === 'object'
-  )
+function isEmptyArrayPayload(raw: string): boolean {
+  return raw.trim() === '[]'
 }
 
 /**
@@ -119,17 +71,15 @@ export class ActionQueue {
   /** Load and validate any persisted actions for this game. */
   private rehydrate(): void {
     const raw = this.store.getItem(storageKey(this.gameId))
-    if (!raw) return
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      // Corrupt payload — drop it entirely so we start clean.
+    // Validation + parse error handling lives in serialization.ts; it returns
+    // [] for any malformed payload and drops individual bad entries.
+    const items = deserializeQueue(raw)
+    if (raw && items.length === 0 && !isEmptyArrayPayload(raw)) {
+      // The payload existed but produced nothing usable (corrupt / incompatible):
+      // clear it so we start from a clean slate.
       this.store.removeItem(storageKey(this.gameId))
-      return
     }
-    if (!Array.isArray(parsed)) return
-    this.items = parsed.filter(isQueuedAction)
+    this.items = items
     // Restore the sequence counter so newly-enqueued actions sort after
     // rehydrated ones.
     this.nextSeq = this.items.reduce((max, a) => Math.max(max, a.seq + 1), 0)
@@ -142,7 +92,7 @@ export class ActionQueue {
 
   private persist(): void {
     try {
-      this.store.setItem(storageKey(this.gameId), JSON.stringify(this.items))
+      this.store.setItem(storageKey(this.gameId), serializeQueue(this.items))
     } catch {
       // Quota/serialization failure: keep operating in-memory. Losing durability
       // is acceptable; crashing the game is not.
@@ -243,15 +193,3 @@ export class ActionQueue {
   }
 }
 
-/**
- * Compute the delay before the next retry of an action, in milliseconds, using
- * capped exponential backoff with a deterministic (non-random) schedule so it
- * is testable. attempts=0 → 0ms (send immediately), then 250ms, 500ms, 1s, 2s,
- * … capped at 15s.
- */
-export function backoffDelayMs(attempts: number): number {
-  if (attempts <= 0) return 0
-  const base = 250
-  const cap = 15_000
-  return Math.min(cap, base * 2 ** (attempts - 1))
-}

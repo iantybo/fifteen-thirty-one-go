@@ -43,11 +43,14 @@
  */
 
 import { api, type GameMoveRequest } from '../api/client'
-import { ApiError } from '../lib/http'
 import type { CribbageState, GameSnapshot } from '../api/types'
 import { WsClient } from '../ws/wsClient'
 import { foldActions, cloneState } from './reducer'
-import { ActionQueue, backoffDelayMs, type KeyValueStore } from './queue'
+import { ActionQueue, type KeyValueStore } from './queue'
+import { backoffDelayMs } from './backoff'
+import { isPermanentError, errorMessage } from './errors'
+import { IdGenerator } from './clientId'
+import { planReconcile } from './reconciler'
 import type {
   EngineGameState,
   EngineListener,
@@ -118,7 +121,7 @@ export class SyncEngine {
   private connected = false
   private reconciling = false
   private lastReconcile: ReconcileResult | undefined
-  private clientSeq = 0
+  private readonly ids: IdGenerator
   private flushCancel: (() => void) | null = null
   private stopped = false
 
@@ -131,6 +134,7 @@ export class SyncEngine {
     this.queue = new ActionQueue(gameId, this.deps.store)
     this.ws = (this.deps.makeWs ?? defaultDeps().makeWs!)()
     this.gameApi = this.deps.gameApi ?? api
+    this.ids = new IdGenerator(gameId, myUserId)
   }
 
   // ---- public surface ------------------------------------------------------
@@ -220,11 +224,9 @@ export class SyncEngine {
   // ---- internal ------------------------------------------------------------
 
   private nextClientId(): string {
-    // Deterministic, collision-free within a session: gameId + monotonic seq +
-    // user. We avoid Math.random so tests are reproducible and so the id is
-    // stable across a retry of the same logical action.
-    this.clientSeq += 1
-    return `c:${this.gameId}:${this.myUserId}:${this.clientSeq}`
+    // Delegates to IdGenerator (clientId.ts): deterministic, monotonic,
+    // collision-free within a session. No Math.random so ids are reproducible.
+    return this.ids.next()
   }
 
   private myPosition(): number {
@@ -294,17 +296,22 @@ export class SyncEngine {
    *  - Everything else stays pending and is re-folded onto the new base.
    */
   reconcile(snapshot: GameSnapshot, incomingRevision: Revision, accepted: string[], rejected: string[]): ReconcileResult {
-    if (incomingRevision <= this.revision && this.confirmedSnapshot !== null) {
-      const res: ReconcileResult = {
-        confirmed: [],
-        rejected: [],
-        keptPending: this.queue.outstanding().map((a) => a.clientId),
-        ignoredStale: true,
-        revision: this.revision,
-      }
-      this.lastReconcile = res
+    // The stale-gate + confirm/reject/keep partition is a pure decision,
+    // delegated to reconciler.ts#planReconcile so the policy is tested in
+    // isolation. The engine then *applies* that decision to the queue + reducer.
+    const plan = planReconcile({
+      currentRevision: this.revision,
+      incomingRevision,
+      hasConfirmed: this.confirmedSnapshot !== null,
+      outstanding: this.queue.outstanding().map((a) => a.clientId),
+      accepted,
+      rejected,
+    })
+
+    if (plan.ignoredStale) {
+      this.lastReconcile = plan
       this.emit()
-      return res
+      return plan
     }
 
     this.reconciling = true
@@ -402,17 +409,6 @@ export class SyncEngine {
   }
 }
 
-/** True when an error should not be retried (client-side/illegal-move errors). */
-export function isPermanentError(e: unknown): boolean {
-  if (e instanceof ApiError) {
-    // 4xx (except 408/429) are the caller's fault and won't succeed on retry.
-    if (e.status === 408 || e.status === 429) return false
-    return e.status >= 400 && e.status < 500
-  }
-  return false
-}
-
-function errorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message
-  return 'unknown error'
-}
+// `isPermanentError` now lives in errors.ts; re-exported here so existing
+// imports from `./engine` continue to resolve.
+export { isPermanentError }
