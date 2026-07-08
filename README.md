@@ -4,7 +4,6 @@
 Cribbage (first), with a platform designed to grow into **multiple card games** (e.g. Spades, Poker) over time.
 
 ## Player Experience Goals
-
 ### Core gameplay
 - **Play in the browser** with a modern UI that works on desktop first (mobile-friendly later).
 - **Multi-player online** via lobbies: create, browse, join, and start games.
