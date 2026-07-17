@@ -11,27 +11,6 @@ import type { Handler } from '../ws/wsClient'
  * A controllable fake WsClient. We only need `connect`/`on`/`disconnect` for the
  * engine, plus a way for the test to fire events.
  */
-class FakeWs {
-  handlers = new Map<string, Set<Handler>>()
-  connected = false
-  connect() {
-    this.connected = true
-  }
-  on(type: string, h: Handler) {
-    const set = this.handlers.get(type) ?? new Set<Handler>()
-    set.add(h)
-    this.handlers.set(type, set)
-    return () => set.delete(h)
-  }
-  send() {}
-  disconnect() {
-    this.connected = false
-    this.handlers.clear()
-  }
-  fire(type: string, payload?: unknown) {
-    for (const h of this.handlers.get(type) ?? []) h(payload)
-  }
-}
 
 const MY_USER = 9
 const GAME = 1
