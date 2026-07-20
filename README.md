@@ -51,3 +51,7 @@ Once scaffolding is in place:
 - Frontend will run locally (Vite dev server).
 - We’ll expose the backend (or a reverse proxy) via ngrok for testing.
 
+## Contributing
+
+Run CodeRabbit CLI (`coderabbit review`) after making changes and resolve any findings before opening a pull request.
+
