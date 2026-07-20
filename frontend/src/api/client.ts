@@ -2,6 +2,8 @@ import { apiBaseUrl } from '../lib/env'
 import { ApiError, apiFetch } from '../lib/http'
 import type {
   AuthResponse,
+  CountKind,
+  CountResponse,
   Game,
   GameMove,
   GameSnapshot,
@@ -25,6 +27,7 @@ export type GameMoveRequest =
 export type AddBotRequest = { difficulty?: 'easy' | 'medium' | 'hard' }
 export type SendChatMessageRequest = { message: string }
 export type UpdatePresenceRequest = { status: 'online' | 'away' | 'in_game' | 'offline' }
+export type CountRequest = { kind: CountKind; claim: number; final?: boolean }
 
 const UNEXPECTED_EMPTY_RESPONSE_STATUS = 599
 
@@ -117,6 +120,14 @@ export const api = {
   },
   async nextHand(gameId: number) {
     await apiFetch<void>(`${apiBaseUrl()}/api/games/${gameId}/next_hand`, { method: 'POST' })
+  },
+  async count(gameId: number, req: CountRequest) {
+    const res = await apiFetch<CountResponse>(`${apiBaseUrl()}/api/games/${gameId}/count`, {
+      method: 'POST',
+      body: req,
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
   },
 
   async moveGame(gameId: number, move: GameMoveRequest) {

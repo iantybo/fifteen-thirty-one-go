@@ -99,6 +99,26 @@ export type Card = {
   suit: 'S' | 'H' | 'D' | 'C'
 }
 
+export type ScoreBreakdown = {
+  total: number
+  fifteens: number
+  pairs: number
+  runs: number
+  flush: number
+  nobs: number
+  reasons?: Record<string, number>
+}
+
+export type AutoCountMode = 'off' | 'suggest' | 'auto'
+
+export type CountKind = 'hand' | 'crib'
+
+export type CountResponse = {
+  verified: number
+  breakdown: ScoreBreakdown
+  auto_count_mode: AutoCountMode
+}
+
 export type CribbageRules = {
   max_players: number
 }
