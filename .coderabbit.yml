@@ -7,7 +7,7 @@ tone_instructions: >
 
 early_access: true
 enable_free_tier: true
-inheritance: true
+inheritance: false
 
 # Configuration for CodeRabbit context sources
 knowledge_base:
