@@ -1,0 +1,5 @@
+# this fix satisfies the acceptance criteria in KAN-12:
+
+editor: true
+migration: false
+headline: "throw-away"
