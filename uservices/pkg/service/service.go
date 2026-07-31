@@ -87,10 +87,14 @@ func DecodeJSON(r *http.Request, v any) error {
 	if err := dec.Decode(v); err != nil {
 		return fmt.Errorf("service: decode request body: %w", err)
 	}
-	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return fmt.Errorf("service: unexpected data after JSON body")
+	switch err := dec.Decode(&struct{}{}); {
+	case errors.Is(err, io.EOF):
+		return nil
+	case err != nil:
+		return fmt.Errorf("service: read after JSON body: %w", err)
+	default:
+		return errors.New("service: unexpected data after JSON body")
 	}
-	return nil
 }
 
 // WriteJSON writes v as a JSON response with the given status code.
