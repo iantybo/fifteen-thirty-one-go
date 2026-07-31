@@ -33,6 +33,7 @@ func newRequestFailingClose(body string) *http.Request {
 	return r
 }
 
+// TestDecodeJSONValidBody verifies a well-formed body decodes into v.
 func TestDecodeJSONValidBody(t *testing.T) {
 	var got payload
 	if err := DecodeJSON(newRequest(`{"name":"yankees"}`), &got); err != nil {
@@ -43,6 +44,7 @@ func TestDecodeJSONValidBody(t *testing.T) {
 	}
 }
 
+// TestDecodeJSONMalformedBody verifies truncated JSON is rejected.
 func TestDecodeJSONMalformedBody(t *testing.T) {
 	var got payload
 	if err := DecodeJSON(newRequest(`{"name":`), &got); err == nil {
