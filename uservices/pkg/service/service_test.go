@@ -64,8 +64,12 @@ func TestDecodeJSONValidBody(t *testing.T) {
 // TestDecodeJSONMalformedBody verifies truncated JSON is rejected.
 func TestDecodeJSONMalformedBody(t *testing.T) {
 	var got payload
-	if err := DecodeJSON(newRequest(`{"name":`), &got); err == nil {
+	err := DecodeJSON(newRequest(`{"name":`), &got)
+	if err == nil {
 		t.Fatal("DecodeJSON() = nil, want error for truncated JSON")
+	}
+	if !errors.Is(err, ErrDecodeBody) {
+		t.Errorf("DecodeJSON() = %v, want error wrapping ErrDecodeBody", err)
 	}
 }
 
@@ -158,7 +162,7 @@ func TestDecodeJSONCloseErrorWithMalformedBody(t *testing.T) {
 	if !errors.Is(err, errClose) {
 		t.Fatalf("DecodeJSON() = %v, want error wrapping errClose", err)
 	}
-	if !strings.Contains(err.Error(), "decode request body") {
-		t.Errorf("DecodeJSON() = %v, want it to also report the decode failure", err)
+	if !errors.Is(err, ErrDecodeBody) {
+		t.Errorf("DecodeJSON() = %v, want it to also wrap ErrDecodeBody", err)
 	}
 }

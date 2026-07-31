@@ -75,6 +75,10 @@ func (s *Service) ListenAndServe(addr string) error {
 // malformed or hostile client cannot exhaust memory on a decode.
 const maxRequestBody = 1 << 20 // 1 MiB
 
+// ErrDecodeBody wraps every failure to read or decode a request body, so
+// callers can classify a bad request with errors.Is rather than by message.
+var ErrDecodeBody = errors.New("service: decode request body")
+
 // DecodeJSON reads and decodes a single JSON value from the request body into
 // v, returning a descriptive error on failure. Bodies larger than
 // maxRequestBody are rejected outright rather than silently truncated, and any
@@ -89,15 +93,15 @@ func DecodeJSON(r *http.Request, v any) (err error) {
 
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxRequestBody))
 	if err := dec.Decode(v); err != nil {
-		return fmt.Errorf("service: decode request body: %w", err)
+		return fmt.Errorf("%w: %w", ErrDecodeBody, err)
 	}
 	switch err := dec.Decode(&struct{}{}); {
 	case errors.Is(err, io.EOF):
 		return nil
 	case err != nil:
-		return fmt.Errorf("service: read after JSON body: %w", err)
+		return fmt.Errorf("%w: read after JSON value: %w", ErrDecodeBody, err)
 	default:
-		return errors.New("service: unexpected data after JSON body")
+		return fmt.Errorf("%w: unexpected data after JSON value", ErrDecodeBody)
 	}
 }
 
