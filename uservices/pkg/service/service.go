@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -69,11 +70,15 @@ func (s *Service) ListenAndServe(addr string) error {
 	return srv.ListenAndServe()
 }
 
+// maxRequestBody bounds how much of a request body DecodeJSON will read, so a
+// malformed or hostile client cannot exhaust memory on a decode.
+const maxRequestBody = 1 << 20 // 1 MiB
+
 // DecodeJSON reads and decodes a JSON request body into v, returning a
-// descriptive error on failure.
+// descriptive error on failure. The body is capped at maxRequestBody bytes.
 func DecodeJSON(r *http.Request, v any) error {
 	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxRequestBody)).Decode(v); err != nil {
 		return fmt.Errorf("service: decode request body: %w", err)
 	}
 	return nil

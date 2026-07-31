@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"fifteen-thirty-one-go/uservices/pkg/catalog"
@@ -50,15 +51,7 @@ func defaultResolve(name string) string {
 
 // envKey upper-cases a service name for use in an environment variable.
 func envKey(name string) string {
-	out := make([]byte, len(name))
-	for i := 0; i < len(name); i++ {
-		c := name[i]
-		if c >= 'a' && c <= 'z' {
-			c -= 'a' - 'A'
-		}
-		out[i] = c
-	}
-	return string(out)
+	return strings.ToUpper(name)
 }
 
 // Call POSTs req (JSON-encoded) to peer's /score endpoint and decodes the
