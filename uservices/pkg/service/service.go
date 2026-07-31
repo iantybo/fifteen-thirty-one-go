@@ -7,6 +7,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -74,12 +75,20 @@ func (s *Service) ListenAndServe(addr string) error {
 // malformed or hostile client cannot exhaust memory on a decode.
 const maxRequestBody = 1 << 20 // 1 MiB
 
-// DecodeJSON reads and decodes a JSON request body into v, returning a
-// descriptive error on failure. The body is capped at maxRequestBody bytes.
+// DecodeJSON reads and decodes a single JSON value from the request body into
+// v, returning a descriptive error on failure. Bodies larger than
+// maxRequestBody are rejected outright rather than silently truncated, and any
+// data trailing the first JSON value is an error, so a request cannot smuggle
+// extra bytes past the limit.
 func DecodeJSON(r *http.Request, v any) error {
 	defer r.Body.Close()
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxRequestBody)).Decode(v); err != nil {
+
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxRequestBody))
+	if err := dec.Decode(v); err != nil {
 		return fmt.Errorf("service: decode request body: %w", err)
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("service: unexpected data after JSON body")
 	}
 	return nil
 }
