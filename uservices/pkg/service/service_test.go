@@ -33,6 +33,23 @@ func newRequestFailingClose(body string) *http.Request {
 	return r
 }
 
+// errRead is the sentinel returned by failingReader.Read.
+var errRead = errors.New("read failed")
+
+// failingReader always fails to read, and closes cleanly.
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) { return 0, errRead }
+
+func (failingReader) Close() error { return nil }
+
+// newRequestFailingRead builds a request whose body fails on Read.
+func newRequestFailingRead() *http.Request {
+	r := newRequest("")
+	r.Body = failingReader{}
+	return r
+}
+
 // TestDecodeJSONValidBody verifies a well-formed body decodes into v.
 func TestDecodeJSONValidBody(t *testing.T) {
 	var got payload
@@ -77,6 +94,24 @@ func TestDecodeJSONOversizedBody(t *testing.T) {
 	}
 }
 
+// TestDecodeJSONOversizedAfterCompleteValue isolates size enforcement from
+// value shape: the first maxRequestBody bytes are a complete, parseable value,
+// and only the trailing byte pushes the body over the cap. Paired with
+// TestDecodeJSONAtLimit this pins the boundary from both sides.
+func TestDecodeJSONOversizedAfterCompleteValue(t *testing.T) {
+	const value = `{"name":"yankees"}`
+	body := strings.Repeat(" ", maxRequestBody-len(value)) + value + " "
+
+	if len(body) != maxRequestBody+1 {
+		t.Fatalf("test setup: body length = %d, want %d", len(body), maxRequestBody+1)
+	}
+
+	var got payload
+	if err := DecodeJSON(newRequest(body), &got); err == nil {
+		t.Fatal("DecodeJSON() = nil, want error for body exceeding maxRequestBody")
+	}
+}
+
 // TestDecodeJSONAtLimit verifies a body of exactly maxRequestBody bytes is
 // still accepted, guarding against an off-by-one in the size check.
 func TestDecodeJSONAtLimit(t *testing.T) {
@@ -90,6 +125,15 @@ func TestDecodeJSONAtLimit(t *testing.T) {
 	var got payload
 	if err := DecodeJSON(newRequest(body), &got); err != nil {
 		t.Fatalf("DecodeJSON() = %v, want nil for body at maxRequestBody limit", err)
+	}
+}
+
+// TestDecodeJSONReadError checks a transport read failure is propagated to the
+// caller rather than being reported as malformed JSON.
+func TestDecodeJSONReadError(t *testing.T) {
+	var got payload
+	if err := DecodeJSON(newRequestFailingRead(), &got); !errors.Is(err, errRead) {
+		t.Fatalf("DecodeJSON() = %v, want error wrapping errRead", err)
 	}
 }
 
