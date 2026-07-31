@@ -80,8 +80,12 @@ const maxRequestBody = 1 << 20 // 1 MiB
 // maxRequestBody are rejected outright rather than silently truncated, and any
 // data trailing the first JSON value is an error, so a request cannot smuggle
 // extra bytes past the limit.
-func DecodeJSON(r *http.Request, v any) error {
-	defer r.Body.Close()
+func DecodeJSON(r *http.Request, v any) (err error) {
+	defer func() {
+		if closeErr := r.Body.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("service: close request body: %w", closeErr))
+		}
+	}()
 
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxRequestBody))
 	if err := dec.Decode(v); err != nil {
