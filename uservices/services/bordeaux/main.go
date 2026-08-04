@@ -12,7 +12,9 @@ import (
 	"fifteen-thirty-one-go/uservices/pkg/service"
 )
 
-const serviceName = "bordeaux"
+const service
+
+Name = "bordeaux"
 
 func main() {
 	svc := service.New(serviceName)
