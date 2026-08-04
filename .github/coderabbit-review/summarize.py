@@ -117,6 +117,37 @@ def write_summary(lines):
         handle.write(text)
 
 
+def echo_result(findings, status):
+    """Print the outcome to stdout as well as the job summary.
+
+    The summary renders on the run's Summary page, which is not where anyone
+    looks when a step seems to have done nothing -- without this the Summarize
+    step logs literally nothing and the review result is invisible in the logs.
+    """
+    if findings is None:
+        print("status=%s findings=unknown (unrecognized output shape)" % status)
+        return
+
+    print("status=%s findings=%d" % (status, len(findings)))
+    if not findings:
+        print("No findings.")
+        return
+
+    for item in findings[:50]:
+        print(
+            "  [%s] %s%s  %s"
+            % (
+                str(pick(item, SEVERITY_KEYS, "?")),
+                pick(item, FILE_KEYS, "?"),
+                (":%s" % pick(item, LINE_KEYS)) if pick(item, LINE_KEYS) else "",
+                cell(redact(describe(item)), 120),
+            )
+        )
+    if len(findings) > 50:
+        # Never truncate silently.
+        print("  ... %d more (see the job summary)" % (len(findings) - 50))
+
+
 def main():
     review_file = sys.argv[1] if len(sys.argv) > 1 else "review.json"
     try:
@@ -125,6 +156,7 @@ def main():
     except (OSError, ValueError) as exc:
         write_output("status", "error")
         write_output("finding-count", "unknown")
+        print("status=error: could not read review output: %s" % exc)
         write_summary(["## CodeRabbit review", "", "Could not read review output: `%s`" % exc])
         return 1
 
@@ -137,7 +169,10 @@ def main():
         findings = find_findings(review)
     raw_json = redact(json.dumps(review, indent=2))
 
-    write_output("status", str(payload.get("status", "ok")) if isinstance(payload, dict) else "ok")
+    status = str(payload.get("status", "ok")) if isinstance(payload, dict) else "ok"
+    echo_result(findings, status)
+
+    write_output("status", status)
     write_output("review-json", raw_json)
     write_output("review-file", os.path.abspath(review_file))
 
