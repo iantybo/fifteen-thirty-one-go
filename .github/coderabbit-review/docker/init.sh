@@ -21,6 +21,38 @@ RUN_GID="${RR_GID:-1000}"
 
 log() { printf '[init] %s\n' "$*" >&2; }
 
+# --- git safe.directory -----------------------------------------------------
+# The mounted workspace is owned by whoever checked it out on the host (uid 1001
+# on a GitHub runner), not by the container's runner user (uid 1000). Git's
+# ownership check then refuses the repo, and the CLI reports that as the very
+# misleading "Git repository not found". Mark it safe for every identity that
+# might run git here.
+#
+# Applied on the warm path too: a restarted container skips provisioning but
+# still needs this.
+mark_workspace_safe() {
+    ws="${RR_WORKSPACE:-/workspace}"
+    command -v git >/dev/null 2>&1 || return 0
+
+    # '*' covers subdirectories reviewed via workdir, and any uid mismatch.
+    for scope in "$ws" '*'; do
+        git config --global --get-all safe.directory 2>/dev/null \
+            | grep -qxF "$scope" \
+            || git config --global --add safe.directory "$scope" 2>/dev/null || true
+    done
+
+    # /etc/gitconfig applies to every user, so the setting survives the
+    # privilege drop regardless of whose HOME git ends up reading.
+    if [ "$(id -u)" = "0" ]; then
+        for scope in "$ws" '*'; do
+            git config --system --get-all safe.directory 2>/dev/null \
+                | grep -qxF "$scope" \
+                || git config --system --add safe.directory "$scope" 2>/dev/null || true
+        done
+    fi
+    log "marked $ws safe for git (workspace uid: $(stat -c %u "$ws" 2>/dev/null || echo '?'))"
+}
+
 write_state() {
     # Consumed by the API's /healthz so it can report provisioned versions.
     cat >"$STATE_FILE" <<EOF
@@ -72,6 +104,7 @@ if [ -x "$INSTALL_DIR/coderabbit" ] \
     && "$INSTALL_DIR/coderabbit" --version >/dev/null 2>&1 \
     && command -v git >/dev/null 2>&1; then
     log "already provisioned; skipping install"
+    mark_workspace_safe
     write_state \
         "$(git --version 2>/dev/null | head -n1)" \
         "$("$INSTALL_DIR/coderabbit" --version 2>/dev/null | head -n1)"
@@ -80,6 +113,7 @@ fi
 
 ensure_runner_user
 ensure_deps
+mark_workspace_safe
 
 mkdir -p "$INSTALL_DIR"
 
