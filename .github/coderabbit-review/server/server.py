@@ -177,6 +177,43 @@ def authenticate(api_key, env):
     return 0, ""
 
 
+def check_git_usable(workdir):
+    """Verify git can actually operate on workdir. Returns (ok, error_message).
+
+    Exists because `.git` being present says nothing about git being willing to
+    use it -- see the safe.directory handling in docker/init.sh.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "git rev-parse timed out in %s" % workdir
+    except OSError as exc:
+        return False, "failed to run git: %s" % exc
+
+    if proc.returncode == 0:
+        return True, None
+
+    detail = (proc.stderr or proc.stdout or "").strip()[:1000]
+    if "dubious ownership" in detail:
+        try:
+            owner = os.stat(workdir).st_uid
+        except OSError:
+            owner = "?"
+        return False, (
+            "git refuses %s: it is owned by uid %s but this process runs as uid "
+            "%d. Add it to safe.directory (docker/init.sh does this at startup) "
+            "or run the container with a matching --user. git said: %s"
+            % (workdir, owner, os.getuid(), detail)
+        )
+    return False, "git cannot use %s: %s" % (workdir, detail)
+
+
 def run_review(body):
     """Execute the review. Returns (http_status, response_dict)."""
     workdir = body.get("workdir") or "/workspace"
@@ -193,6 +230,14 @@ def run_review(body):
                 "for --base diffs)." % workdir
             ),
         }
+
+    # A present .git is not enough: git refuses repositories owned by another
+    # uid ("dubious ownership"), which the CLI then reports as the thoroughly
+    # misleading "Git repository not found". Ask git itself so that case is
+    # diagnosed here, with an actionable message, instead of as a late 502.
+    git_ok, git_error = check_git_usable(workdir)
+    if not git_ok:
+        return 400, {"status": "error", "error": git_error}
 
     api_key = body.get("api_key") or os.environ.get("CODERABBIT_API_KEY")
     if not api_key:
