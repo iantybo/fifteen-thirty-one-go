@@ -1,0 +1,165 @@
+name: coderabbit-review
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+# Reviews are advisory here: the job reports findings in the summary but does
+# not fail the build. Flip FAIL_ON_FINDINGS to enforce.
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: python:3.12-bookworm
+      RR_DIR: .github/coderabbit-review
+      PORT: "8080"
+      FAIL_ON_FINDINGS: "false"
+      REVIEW_TIMEOUT: "1800"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # --base diffs need real history
+
+      - name: Skip without an API key
+        id: gate
+        env:
+          KEY: ${{ secrets.CODERABBIT_API_KEY }}
+        run: |
+          if [ -n "${KEY:-}" ]; then
+            echo "have-key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have-key=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CODERABBIT_API_KEY is not set; skipping the review."
+          fi
+
+      - name: Resolve base ref
+        id: base
+        if: steps.gate.outputs.have-key == 'true'
+        env:
+          # Via env, not inline `${{ }}`: GitHub expands expressions before the
+          # shell parses the command, and valid git ref names can contain shell
+          # metacharacters.
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          BASE_REF="${PR_BASE:-$DEFAULT_BRANCH}"
+          git fetch --quiet origin "$BASE_REF"
+          echo "ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
+          echo "Reviewing against base: ${BASE_REF}"
+
+      - name: Start review container
+        id: start
+        if: steps.gate.outputs.have-key == 'true'
+        env:
+          # Via env, never on the docker command line, so it is not in `ps`.
+          CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
+        run: |
+          set -euo pipefail
+          # No image build: a stock upstream image is provisioned at container
+          # start by docker/init.sh, which installs the CodeRabbit CLI.
+          docker pull --quiet "$IMAGE"
+          CID="$(docker run -d \
+            --name "cr-review-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -e CODERABBIT_API_KEY \
+            -e BIND_ALL=1 \
+            -e PORT=8080 \
+            -e CI=true \
+            -e PYTHONUNBUFFERED=1 \
+            -e CODERABBIT_INSTALL_DIR=/opt/cr/bin \
+            -v "${GITHUB_WORKSPACE}/${RR_DIR}/docker:/opt/rr:ro" \
+            -v "${GITHUB_WORKSPACE}/${RR_DIR}/server:/opt/server:ro" \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -p "127.0.0.1:${PORT}:8080" \
+            --entrypoint /opt/rr/entrypoint.sh \
+            "$IMAGE" serve)"
+          echo "cid=${CID}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for readiness
+        if: steps.gate.outputs.have-key == 'true'
+        env:
+          CID: ${{ steps.start.outputs.cid }}
+        run: |
+          set -uo pipefail
+          # Provisioning installs the CLI on start, so allow generous time.
+          for _ in $(seq 1 90); do
+            if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/tmp/health.json 2>/dev/null; then
+              echo "API ready:"; cat /tmp/health.json; echo
+              exit 0
+            fi
+            if [ -z "$(docker ps -q --filter "id=${CID}")" ]; then
+              echo "::error::Review container exited during provisioning."
+              docker logs "${CID}" || true
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::API did not become ready within 180s."
+          docker logs "${CID}" || true
+          exit 1
+
+      - name: Request review
+        if: steps.gate.outputs.have-key == 'true'
+        env:
+          BASE_REF: ${{ steps.base.outputs.ref }}
+        run: |
+          set -euo pipefail
+          # Body built with python3 so a branch name containing quotes cannot
+          # break out of the JSON.
+          BODY="$(BASE_REF="$BASE_REF" REVIEW_TIMEOUT="$REVIEW_TIMEOUT" python3 -c '
+          import json, os
+          print(json.dumps({
+              "workdir": "/workspace",
+              "base": os.environ["BASE_REF"],
+              "mode": "committed",
+              "timeout_seconds": int(os.environ["REVIEW_TIMEOUT"]),
+          }))')"
+          echo "request: ${BODY}"
+
+          HTTP="$(curl -sS -o /tmp/review.json -w '%{http_code}' \
+            -X POST "http://127.0.0.1:${PORT}/review" \
+            -H 'Content-Type: application/json' \
+            --max-time "$((REVIEW_TIMEOUT + 60))" \
+            -d "$BODY")"
+          echo "http_status=${HTTP}"
+
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::Review request failed (HTTP ${HTTP}); response body:"
+            cat /tmp/review.json || true
+            exit 1
+          fi
+
+      - name: Summarize
+        id: summarize
+        if: steps.gate.outputs.have-key == 'true'
+        run: python3 "${RR_DIR}/summarize.py" /tmp/review.json
+
+      - name: Container logs
+        if: always() && steps.start.outputs.cid != ''
+        env:
+          CID: ${{ steps.start.outputs.cid }}
+        run: |
+          echo "::group::Review container logs"
+          docker logs "${CID}" 2>&1 || true
+          echo "::endgroup::"
+
+      - name: Clean up
+        if: always() && steps.start.outputs.cid != ''
+        env:
+          CID: ${{ steps.start.outputs.cid }}
+        run: docker rm -f "${CID}" >/dev/null 2>&1 || true
+
+      - name: Enforce findings threshold
+        if: always() && steps.gate.outputs.have-key == 'true' && env.FAIL_ON_FINDINGS == 'true'
+        env:
+          COUNT: ${{ steps.summarize.outputs.finding-count }}
+        run: |
+          if [ "${COUNT:-unknown}" = "unknown" ]; then
+            echo "::warning::FAIL_ON_FINDINGS is set but the count is unknown; not failing."
+            exit 0
+          fi
+          if [ "${COUNT}" -gt 0 ]; then
+            echo "::error::CodeRabbit reported ${COUNT} finding(s)."
+            exit 1
+          fi
