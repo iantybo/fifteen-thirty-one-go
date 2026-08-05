@@ -82,28 +82,19 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 		}
 
 		// Check if user is already a player in this lobby
-		var playerCount int
-		err = db.QueryRowContext(ctx, `
-			SELECT COUNT(*)
-			FROM game_players gp
-			JOIN games g ON g.id = gp.game_id
-			WHERE g.lobby_id = ? AND gp.user_id = ? AND g.status IN ('waiting', 'in_progress')
-		`, lobbyID, userID).Scan(&playerCount)
+		isMember, err := isActiveLobbyMember(ctx, db, lobbyID, userID)
 		if err != nil {
 			wrappedErr := fmt.Errorf("JoinAsSpectator: checking player status (lobby_id=%d user_id=%d): %w", lobbyID, userID, err)
 			log.Printf("%v", wrappedErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 			return
 		}
-		if playerCount > 0 {
+		if isMember {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "you are already a player in this lobby"})
 			return
 		}
 
-		// Get username
-		var username string
-		var avatarURL sql.NullString
-		err = db.QueryRowContext(ctx, "SELECT username, avatar_url FROM users WHERE id = ?", userID).Scan(&username, &avatarURL)
+		username, avatarURL, err := getUserDisplay(ctx, db, userID)
 		if err != nil {
 			wrappedErr := fmt.Errorf("JoinAsSpectator: get user info (user_id=%d): %w", userID, err)
 			log.Printf("%v", wrappedErr)
@@ -146,7 +137,8 @@ func JoinAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handler
 		// Broadcast spectator joined event
 		hub, ok := hubProvider()
 		if ok && hub != nil {
-			hub.Broadcast(fmt.Sprintf("lobby:%d", lobbyID), "lobby:spectator_joined", spectator)
+			room := lobbyRoomKey(lobbyID)
+			hub.Broadcast(room, "lobby:spectator_joined", spectator)
 
 			// Send system message
 			_ = SendSystemMessage(ctx, db, hub, lobbyID, fmt.Sprintf("%s is now spectating", username), "join")
@@ -186,8 +178,7 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 		ctx := c.Request.Context()
 
 		// Get username before deleting
-		var username string
-		err = db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", userID).Scan(&username)
+		username, err := getUsername(ctx, db, userID)
 		if err != nil {
 			wrappedErr := fmt.Errorf("LeaveAsSpectator: get username (user_id=%d): %w", userID, err)
 			log.Printf("%v", wrappedErr)
@@ -216,7 +207,8 @@ func LeaveAsSpectator(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Handle
 		// Broadcast spectator left event
 		hub, ok := hubProvider()
 		if ok && hub != nil {
-			hub.Broadcast(fmt.Sprintf("lobby:%d", lobbyID), "lobby:spectator_left", map[string]any{
+			room := lobbyRoomKey(lobbyID)
+			hub.Broadcast(room, "lobby:spectator_left", map[string]any{
 				"user_id":  userID,
 				"username": username,
 			})

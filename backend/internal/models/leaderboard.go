@@ -48,7 +48,8 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 		id       int64
 		username string
 	}
-	users := make([]u, 0)
+	// Capacity is unknown; start small to avoid early reallocations on typical user counts.
+	users := make([]u, 0, 64)
 	{
 		rows, err := db.QueryContext(ctx, `SELECT id, username FROM users ORDER BY username COLLATE NOCASE ASC`)
 		if err != nil {
@@ -146,14 +147,15 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 
 	// Build the date list (oldest -> newest) as YYYY-MM-DD in UTC to match SQLite DATE('now', ...).
 	start := time.Now().UTC().AddDate(0, 0, -int(days)+1)
-	dates := make([]string, 0, days)
+	dates := make([]string, days)
 	for i := int64(0); i < days; i++ {
-		d := start.AddDate(0, 0, int(i))
-		dates = append(dates, d.Format("2006-01-02"))
+		dates[i] = start.AddDate(0, 0, int(i)).Format("2006-01-02")
 	}
 
 	out := make([]LeaderboardPlayer, 0, len(users))
 	for _, usr := range users {
+		// Context cancellation is checked once per user, not per day.
+		// Per-day checks burn CPU on a syscall-free fast path; per-user is responsive enough.
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("BuildLeaderboard: context cancelled: %w", err)
 		}
@@ -163,14 +165,11 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 			allTimeRate = float64(t.won) / float64(t.played)
 		}
 
-		series := make([]LeaderboardDayPoint, 0, len(dates))
+		series := make([]LeaderboardDayPoint, len(dates))
 		cumPlayed := int64(0)
 		cumWon := int64(0)
 		dayMap := byUserDay[usr.id]
-		for _, day := range dates {
-			if err := ctx.Err(); err != nil {
-				return nil, fmt.Errorf("BuildLeaderboard: context cancelled: %w", err)
-			}
+		for i, day := range dates {
 			da := dayAgg{}
 			if dayMap != nil {
 				da = dayMap[day]
@@ -181,12 +180,12 @@ func BuildLeaderboard(ctx context.Context, db *sql.DB, days int64) (*Leaderboard
 			if cumPlayed > 0 {
 				wr = float64(cumWon) / float64(cumPlayed)
 			}
-			series = append(series, LeaderboardDayPoint{
+			series[i] = LeaderboardDayPoint{
 				Date:        day,
 				GamesPlayed: da.played,
 				GamesWon:    da.won,
 				WinRate:     wr,
-			})
+			}
 		}
 
 		out = append(out, LeaderboardPlayer{

@@ -15,6 +15,7 @@ import (
 	"fifteen-thirty-one-go/backend/internal/database"
 	"fifteen-thirty-one-go/backend/internal/handlers"
 	"fifteen-thirty-one-go/backend/internal/middleware"
+	"fifteen-thirty-one-go/backend/internal/models"
 	"fifteen-thirty-one-go/backend/internal/tracing"
 	"fifteen-thirty-one-go/backend/pkg/websocket"
 
@@ -41,6 +42,24 @@ func main() {
 			log.Printf("db close error: %v", err)
 		}
 	}()
+
+	// Bootstrap schemas for feature modules that manage their own tables.
+	// These calls are idempotent (CREATE TABLE IF NOT EXISTS) so it's safe to
+	// run them every startup.
+	bootstrapCtx, cancelBootstrap := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := models.EnsureFriendsSchema(bootstrapCtx, db); err != nil {
+		cancelBootstrap()
+		log.Fatalf("friends schema: %v", err)
+	}
+	if err := models.EnsureAchievementsSchema(bootstrapCtx, db); err != nil {
+		cancelBootstrap()
+		log.Fatalf("achievements schema: %v", err)
+	}
+	if err := handlers.EnsureReactionsSchema(bootstrapCtx, db); err != nil {
+		cancelBootstrap()
+		log.Fatalf("reactions schema: %v", err)
+	}
+	cancelBootstrap()
 
 	hubRef := websocket.NewHubRef(websocket.NewHub())
 	go func() {
@@ -86,12 +105,28 @@ func main() {
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
 	api := r.Group("/api")
-	handlers.RegisterAuthRoutes(api, db, cfg)
+
+	// Stricter rate limit on auth: 10 attempts / minute, burst 10. This
+	// dampens credential-stuffing without affecting normal users.
+	authLimiter := middleware.NewLimiter(middleware.Limit{Capacity: 10, RefillEvery: 6 * time.Second}, 5*time.Minute)
+	defer authLimiter.Stop()
+	authGroup := api.Group("")
+	authGroup.Use(authLimiter.Middleware(nil))
+	handlers.RegisterAuthRoutes(authGroup, db, cfg)
 
 	protected := api.Group("")
 	protected.Use(middleware.RequireAuth(cfg))
+
+	// General rate limit on authenticated traffic: 120 req/min, burst 120.
+	apiLimiter := middleware.NewLimiter(middleware.Limit{Capacity: 120, RefillEvery: 500 * time.Millisecond}, 10*time.Minute)
+	defer apiLimiter.Stop()
+	protected.Use(apiLimiter.Middleware(middleware.UserOrIPKey))
+
 	handlers.RegisterLobbyRoutes(protected, db)
 	handlers.RegisterGameRoutes(protected, db)
+	handlers.RegisterFriendsRoutes(protected, db)
+	handlers.RegisterAchievementsRoutes(protected, db)
+	handlers.RegisterChatReactionsRoutes(protected, db)
 
 	// WebSocket endpoint is auth-gated via token query param or Authorization header.
 	r.GET("/ws", handlers.WebSocketHandler(hubRef.Get, db, cfg))

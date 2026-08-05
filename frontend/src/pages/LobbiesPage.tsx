@@ -84,6 +84,8 @@ export function LobbiesPage() {
           <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
             <Link to="/lobbies/new">Create</Link>
             <Link to="/leaderboard">Leaderboard</Link>
+            <Link to="/friends">Friends</Link>
+            <Link to="/achievements">Achievements</Link>
             <button onClick={playVsBot} disabled={quickBusy} title="Create a 2-player lobby and add a bot">
               {quickBusy ? 'Starting…' : 'Play vs Computer'}
             </button>

@@ -162,3 +162,78 @@ export type GameMove = {
   created_at: string
 }
 
+// -----------------------------------------------------------------------------
+// Friends & blocks
+// -----------------------------------------------------------------------------
+
+export type FriendshipStatus = 'pending' | 'accepted' | 'declined'
+
+export type Friendship = {
+  id: number
+  requester_id: number
+  other_id: number
+  status: FriendshipStatus
+  created_at: string
+  updated_at: string
+}
+
+export type FriendSummary = {
+  user_id: number
+  username: string
+  avatar_url?: string | null
+  since: string
+}
+
+export type FriendRequestView = {
+  id: number
+  from_user_id: number
+  from_username: string
+  created_at: string
+}
+
+export type FriendsListResponse = {
+  friends: FriendSummary[]
+  incoming: FriendRequestView[]
+  outgoing: FriendRequestView[]
+}
+
+// -----------------------------------------------------------------------------
+// Achievements
+// -----------------------------------------------------------------------------
+
+export type AchievementTier = 'bronze' | 'silver' | 'gold' | 'platinum'
+
+export type Achievement = {
+  id: string
+  title: string
+  description: string
+  icon: string
+  tier: AchievementTier
+}
+
+export type UnlockedAchievement = Achievement & {
+  unlocked_at: string
+}
+
+export type AchievementsSnapshot = {
+  unlocked: UnlockedAchievement[]
+  locked: Achievement[]
+}
+
+// -----------------------------------------------------------------------------
+// Chat reactions
+// -----------------------------------------------------------------------------
+
+export type ReactionView = {
+  emoji: string
+  count: number
+  user_ids: number[]
+  reacted: boolean
+}
+
+export type ToggleReactionResponse = {
+  message_id: number
+  reactions: ReactionView[]
+  added: boolean
+}
+
