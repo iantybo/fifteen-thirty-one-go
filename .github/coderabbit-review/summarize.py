@@ -168,9 +168,15 @@ def lang_for(path):
 
 
 def anchor(text):
-    """GitHub's heading-anchor slug: lowercase, punctuation dropped, spaces hyphenated."""
+    """GitHub's heading-anchor slug: lowercase, punctuation dropped, spaces hyphenated.
+
+    Each space becomes its own hyphen -- do NOT collapse runs with `+`. Headings
+    are `N. `file` — severity`, and dropping the em dash leaves two adjacent
+    spaces, so GitHub emits `--` there. Collapsing produced a single hyphen and
+    every index link pointed at a nonexistent anchor.
+    """
     slug = re.sub(r"[^\w\s-]", "", str(text).lower())
-    return re.sub(r"[\s_]+", "-", slug).strip("-")
+    return re.sub(r"[\s_]", "-", slug).strip("-")
 
 
 def heading(index, item):
