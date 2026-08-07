@@ -32,6 +32,8 @@ knowledge_base:
       - docs/FRONTEND-DESIGN-GUIDE.md
       - docs/infosec/SECURITY-*.md
       - agents/*AGENT*.md
+      - files: FRONTEND.md
+        applyTo: "**/*.ts"
   web_search:
     enabled: true
   learnings:
