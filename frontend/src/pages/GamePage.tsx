@@ -644,6 +644,91 @@ function PegTrack({
 
 // (BreakdownView removed; counting/finished UI now focuses on recap + readiness inside the table.)
 
+function ManualHandCount({ gameId, kind, label }: { gameId: number; kind: 'hand' | 'crib'; label: string }) {
+  const [claim, setClaim] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [result, setResult] = useState<{ claim: number; verified: number; breakdown: ScoreBreakdown } | null>(null)
+
+  async function submit() {
+    const parsed = Number(claim)
+    if (claim.trim() === '' || !Number.isInteger(parsed) || parsed < 0 || parsed > 29) {
+      setErr('Enter a whole number between 0 and 29.')
+      return
+    }
+    setErr(null)
+    setBusy(true)
+    try {
+      const res = await api.count(gameId, { kind, claim: parsed })
+      setResult({ claim: parsed, verified: res.verified, breakdown: res.breakdown })
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'failed to count')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const correct = result ? result.claim === result.verified : false
+
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        padding: 10,
+        border: '1px solid rgba(255,255,255,0.18)',
+        borderRadius: 12,
+        background: 'rgba(2,6,23,0.20)',
+      }}
+    >
+      <div style={{ fontWeight: 800 }}>Count your {label}</div>
+      <div style={{ opacity: 0.85, fontSize: 13, marginTop: 2 }}>
+        Add up the points yourself, then check your count.
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="number"
+          min={0}
+          max={29}
+          inputMode="numeric"
+          value={claim}
+          disabled={busy}
+          onChange={(e) => setClaim(e.target.value)}
+          placeholder="Your count"
+          aria-label={`Your count for ${label}`}
+          style={{ width: 110, padding: '6px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.35)' }}
+        />
+        <button type="button" onClick={submit} disabled={busy}>
+          {busy ? 'Checking…' : '🧮 Count it'}
+        </button>
+        {result ? (
+          <button
+            type="button"
+            onClick={() => {
+              setResult(null)
+              setClaim('')
+              setErr(null)
+            }}
+            disabled={busy}
+          >
+            Try again
+          </button>
+        ) : null}
+      </div>
+      {err ? <div style={{ color: '#fecaca', fontWeight: 700, marginTop: 8 }}>{err}</div> : null}
+      {result ? (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontWeight: 900, color: correct ? '#22c55e' : '#f87171' }}>
+            {correct ? `✅ Correct — ${result.verified} points!` : `❌ Not quite. You said ${result.claim}, actual is ${result.verified}.`}
+          </div>
+          <div style={{ marginTop: 4 }}>
+            <ScoreBreakdownLine b={result.breakdown} />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function GamePage() {
   const { id } = useParams()
   const gameId = Number(id)
@@ -1022,7 +1107,7 @@ export function GamePage() {
                                       ) : null}
                                     </div>
                                     <div style={{ textAlign: 'right' }}>
-                                      <ScoreBreakdownLine b={b} />
+                                      {idx === myPos ? null : <ScoreBreakdownLine b={b} />}
                                     </div>
                                   </div>
                                   <div style={{ marginTop: 8, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
@@ -1030,6 +1115,7 @@ export function GamePage() {
                                       <CardIcon key={`kh:${idx}:${j}:${cardToCode(c)}`} card={c} disabled title={cardToCode(c)} />
                                     ))}
                                   </div>
+                                  {idx === myPos ? <ManualHandCount gameId={gameId} kind="hand" label="hand" /> : null}
                                 </div>
                               )
                             })}
@@ -1052,7 +1138,7 @@ export function GamePage() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                               <div style={{ fontWeight: 900, opacity: 0.95 }}>Dealer’s crib</div>
                               <div style={{ textAlign: 'right' }}>
-                                <ScoreBreakdownLine b={state?.count_summary?.crib} />
+                                {myPos === state?.dealer_index ? null : <ScoreBreakdownLine b={state?.count_summary?.crib} />}
                               </div>
                             </div>
                             <div style={{ marginTop: 8, display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
@@ -1060,6 +1146,9 @@ export function GamePage() {
                                 <CardIcon key={`crib:${i}:${cardToCode(c)}`} card={c} disabled title={cardToCode(c)} />
                               ))}
                             </div>
+                            {myPos === state?.dealer_index ? (
+                              <ManualHandCount gameId={gameId} kind="crib" label="crib" />
+                            ) : null}
                           </div>
                         </div>
                       )}
