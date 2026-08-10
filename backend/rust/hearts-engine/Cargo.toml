@@ -1,0 +1,10 @@
+[package]
+name = "hearts-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Hearts scoring primitives for future multi-game expansion"
+license = "MIT"
+
+[lib]
+name = "hearts_engine"
+crate-type = ["rlib"]

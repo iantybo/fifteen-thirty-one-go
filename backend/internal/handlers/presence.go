@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"fifteen-thirty-one-go/backend/internal/tracing"
@@ -23,6 +24,24 @@ type PresenceStatus struct {
 	AvatarURL      *string   `json:"avatar_url,omitempty"`
 }
 
+func authenticatedUserID(c *gin.Context) (int64, bool) {
+	userID, ok := userIDFromContext(c)
+	if ok && userID > 0 {
+		return userID, true
+	}
+
+	// Backwards compatible: some middleware sets "user_id".
+	v, exists := c.Get("user_id")
+	if !exists || v == nil {
+		return 0, false
+	}
+	id, ok := v.(int64)
+	if !ok || id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
 // UpdatePresence handles PUT /api/users/presence requests to update the authenticated user's
 // presence status. It validates the status value, performs an upsert, and broadcasts the change
 // to the global websocket lobby when available.
@@ -31,17 +50,8 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.UpdatePresence")
 		defer span.End()
 
-		userID, ok := userIDFromContext(c)
+		userID, ok := authenticatedUserID(c)
 		if !ok {
-			// Backwards compatible: some middleware sets "user_id".
-			if v, exists := c.Get("user_id"); exists && v != nil {
-				if id, ok2 := v.(int64); ok2 {
-					userID = id
-					ok = true
-				}
-			}
-		}
-		if !ok || userID <= 0 {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
@@ -127,9 +137,8 @@ func GetPresence(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.GetPresence")
 		defer span.End()
 
-		userIDStr := c.Param("id")
-		var userID int64
-		if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil || userID <= 0 {
+		userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil || userID <= 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
 			return
 		}
@@ -138,7 +147,7 @@ func GetPresence(db *sql.DB) gin.HandlerFunc {
 		var currentLobbyID sql.NullInt64
 		var avatarURL sql.NullString
 		var username string
-		err := db.QueryRow(`
+		err = db.QueryRow(`
 			SELECT u.id, u.username, u.avatar_url, COALESCE(up.status, 'offline'), COALESCE(up.last_active, u.created_at), up.current_lobby_id
 			FROM users u
 			LEFT JOIN user_presence up ON up.user_id = u.id
@@ -175,16 +184,8 @@ func HeartbeatPresence(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.HeartbeatPresence")
 		defer span.End()
 
-		userID, ok := userIDFromContext(c)
+		userID, ok := authenticatedUserID(c)
 		if !ok {
-			if v, exists := c.Get("user_id"); exists && v != nil {
-				if id, ok2 := v.(int64); ok2 {
-					userID = id
-					ok = true
-				}
-			}
-		}
-		if !ok || userID <= 0 {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
