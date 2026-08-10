@@ -1,0 +1,39 @@
+name: Bad Workflow Example
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      # Missing 'name' field for step
+      - run: echo "Hello World"
+
+      # Using deprecated set-output command
+      - name: Set output
+        run: echo "::set-output name=test::value"
+
+      # Undefined environment variable
+      - name: Use undefined var
+        run: echo ${{ env.UNDEFINED_VAR }}
+
+      # Wrong indentation level
+     - name: Bad indentation
+       run: echo "test"
+
+      # Using if condition with wrong syntax
+      - name: Bad condition
+        if: ${{ github.event_name = 'push' }}
+        run: echo "Bad comparison"
+
+      # Missing required id for step that's referenced later
+      - name: Create output
+        run: echo "output=test" >> $GITHUB_OUTPUT
+
+      - name: Use output
+        run: echo ${{ steps.missing_id.outputs.output }}
