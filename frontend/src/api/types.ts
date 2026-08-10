@@ -162,3 +162,25 @@ export type GameMove = {
   created_at: string
 }
 
+export type ChatbotMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+export type ChatbotRequest = {
+  message: string
+  game_context?: {
+    game_id: number
+    stage: string
+    scores: number[]
+    hand_size: number
+  }
+}
+
+export type ChatbotResponse = {
+  message: string
+  timestamp: string
+}
+

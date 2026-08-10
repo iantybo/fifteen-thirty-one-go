@@ -5,6 +5,7 @@ import type { Card, GameMove, GameSnapshot, UserStats } from '../api/types'
 import { useAuth } from '../auth/auth'
 import { WsClient } from '../ws/wsClient'
 import type React from 'react'
+import { ChatBot } from '../components/ChatBot'
 
 // Standard poker-size playing cards are 2.5" x 3.5" (ratio 5:7). Keep our UI cards at that ratio.
 const CARD_W = 70
@@ -1327,6 +1328,16 @@ export function GamePage() {
             (We left state/players/cut/finished UI above, and now render card icons for hand/actions.)
           */}
         </div>
+      )}
+
+      {/* Show chatbot only when playing against a bot */}
+      {snap && snap.players.some((p) => p.is_bot) && state && (
+        <ChatBot
+          gameId={gameId}
+          stage={state.stage}
+          scores={state.scores}
+          handSize={myHand.length}
+        />
       )}
     </div>
   )

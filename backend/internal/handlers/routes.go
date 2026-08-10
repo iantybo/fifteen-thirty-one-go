@@ -63,4 +63,7 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/scoreboard", ScoreboardHandler(db))
 	rg.GET("/scoreboard/:userId", UserStatsHandler(db))
 	rg.GET("/leaderboard", LeaderboardHandler(db))
+
+	// Chatbot for games with bot opponents
+	rg.POST("/games/:id/chatbot", ChatbotHandler(db))
 }
