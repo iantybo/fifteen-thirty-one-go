@@ -19,6 +19,21 @@
   --color-offline: #6b7280;
 }
 
+[data-theme="dark"] {
+  --color-primary: #3b82f6;
+  --color-text: #e2e8f0;
+  --color-border: #475569;
+  --color-bg: #0f172a;
+  --color-bg-button: #1e293b;
+  --color-bg-button-hover: #334155;
+  --color-lobby-bg: linear-gradient(135deg, #4c1d95 0%, #581c87 100%);
+  --color-lobby-card: rgba(30, 41, 59, 0.95);
+  --color-online: #10b981;
+  --color-away: #f59e0b;
+  --color-in-game: #60a5fa;
+  --color-offline: #9ca3af;
+}
+
 body {
   margin: 0;
   min-width: 320px;

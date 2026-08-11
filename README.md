@@ -38,6 +38,15 @@ Cribbage (first), with a platform designed to grow into **multiple card games** 
 ## Go version
 - **Go version**: Go **1.25.0** (see `backend/go.mod` `go` directive; toolchain is `go1.25.5`).
 
+## OpenTelemetry tracing (backend)
+The backend emits OpenTelemetry traces and propagates W3C Trace Context (`traceparent`) + Baggage.
+
+- **Exporter (local dev)**: set `OTEL_TRACES_EXPORTER=stdout` (default) to print spans to stdout.
+- **Disable traces**: set `OTEL_TRACES_EXPORTER=none`.
+- **Sampling**:
+  - `OTEL_TRACES_SAMPLER=always_on|always_off|traceidratio`
+  - `OTEL_TRACES_SAMPLER_ARG=0.1` (used with `traceidratio`)
+
 ## Public Repo / Security Rules (important)
 This repository is **public**. Do not commit secrets.
 
