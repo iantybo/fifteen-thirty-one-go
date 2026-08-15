@@ -22,6 +22,7 @@ func RegisterLobbyRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.POST("/lobbies", CreateLobbyHandler(db))
 	rg.POST("/lobbies/:id/join", JoinLobbyHandler(db))
 	rg.POST("/lobbies/:id/add_bot", AddBotToLobbyHandler(db))
+	rg.GET("/lobbies/:id/players", LobbyPlayersHandler(db))
 
 	// Lobby chat (Yahoo Games inspired)
 	rg.GET("/lobbies/:id/chat", GetLobbyChatHistory(db))
@@ -60,6 +61,10 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.POST("/games/:id/next_hand", NextHandHandler(db))
 	rg.POST("/games/:id/count", CountHandler(db))
 	rg.POST("/games/:id/correct", CorrectHandler(db))
+	rg.GET("/games/:id/events", GameEventsHandler(db))
+	rg.GET("/games/:id/snapshot", GameSnapshotHandler(db))
+	rg.GET("/games/:id/stats", GameMoveStatsHandler(db))
+	rg.POST("/games/:id/rematch", RematchHandler(db))
 	rg.GET("/scoreboard", ScoreboardHandler(db))
 	rg.GET("/scoreboard/:userId", UserStatsHandler(db))
 	rg.GET("/leaderboard", LeaderboardHandler(db))

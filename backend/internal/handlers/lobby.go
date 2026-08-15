@@ -276,6 +276,13 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		st.Version = 1
 		defaultGameManager.Set(g.ID, st)
 
+		// Record game creation event for audit trail.
+		models.RecordGameEvent(db, g.ID, models.EventGameCreated, &hostID, map[string]any{
+			"lobby_id":    lobbyID,
+			"max_players": req.MaxPlayers,
+			"lobby_name":  req.Name,
+		})
+
 		c.JSON(http.StatusCreated, createLobbyResponse{Lobby: l, Game: g})
 	}
 }
@@ -488,6 +495,12 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			resp["realtime_sync"] = "failed"
 		}
 
+		// Record player join event.
+		models.RecordGameEvent(db, gameID, models.EventPlayerJoined, &userID, map[string]any{
+			"lobby_id": lobbyID,
+			"position": nextPos,
+		})
+
 		c.JSON(http.StatusOK, resp)
 	}
 }
@@ -655,6 +668,14 @@ func AddBotToLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		if err := syncRuntimeStateFromDB(gameID, int(nextPos), stateVersion, stateJSON, handJSON); err != nil {
 			log.Printf("AddBotToLobbyHandler runtime sync failed (best-effort): lobby_id=%d game_id=%d bot_id=%d err=%v", lobbyID, gameID, botID, err)
 		}
+
+		// Record bot addition event.
+		models.RecordGameEvent(db, gameID, models.EventBotAdded, &botID, map[string]any{
+			"lobby_id":   lobbyID,
+			"difficulty": diff,
+			"position":   nextPos,
+			"bot_name":   botName,
+		})
 
 		broadcastGameUpdate(db, gameID)
 		c.JSON(http.StatusOK, gin.H{"game_id": gameID, "bot_user_id": botID, "bot_username": botName})
