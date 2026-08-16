@@ -38,8 +38,9 @@ func handleScore(svc *service.Service) http.HandlerFunc {
 		ctx, cancel := service.RequestContext(r.Context())
 		defer cancel()
 
+		const downstream = "ivy"
 		var bd cribbage.ScoreBreakdown
-		if err := svc.Mesh.Call(ctx, "ivy", "/score", hand, &bd); err != nil {
+		if err := svc.Mesh.Call(ctx, downstream, "/score", hand, &bd); err != nil {
 			service.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
