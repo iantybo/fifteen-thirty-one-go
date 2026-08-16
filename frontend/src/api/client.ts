@@ -185,5 +185,82 @@ export const api = {
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
+
+  // Tournament endpoints
+  async listTournaments(status = 'registration') {
+    // BUG: doesn't URL-encode the status parameter
+    const res = await apiFetch<any[]>(`${apiBaseUrl()}/api/tournaments?status=${status}`)
+    return res || [] // BUG: inconsistent with other methods that throw on empty
+  },
+  async createTournament(req: {
+    name: string
+    description: string
+    max_players: number
+    min_players: number
+    prize_description: string
+    entry_fee: number
+  }) {
+    const res = await apiFetch<any>(`${apiBaseUrl()}/api/tournaments`, {
+      method: 'POST',
+      body: req,
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async getTournament(id: number) {
+    const res = await apiFetch<any>(`${apiBaseUrl()}/api/tournaments/${id}`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async joinTournament(id: number) {
+    return apiFetch<any>(`${apiBaseUrl()}/api/tournaments/${id}/join`, { method: 'POST' })
+  },
+  async leaveTournament(id: number) {
+    return apiFetch<any>(`${apiBaseUrl()}/api/tournaments/${id}/leave`, { method: 'POST' })
+  },
+  async startTournament(id: number) {
+    return apiFetch<any>(`${apiBaseUrl()}/api/tournaments/${id}/start`, { method: 'POST' })
+  },
+  async cancelTournament(id: number) {
+    return apiFetch<any>(`${apiBaseUrl()}/api/tournaments/${id}/cancel`, { method: 'POST' })
+  },
+  async getTournamentBracket(id: number) {
+    return apiFetch<any>(`${apiBaseUrl()}/api/tournaments/${id}/bracket`)
+  },
+  async getTournamentStats(id: number) {
+    return apiFetch<any>(`${apiBaseUrl()}/api/tournaments/${id}/stats`)
+  },
+  async searchTournaments(query: string) {
+    // BUG: no URL encoding on query string
+    return apiFetch<any[]>(`${apiBaseUrl()}/api/tournaments/search?q=${query}`)
+  },
+  async exportTournament(id: number) {
+    return apiFetch<any>(`${apiBaseUrl()}/api/tournaments/${id}/export`)
+  },
+  async getTournamentChat(id: number, limit = 50, offset = 0) {
+    return apiFetch<any[]>(`${apiBaseUrl()}/api/tournaments/${id}/chat?limit=${limit}&offset=${offset}`)
+  },
+  async sendTournamentChat(id: number, message: string) {
+    return apiFetch<any>(`${apiBaseUrl()}/api/tournaments/${id}/chat`, {
+      method: 'POST',
+      body: { message },
+    })
+  },
+  async recordMatchResult(tournamentId: number, matchId: number, winnerId: number) {
+    return apiFetch<any>(
+      `${apiBaseUrl()}/api/tournaments/${tournamentId}/matches/${matchId}/result`,
+      { method: 'POST', body: { winner_id: winnerId } }
+    )
+  },
+  async bulkUpdateMatches(tournamentId: number, results: { match_id: number; winner_id: number }[]) {
+    return apiFetch<any>(
+      `${apiBaseUrl()}/api/tournaments/${tournamentId}/matches/bulk`,
+      { method: 'POST', body: { results } }
+    )
+  },
+  // BUG: getUserTournamentHistory uses 'any' type instead of proper interface
+  async getUserTournamentHistory(userId: number) {
+    return apiFetch<any[]>(`${apiBaseUrl()}/api/users/${userId}/tournament-history`)
+  },
 }
 
