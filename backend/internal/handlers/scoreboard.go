@@ -40,7 +40,7 @@ func UserStatsHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
 			return
 		}
-		stats, err := models.GetUserStats(db, userID)
+		profile, err := models.FetchUserProfile(db, userID)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -49,6 +49,10 @@ func UserStatsHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
-		c.JSON(http.StatusOK, stats)
+		c.JSON(http.StatusOK, models.UserStats{
+			UserID:      profile.ID,
+			GamesPlayed: profile.GamesPlayed,
+			GamesWon:    profile.GamesWon,
+		})
 	}
 }

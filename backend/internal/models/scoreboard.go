@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -77,4 +78,20 @@ func GetUserStats(db *sql.DB, userID int64) (*UserStats, error) {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// FetchUserProfile retrieves the full user row for populating enriched responses.
+func FetchUserProfile(db *sql.DB, userID int64) (*User, error) {
+	var u User
+	err := db.QueryRow(
+		`SELECT id, username, password_hash, created_at, games_played, games_won FROM users WHERE id = ?`,
+		userID,
+	).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt, &u.GamesPlayed, &u.GamesWon)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fetching user profile: %v", err)
+	}
+	return &u, nil
 }
