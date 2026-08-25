@@ -2,8 +2,7 @@
 
 language: en-US
 tone_instructions: >
-  - Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not.
-  - Follow conventional comments: https://conventionalcomments.org/
+  - Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not. - Follow conventional comments: https://conventionalcomments.org/
 
 early_access: true
 enable_free_tier: true
@@ -17,8 +16,7 @@ knowledge_base:
   linked_repositories:
     - repository: iantype/fifteen-thirty-one-go-utils
       instructions: >-
-        - Treat pkg/runtimeinterop.ScoreFromCodes as a strict cross-repo contract.
-        - Validate runtime card encoding matches utils parser exactly: ten MUST be "10"
+        - Treat pkg/runtimeinterop.ScoreFromCodes as a strict cross-repo contract. - Validate runtime card encoding matches utils parser exactly: ten MUST be "10"
           (not "T"), and the full code format must remain rank+suit (e.g. AS, 10H, KD).
         - Flag any runtime mapper or serialization changes that alter inputs sent to
           fifteen-thirty-one-go-utils scoring APIs.
@@ -47,7 +45,6 @@ knowledge_base:
   pull_requests:
     scope: global
 
-
 reviews:
   profile: assertive # more nit-picky
 
@@ -58,12 +55,7 @@ reviews:
       instructions: Assign 'Medium - Human Review Required', or 'High - Escalation Required' reviews to this user
 
   high_level_summary_instructions: >-
-    The top line should say: 'Risk Score:' followed by either 'Extremely Low -
-    Auto-merge', 'Low - Address Requested Changes', 'Medium - Human Review
-    Required', or 'High - Escalation Required' depending on the complexity and
-    risk of the change. In the high level summary, give a description of the
-    langauges used, the frameworks and code patterns used, and then a brief
-    description in 50 words or less.
+    The top line should say: 'Risk Score:' followed by either 'Extremely Low - Auto-merge', 'Low - Address Requested Changes', 'Medium - Human Review Required', or 'High - Escalation Required' depending on the complexity and risk of the change. In the high level summary, give a description of the langauges used, the frameworks and code patterns used, and then a brief description in 50 words or less.
 
   auto_title_placeholder: '[cr]'
   auto_title_instructions: Follow conventional commits https://www.conventionalcommits.org/en/v1.0.0/
@@ -71,29 +63,43 @@ reviews:
   path_instructions:
     - path: '**/*'
       instructions: >
-        - All code should only be related to serving the Cribbage game
-        - All code in production must either be Go or Typescript, admin code like Dockerfiles and Makefiles is fine
-        - Address any SonarQube findings in a new PR/MR
-        - Ensure functions are focused and not doing too much UNLESS detailed comments are added
-        - Ensure no business logic is tightly coupled to any particular framework
-        - Ensure no errors are swallowed, and no silents failures take place
-        - No fire-and-forget async processes
+        - All code should only be related to serving the Cribbage game - All code in production must either be Go or Typescript, admin code like Dockerfiles and Makefiles is fine - Address any SonarQube findings in a new PR/MR - Ensure functions are focused and not doing too much UNLESS detailed comments are added - Ensure no business logic is tightly coupled to any particular framework - Ensure no errors are swallowed, and no silents failures take place - No fire-and-forget async processes
 
     - path: '**/*.go'
       instructions: >
-        - Use proper error handling with error wrapping using fmt.Errorf with %w verb
-        - Ensure all public functions have godoc comments
-        - Follow Go naming conventions (exported names start with capital letter)
-        - Use context.Context for cancellation and timeouts in long-running operations
-        - Prefer explicit error returns over panic
-        - Use defer for cleanup operations
-        - Validate input parameters and return descriptive errors
-        - Consider concurrency safety for shared state
+        - Use proper error handling with error wrapping using fmt.Errorf with %w verb - Ensure all public functions have godoc comments - Follow Go naming conventions (exported names start with capital letter) - Use context.Context for cancellation and timeouts in long-running operations - Prefer explicit error returns over panic - Use defer for cleanup operations - Validate input parameters and return descriptive errors - Consider concurrency safety for shared state
 
     - path: '**/*.{ts,tsx}'
       instructions: >
-        - Review the TypeScript code for conformity with the Google TypeScript style guide, highlighting any deviations.
-        - Review the Typescript and React code for conformity with best practices in React, Recoil, Graphql, and Typescript. Highlight any deviations.
+        - Review the TypeScript code for conformity with the Google TypeScript style guide, highlighting any deviations. - Review the Typescript and React code for conformity with best practices in React, Recoil, Graphql, and Typescript. Highlight any deviations.
+    - path: frontend/src/api/
+      instructions: Keep frontend API request/response types in the API types module and centralize HTTP request implementation in the API client rather than duplicating request logic in pages or components.
+    - path: frontend/src/pages/
+      instructions: Keep route-level screen composition in page components; place reusable UI in frontend/src/components, cross-cutting stateful behavior in hooks or auth, and transport details in frontend/src/api or frontend/src/ws.
+    - path: uservices/services/
+      instructions: Keep each independently deployed uservice in its own named subdirectory with a main.go entrypoint; put reusable cross-service code under uservices/pkg rather than duplicating it in service entrypoints.
+    - path: backend/internal/handlers/
+      instructions: "Keep handlers as thin Gin adapters: parse and validate transport input, delegate domain and persistence work to game/models packages, and translate failures through the shared API error writer rather than duplicating status mappings or business rules."
+    - path: backend/internal/game/
+      instructions: "Keep game engines framework-independent: do not introduce Gin, HTTP, WebSocket, or database dependencies into game rules and state-machine code. Use the existing game interface/registry extension seam for additional game types."
+    - path: backend/internal/models/
+      instructions: Use the existing function-based SQLite data-access style with *sql.DB or *sql.Tx passed explicitly. Reuse the centralized sentinel errors, wrap errors with %w, and provide transaction-aware variants when an operation participates in a larger transaction.
+    - path: backend/internal/database/migrations/*.sql
+      instructions: "Name new migrations with a zero-padded three-digit numeric prefix followed by a descriptive snake_case name. Keep migrations forward-only and follow the existing SQLite conventions: explicit foreign-key actions, CHECK constraints for enumerated values, and indexes where queried."
+    - path: backend/pkg/websocket/
+      instructions: "Preserve the hub's actor-style concurrency model: keep shared room/client state owned by the hub run loop, use the existing stop and once guards for shutdown, and avoid adding unsynchronized shared-state access or blocking broadcasts."
+    - path: frontend/src/auth/
+      instructions: Keep authentication state in the existing AuthContext/AuthProvider pattern, hydrate it through the centralized API client, and ensure provider effects guard against updates after unmount.
+    - path: frontend/src/ws/
+      instructions: Use the existing imperative WsClient abstraction for WebSocket transport. Handle malformed messages and send failures defensively, and leave connection lifecycle ownership and cleanup to the consuming hook or page effect.
+    - path: frontend/src/**/*.ts
+      instructions: With verbatimModuleSyntax enabled, use import type for type-only imports and prefer strict, explicit types such as type aliases and discriminated unions; do not introduce any for dynamic or caught values without narrowing.
+    - path: frontend/src/**/*.tsx
+      instructions: For asynchronous React effects, guard state updates after unmount and return cleanup functions for intervals, WebSocket connections, and subscriptions. Keep route-level composition in pages and reusable UI in components unless a page-specific helper is intentionally local.
+    - path: uservices/services/*/main.go
+      instructions: "Build each service through the shared uservices/pkg/service scaffold: use the catalog-backed service name, register the /score handler, validate decoded cribbage hands, and use the mesh client for the established peer fan-out behavior rather than creating bespoke service bootstrap code."
+    - path: mcp-server/service-catalog/
+      instructions: Keep the seeded service catalog deterministic and consistent across services.csv and the server's exposed list/get tools. Preserve constant-time API-key validation for protected access and do not expose catalog operations without the configured authentication boundary.
 
   pre_merge_checks:
     # Enforce pre-merge checks cannot be dismissed by PR author
@@ -104,62 +110,22 @@ reviews:
       - mode: error
         name: Ensure no "exec" type commands run
         instructions: >-
-          Make sure no tools wrap external shell scripts and bash commands,
-          e.g., a Python script cannot invoke a bash command, nor can a
-          Terraform file run the "exec" command. Scan all the code to ensure
-          that external commands are not hidden.
+          Make sure no tools wrap external shell scripts and bash commands, e.g., a Python script cannot invoke a bash command, nor can a Terraform file run the "exec" command. Scan all the code to ensure that external commands are not hidden.
 
       - mode: error
         name: Performance and Algorithmic Complexity Review
         instructions: >
-          - Carefully review this code for performance regressions, unnecessary algorithmic complexity, and hot-path inefficiencies.
-          - This is a BLOCKING check: any significant issue that could materially degrade latency, throughput, or resource usage must prevent merge.
-          - Flag O(n^2), O(n^3), or worse behavior when input sizes may be non-trivial, especially in request handlers, background jobs, rendering paths, or loops over collections.
-          - Flag hidden nested work inside loops, including repeated scans, filtering, sorting, serialization, regex compilation, JSON parsing, DB lookups, HTTP calls, DOM queries, or recomputation of invariant values.
-          - Detect N+1 query patterns and require batching, joins, preloading, or set-based retrieval where appropriate.
-          - Flag repeated recalculation of deterministic values in hot paths when caching, memoization, precomputation, or moving work outside the loop would be appropriate.
-          - Flag inefficient data structure choices, such as linear membership checks on arrays when sets/maps are more appropriate, repeated copying, repeated concatenation, or frequent front insertions.
-          - Flag unbounded growth, memory leaks, retained listeners/subscriptions, accumulating buffers, or caches without eviction or cleanup.
-          - Flag avoidable allocation churn in hot paths, including repeated object creation, string building, cloning, intermediate arrays, or conversions that increase GC pressure.
-          - Flag repeated sorting or repeated full passes over large collections when a single pass, indexing, partial selection, or precomputation would suffice.
-          - Flag recursive implementations that risk excessive recomputation, poor asymptotic behavior, or stack overflows when iterative or memoized approaches are safer.
-          - Flag over-fetching or over-processing when code retrieves, deserializes, or processes more data than necessary.
-          - Flag expensive synchronous work in critical paths, including compression, encryption, hashing, parsing, template rendering, logging, analytics, or debug-only work that should be deferred, sampled, batched, or removed.
-          - Flag missing guardrails such as pagination, size limits, timeouts, concurrency limits, backpressure, or batching for large or adversarial inputs.
-          - In frontend code, flag unnecessary rerenders, repeated expensive selectors, large list rendering without virtualization, unstable memoization dependencies, or recomputation during render.
-          - Treat nominally linear work as blocking when it is performed at high frequency, on large inputs, or redundantly across many calls such that caching, indexing, batching, or memoization is clearly warranted.
-          - Flag process problems that generate excessive intermediate structures, duplicate traversals, discard reusable results, or turn simple iterative work into unnecessarily expensive recursive or tree-recursive work.
-          - Ignore micro-optimizations and speculative concerns.
-          - Only report meaningful, merge-blocking performance issues.
-          - For each issue, include file path, line numbers, the concrete performance risk, the expected complexity or scaling problem, and the fix category.
-          - If no material performance risks are found, mark this check as PASSED and remain brief.
+          - Carefully review this code for performance regressions, unnecessary algorithmic complexity, and hot-path inefficiencies. - This is a BLOCKING check: any significant issue that could materially degrade latency, throughput, or resource usage must prevent merge. - Flag O(n^2), O(n^3), or worse behavior when input sizes may be non-trivial, especially in request handlers, background jobs, rendering paths, or loops over collections. - Flag hidden nested work inside loops, including repeated scans, filtering, sorting, serialization, regex compilation, JSON parsing, DB lookups, HTTP calls, DOM queries, or recomputation of invariant values. - Detect N+1 query patterns and require batching, joins, preloading, or set-based retrieval where appropriate. - Flag repeated recalculation of deterministic values in hot paths when caching, memoization, precomputation, or moving work outside the loop would be appropriate. - Flag inefficient data structure choices, such as linear membership checks on arrays when sets/maps are more appropriate, repeated copying, repeated concatenation, or frequent front insertions. - Flag unbounded growth, memory leaks, retained listeners/subscriptions, accumulating buffers, or caches without eviction or cleanup. - Flag avoidable allocation churn in hot paths, including repeated object creation, string building, cloning, intermediate arrays, or conversions that increase GC pressure. - Flag repeated sorting or repeated full passes over large collections when a single pass, indexing, partial selection, or precomputation would suffice. - Flag recursive implementations that risk excessive recomputation, poor asymptotic behavior, or stack overflows when iterative or memoized approaches are safer. - Flag over-fetching or over-processing when code retrieves, deserializes, or processes more data than necessary. - Flag expensive synchronous work in critical paths, including compression, encryption, hashing, parsing, template rendering, logging, analytics, or debug-only work that should be deferred, sampled, batched, or removed. - Flag missing guardrails such as pagination, size limits, timeouts, concurrency limits, backpressure, or batching for large or adversarial inputs. - In frontend code, flag unnecessary rerenders, repeated expensive selectors, large list rendering without virtualization, unstable memoization dependencies, or recomputation during render. - Treat nominally linear work as blocking when it is performed at high frequency, on large inputs, or redundantly across many calls such that caching, indexing, batching, or memoization is clearly warranted. - Flag process problems that generate excessive intermediate structures, duplicate traversals, discard reusable results, or turn simple iterative work into unnecessarily expensive recursive or tree-recursive work. - Ignore micro-optimizations and speculative concerns. - Only report meaningful, merge-blocking performance issues. - For each issue, include file path, line numbers, the concrete performance risk, the expected complexity or scaling problem, and the fix category. - If no material performance risks are found, mark this check as PASSED and remain brief.
 
       - mode: error
         name: GDPR and PII Data Protection Compliance
         instructions: >
-          - Carefully scan all code for GDPR violations and improper handling of Personally Identifiable Information (PII).
-          - This is a BLOCKING check: any violation must prevent merge.
-          - Ensure no PII fields such as mothers_maiden_name, billing_address, phone_number, date_of_birth, annual_income, email, address, or full_name are transmitted via WebSocket broadcasts, public APIs, logs, analytics, or third-party services without authorization.
-          - Verify that PII is never logged in plaintext. User IDs may be acceptable, but actual PII values must not appear in logs.
-          - Confirm that database queries select only the minimum fields necessary for the operation and do not retrieve unrelated PII.
-          - Flag any collection or processing of PII without a clear and legitimate purpose directly related to core functionality.
-          - Ensure User A’s PII is never visible to User B through API responses, broadcasts, pub/sub systems, cache entries, or shared channels.
-          - Verify that API responses and WebSocket messages use allowlists of safe fields rather than denylists to prevent PII leakage.
-          - Ensure frontend code does not store PII in localStorage, sessionStorage, or cookies, except properly secured httpOnly authentication cookies where appropriate.
-          - If any violation is found, mark this check as FAILED and describe the specific issue with file path and line numbers.
-          - The MR cannot be merged until all violationare resolved.
-
+          - Carefully scan all code for GDPR violations and improper handling of Personally Identifiable Information (PII). - This is a BLOCKING check: any violation must prevent merge. - Ensure no PII fields such as mothers_maiden_name, billing_address, phone_number, date_of_birth, annual_income, email, address, or full_name are transmitted via WebSocket broadcasts, public APIs, logs, analytics, or third-party services without authorization. - Verify that PII is never logged in plaintext. User IDs may be acceptable, but actual PII values must not appear in logs. - Confirm that database queries select only the minimum fields necessary for the operation and do not retrieve unrelated PII. - Flag any collection or processing of PII without a clear and legitimate purpose directly related to core functionality. - Ensure User A’s PII is never visible to User B through API responses, broadcasts, pub/sub systems, cache entries, or shared channels. - Verify that API responses and WebSocket messages use allowlists of safe fields rather than denylists to prevent PII leakage. - Ensure frontend code does not store PII in localStorage, sessionStorage, or cookies, except properly secured httpOnly authentication cookies where appropriate. - If any violation is found, mark this check as FAILED and describe the specific issue with file path and line numbers. - The MR cannot be merged until all violationare resolved.
 
       - mode: warning
         name: Enforce Feature Flag
         instructions: >-
-          FAIL if a PR introduces or modifies production application logic and
-          the new behavior is not guarded by a feature flag. PASS only if: 1)
-          Each new behavior branch is conditionally gated by an existing or
-          newly added feature flag, and 2) The PR includes the flag
-          identifier(s) in code or PR description. Exempt files: Makefile,
-          Dockerfile, *.md, CI/workflow config, and other non-runtime
-          tooling/config files.
+          FAIL if a PR introduces or modifies production application logic and the new behavior is not guarded by a feature flag. PASS only if: 1) Each new behavior branch is conditionally gated by an existing or newly added feature flag, and 2) The PR includes the flag identifier(s) in code or PR description. Exempt files: Makefile, Dockerfile, *.md, CI/workflow config, and other non-runtime tooling/config files.
 
     # Pre-configured pre-merge checks
     docstrings:
@@ -168,8 +134,7 @@ reviews:
     title:
       mode: error
       requirements: >
-        - Title must either be auto-generated by CodeRabbit or have a ticket linked and give an accurate description of where and what the changes encompass
-        - Title must not contain emojis and non-ASCII characters
+        - Title must either be auto-generated by CodeRabbit or have a ticket linked and give an accurate description of where and what the changes encompass - Title must not contain emojis and non-ASCII characters
     description:
       mode: warning
     issue_assessment:
@@ -361,7 +326,6 @@ chat:
     linear:
       usage: enabled
 
-
 # Configuration for CodeRabbit code-gen capabilities
 code_generation:
   docstrings:
@@ -380,4 +344,3 @@ issue_enrichment:
   labeling:
     labeling_instructions: []
     auto_apply_labels: true
-
