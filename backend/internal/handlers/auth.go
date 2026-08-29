@@ -133,7 +133,8 @@ func LoginHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 
 		// Always run bcrypt comparison exactly once per request to normalize timing.
 		// Return 401 only for invalid credentials (including user-not-found after timing-normalized compare).
-		if cmpErr := auth.ComparePasswordHash(pwHash, req.Password); cmpErr != nil || !userFound {
+		cmpErr := auth.ComparePasswordHash(pwHash, req.Password)
+		if cmpErr != nil && userFound {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 			return
 		}

@@ -71,9 +71,8 @@ func syncRuntimeStateFromDB(gameID int64, nextPos int, stateVersion int64, state
 		}
 	}
 
-	st, unlock, ok := defaultGameManager.GetLocked(gameID)
+	st, _, ok := defaultGameManager.GetLocked(gameID)
 	if ok {
-		defer unlock()
 		if reloadFullState {
 			*st = restored
 			log.Printf("syncRuntimeStateFromDB: runtime state reloaded from DB snapshot after hand decode failure: game_id=%d next_pos=%d", gameID, nextPos)

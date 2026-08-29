@@ -79,7 +79,7 @@ func scorePairs(cards []common.Card) int {
 	for _, n := range count {
 		// nC2 pairs, each pair is 2 points.
 		if n >= 2 {
-			points += (n * (n - 1) / 2) * 2
+			points += (n * (n - 1)) * 2
 		}
 	}
 	return points

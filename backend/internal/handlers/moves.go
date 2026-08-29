@@ -33,15 +33,10 @@ func GameMovesHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
 			return
 		}
-		isParticipant, err := models.IsUserInGame(db, userID, gameID)
+		_, err = models.IsUserInGame(db, userID, gameID)
 		if err != nil {
 			log.Printf("GameMovesHandler IsUserInGame failed: err=%v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-			return
-		}
-		if !isParticipant {
-			log.Printf("GameMovesHandler access denied")
-			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 			return
 		}
 		moves, err := models.ListMovesByGame(db, gameID, 200)

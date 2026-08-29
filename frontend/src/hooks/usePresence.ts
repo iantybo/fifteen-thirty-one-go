@@ -62,10 +62,6 @@ export function usePresence() {
     }, 30000)
 
     return () => {
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current)
-      }
-      ws.disconnect()
       updatePresence('offline').catch((err) => {
         console.error('Failed to set offline status:', err)
       })

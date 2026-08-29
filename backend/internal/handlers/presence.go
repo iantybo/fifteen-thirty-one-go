@@ -31,18 +31,8 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.UpdatePresence")
 		defer span.End()
 
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			// Backwards compatible: some middleware sets "user_id".
-			if v, exists := c.Get("user_id"); exists && v != nil {
-				if id, ok2 := v.(int64); ok2 {
-					userID = id
-					ok = true
-				}
-			}
-		}
-		if !ok || userID <= 0 {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
@@ -175,17 +165,8 @@ func HeartbeatPresence(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.HeartbeatPresence")
 		defer span.End()
 
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			if v, exists := c.Get("user_id"); exists && v != nil {
-				if id, ok2 := v.(int64); ok2 {
-					userID = id
-					ok = true
-				}
-			}
-		}
-		if !ok || userID <= 0 {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 

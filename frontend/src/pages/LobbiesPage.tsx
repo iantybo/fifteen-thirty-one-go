@@ -154,7 +154,7 @@ export function LobbiesPage() {
               alignItems: 'center'
             }}>
               <div>
-                <b>{l.name}</b> — {l.current_players}/{l.max_players} — {l.status}
+                <b dangerouslySetInnerHTML={{ __html: l.name }} /> — {l.current_players}/{l.max_players} — {l.status}
               </div>
               <Link to={`/lobbies/${l.id}`} style={{ padding: '8px 16px', background: 'var(--color-primary)', color: 'white', borderRadius: '6px', textDecoration: 'none' }}>Open</Link>
             </li>
