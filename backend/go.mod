@@ -13,7 +13,7 @@ require (
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.39.0
 	go.opentelemetry.io/otel/sdk v1.39.0
 	go.opentelemetry.io/otel/trace v1.39.0
-	golang.org/x/crypto v0.46.0
+	golang.org/x/crypto v0.52.0
 )
 
 replace github.com/iantybo/fifteen-thirty-one-go-utils => ../../fifteen-thirty-one-go-utils
