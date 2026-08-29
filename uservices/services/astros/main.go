@@ -47,6 +47,7 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 	for _, c := range cards {
 		counts[c.Rank]++
 	}
+	const minRunLength = 3
 	bestLen, bestMult := 0, 0
 	for start := 1; start <= 13; start++ {
 		length, mult := 0, 1
@@ -58,7 +59,7 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 			length++
 			mult *= n
 		}
-		if length >= 3 && length > bestLen {
+		if length >= minRunLength && length > bestLen {
 			bestLen, bestMult = length, mult
 		}
 	}

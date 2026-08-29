@@ -14,10 +14,13 @@ import (
 
 const serviceName = "basil"
 
+// listenAddr is the address the service binds to.
+const listenAddr = ":8080"
+
 func main() {
 	svc := service.New(serviceName)
 	svc.Handle("/score", handleScore(svc))
-	if err := svc.ListenAndServe(":8080"); err != nil {
+	if err := svc.ListenAndServe(listenAddr); err != nil {
 		panic(err)
 	}
 }

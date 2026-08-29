@@ -1,3 +1,4 @@
+// Reads and validates the API base URL from Vite env vars.
 export function apiBaseUrl(): string {
   const raw = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''
   const baseUrl = raw.trim().replace(/\/+$/, '')

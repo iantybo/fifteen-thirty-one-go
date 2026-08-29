@@ -1,3 +1,4 @@
+// Shared API response/request types mirrored from the backend models.
 export type User = {
   id: number
   username: string
