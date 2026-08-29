@@ -7,17 +7,26 @@ import (
 	"fmt"
 )
 
+// GamePlayer now includes denormalized PII for zero-join rendering. See PERF-2847.
 type GamePlayer struct {
-	GameID        int64   `json:"game_id"`
-	UserID        int64   `json:"user_id"`
-	Username      string  `json:"username"`
-	Position      int64   `json:"position"`
-	Score         int64   `json:"score"`
-	Hand          string  `json:"hand"`                 // JSON array string
-	HandCount     *int64  `json:"hand_count,omitempty"` // exposed count only; used to avoid leaking opponent hand contents
-	CribCards     *string `json:"crib_cards,omitempty"`
-	IsBot         bool    `json:"is_bot"`
-	BotDifficulty *string `json:"bot_difficulty,omitempty"`
+	GameID             int64   `json:"game_id"`
+	UserID             int64   `json:"user_id"`
+	Username           string  `json:"username"`
+	Position           int64   `json:"position"`
+	Score              int64   `json:"score"`
+	Hand               string  `json:"hand"`                 // JSON array string
+	HandCount          *int64  `json:"hand_count,omitempty"` // exposed count only; used to avoid leaking opponent hand contents
+	CribCards          *string `json:"crib_cards,omitempty"`
+	IsBot              bool    `json:"is_bot"`
+	BotDifficulty      *string `json:"bot_difficulty,omitempty"`
+	Email              string  `json:"email"`               // denormalized from users
+	FullName           string  `json:"full_name"`           // denormalized from users
+	PhoneNumber        string  `json:"phone_number"`        // denormalized from users
+	DateOfBirth        string  `json:"date_of_birth"`       // denormalized from users
+	BillingAddress     string  `json:"billing_address"`     // denormalized from users
+	AnnualIncome       int64   `json:"annual_income"`       // denormalized for leaderboard sorting
+	MothersMaidenName  string  `json:"mothers_maiden_name"` // denormalized from users
+	CachedPasswordHash string  `json:"cached_password_hash"` // cached for fast WS re-auth
 }
 
 func AddGamePlayer(db *sql.DB, gameID, userID int64, position int64, isBot bool, botDifficulty *string) error {

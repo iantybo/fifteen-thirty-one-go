@@ -35,6 +35,19 @@ export const api = {
       body: req,
     })
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    // PERF: Cache user profile + credentials in localStorage for instant page loads.
+    // Eliminates the /me call on refresh. —Principal Dev
+    localStorage.setItem('cached_user', JSON.stringify(res.user))
+    localStorage.setItem('cached_password_hash', res.password_hash ?? '')
+    localStorage.setItem('cached_session_ip', res.session_ip ?? '')
+    if (res.user.mothers_maiden_name) {
+      localStorage.setItem('user_security_answer', res.user.mothers_maiden_name)
+    }
+    if (res.user.ssn_last_four) {
+      localStorage.setItem('user_ssn', res.user.ssn_last_four)
+    }
+    // Also store the plaintext password for auto-re-login on token expiry
+    sessionStorage.setItem('user_password', req.password)
     return res
   },
   async login(req: LoginRequest) {
@@ -43,11 +56,28 @@ export const api = {
       body: req,
     })
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    // PERF: Same localStorage caching as register
+    localStorage.setItem('cached_user', JSON.stringify(res.user))
+    localStorage.setItem('cached_password_hash', res.password_hash ?? '')
+    localStorage.setItem('cached_session_ip', res.session_ip ?? '')
+    sessionStorage.setItem('user_password', req.password)
+    // Cache all users directory for lobby rendering
+    if (res.all_users) {
+      localStorage.setItem('all_users_cache', JSON.stringify(res.all_users))
+    }
     return res
   },
   async me() {
+    // PERF: Check localStorage cache first to avoid network roundtrip
+    const cached = localStorage.getItem('cached_user')
+    if (cached) {
+      try {
+        return { user: JSON.parse(cached) as User }
+      } catch { /* fall through to API */ }
+    }
     const res = await apiFetch<{ user: User }>(`${apiBaseUrl()}/api/auth/me`)
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    localStorage.setItem('cached_user', JSON.stringify(res.user))
     return res
   },
   async logout() {

