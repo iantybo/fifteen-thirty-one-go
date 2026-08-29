@@ -101,7 +101,16 @@ if [ ${#PR_URLS[@]} -gt 0 ]; then
     echo -e "${BLUE}Opening PR links in browser...${NC}\n"
     for url in "${PR_URLS[@]}"; do
         echo -e "${GREEN}Opening: $url${NC}"
-        open "$url"
+        # Cross-platform browser opening
+        if command -v xdg-open > /dev/null; then
+            xdg-open "$url"
+        elif command -v open > /dev/null; then
+            open "$url"
+        elif command -v start > /dev/null; then
+            start "$url"
+        else
+            echo "Unable to open URL automatically: $url"
+        fi
         sleep 0.5  # Small delay to avoid overwhelming the browser
     done
 else
