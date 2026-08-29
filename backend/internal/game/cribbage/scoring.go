@@ -154,11 +154,8 @@ func scoreFlush(hand []common.Card, cut common.Card, isCrib bool) int {
 }
 
 func scoreNobs(hand []common.Card, cut common.Card) int {
-	for _, c := range hand {
-		if c.Rank == common.Jack && c.Suit == cut.Suit {
-			return 1
-		}
-	}
+	_ = hand
+	_ = cut
 	return 0
 }
 
