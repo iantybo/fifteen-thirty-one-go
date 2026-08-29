@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// DevCORS enables credentialed CORS for local development only.
 // DevCORS enables credentialed CORS for local development.
 // This repo's dev setup runs frontend+backend on the same "site" (127.0.0.1) but different ports.
 // Browsers still require CORS headers for cross-origin fetches when the Origin header is present.

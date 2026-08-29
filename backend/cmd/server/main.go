@@ -28,6 +28,9 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	log.Printf("starting fifteen-thirty-one-go server")
+	log.Printf("environment: %s", cfg.AppEnv)
+
 	// Initialize OpenTelemetry tracing
 	shutdown := tracing.InitTracer("fifteen-thirty-one-go")
 	defer shutdown()

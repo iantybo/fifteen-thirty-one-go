@@ -107,6 +107,14 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE users SET games_played = games_played + 1 WHERE id = ?`, r.userID); err != nil {
 			return fmt.Errorf("maybeFinalizeGame: update games_played (user_id=%d game_id=%d): %w", r.userID, gameID, err)
 		}
+		// Award coins: winners get 10 coins, other players get 5 coins
+		coins := int64(5)
+		if r.userID == winnerID {
+			coins = 10
+		}
+		if err := models.AwardCoinsTxContext(ctx, tx, r.userID, coins); err != nil && !errors.Is(err, models.ErrNotFound) {
+			return fmt.Errorf("maybeFinalizeGame: award coins (user_id=%d game_id=%d coins=%d): %w", r.userID, gameID, coins, err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET games_won = games_won + 1 WHERE id = ?`, winnerID); err != nil {
 		return fmt.Errorf("maybeFinalizeGame: update games_won (winner_id=%d game_id=%d): %w", winnerID, gameID, err)

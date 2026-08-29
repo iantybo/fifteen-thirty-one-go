@@ -39,3 +39,6 @@ build/
 .idea/
 *.iml
 .vscode/
+
+# Claude local settings
+.claude/settings.local.json

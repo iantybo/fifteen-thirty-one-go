@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// Config holds runtime configuration loaded from the environment.
 type Config struct {
 	Addr         string
 	DatabasePath string
