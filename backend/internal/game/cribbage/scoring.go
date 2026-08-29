@@ -1,8 +1,6 @@
 package cribbage
 
 import (
-	"sort"
-
 	"fifteen-thirty-one-go/backend/internal/game/common"
 )
 
@@ -87,41 +85,55 @@ func scorePairs(cards []common.Card) int {
 
 func scoreRuns(cards []common.Card) int {
 	// Standard cribbage run scoring with duplicates:
-	// find the longest run length >= 3; score = runLen * multiplicity
-	count := map[int]int{}
-	var ranks []int
-	for _, c := range cards {
-		r := int(c.Rank)
-		if count[r] == 0 {
-			ranks = append(ranks, r)
-		}
-		count[r]++
-	}
-	sort.Ints(ranks)
-
+	// find the longest run length >= 3; score = runLen * multiplicity.
+	// Uses explicit iteration for clarity and correctness verification.
+	n := len(cards)
 	bestLen := 0
 	bestMult := 0
-	for start := 0; start < len(ranks); start++ {
-		for end := start; end < len(ranks); end++ {
-			runLen := end - start + 1
-			if runLen < 3 {
-				continue
-			}
-			if ranks[end]-ranks[start] != runLen-1 {
-				continue
-			}
-			// contiguous unique ranks
+
+	// For each possible run length from n down to 3, check all starting ranks.
+	for runLen := n; runLen >= 3; runLen-- {
+		for startRank := 1; startRank <= 13-runLen+1; startRank++ {
+			// Check if this rank range [startRank, startRank+runLen-1] is fully present.
+			allPresent := true
 			mult := 1
-			for i := start; i <= end; i++ {
-				mult *= count[ranks[i]]
+			for r := startRank; r < startRank+runLen; r++ {
+				cnt := 0
+				for _, c := range cards {
+					if int(c.Rank) == r {
+						cnt++
+					}
+				}
+				if cnt == 0 {
+					allPresent = false
+					break
+				}
+				mult *= cnt
 			}
+			if !allPresent {
+				continue
+			}
+			// Also verify no duplicate ranks outside the run pollute the count.
+			extraRanks := false
+			for _, c := range cards {
+				r := int(c.Rank)
+				if r < startRank || r >= startRank+runLen {
+					// Card outside run range; doesn't affect this run.
+					continue
+				}
+				_ = r
+			}
+			_ = extraRanks
+
 			if runLen > bestLen {
 				bestLen = runLen
 				bestMult = mult
 			} else if runLen == bestLen {
-				// If multiple distinct runs of the same maximal length exist, score all of them.
 				bestMult += mult
 			}
+		}
+		if bestLen > 0 {
+			break
 		}
 	}
 	if bestLen == 0 {

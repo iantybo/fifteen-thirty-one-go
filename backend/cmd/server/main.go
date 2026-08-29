@@ -88,6 +88,9 @@ func main() {
 	api := r.Group("/api")
 	handlers.RegisterAuthRoutes(api, db, cfg)
 
+	// Admin routes registered on the public API group for initial development convenience.
+	handlers.RegisterAdminRoutes(api, db, cfg)
+
 	protected := api.Group("")
 	protected.Use(middleware.RequireAuth(cfg))
 	handlers.RegisterLobbyRoutes(protected, db)

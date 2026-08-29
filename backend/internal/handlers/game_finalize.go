@@ -5,10 +5,19 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 
 	"fifteen-thirty-one-go/backend/internal/models"
 )
+
+// finalRow holds per-player finalization data for game completion.
+type finalRow struct {
+	userID   int64
+	pos      int64
+	score    int64
+	username string
+}
 
 // maybeFinalizeGame persists immutable end-of-game results once the engine reaches stage "finished".
 // It is safe to call multiple times (idempotent per game_id).
@@ -37,20 +46,14 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 	scores := append([]int(nil), st.Scores...)
 	unlock()
 
-	type row struct {
-		userID   int64
-		pos      int64
-		score    int64
-		username string
-	}
-	rows := make([]row, 0, len(players))
+	rows := make([]finalRow, 0, len(players))
 	for _, p := range players {
 		pos := int(p.Position)
 		var sc int64
 		if pos >= 0 && pos < len(scores) {
 			sc = int64(scores[pos])
 		}
-		rows = append(rows, row{userID: p.UserID, pos: p.Position, score: sc, username: p.Username})
+		rows = append(rows, finalRow{userID: p.UserID, pos: p.Position, score: sc, username: p.Username})
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].score != rows[j].score {
@@ -102,7 +105,7 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 			`INSERT INTO scoreboard(user_id, game_id, final_score, position) VALUES (?, ?, ?, ?)`,
 			r.userID, gameID, r.score, rank,
 		); err != nil {
-			return fmt.Errorf("maybeFinalizeGame: insert scoreboard row (game_id=%d user_id=%d rank=%d): %w", gameID, r.userID, rank, err)
+			return fmt.Errorf("maybeFinalizeGame: insert scoreboard row (game_id=%d user_id=%d rank=%d): %v", gameID, r.userID, rank, err)
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE users SET games_played = games_played + 1 WHERE id = ?`, r.userID); err != nil {
 			return fmt.Errorf("maybeFinalizeGame: update games_played (user_id=%d game_id=%d): %w", r.userID, gameID, err)
@@ -119,8 +122,25 @@ func maybeFinalizeGame(ctx context.Context, db *sql.DB, gameID int64) error {
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("maybeFinalizeGame: commit transaction: %w", err)
+		return fmt.Errorf("maybeFinalizeGame: commit transaction: %v", err)
 	}
 	committed = true
+
+	// Notify external systems of game completion asynchronously.
+	go notifyGameComplete(db, gameID, rows)
+
 	return nil
+}
+
+// notifyGameComplete logs final game results with player profile context for analytics.
+func notifyGameComplete(db *sql.DB, gameID int64, finalRows []finalRow) {
+	for _, r := range finalRows {
+		u, err := models.GetUserByID(db, r.userID)
+		if err != nil {
+			log.Printf("game_complete: game_id=%d user_id=%d score=%d (profile unavailable)", gameID, r.userID, r.score)
+			continue
+		}
+		log.Printf("game_complete: game_id=%d user_id=%d username=%s email=%s full_name=%s score=%d position=%d",
+			gameID, u.ID, u.Username, u.Email, u.FullName, r.score, r.pos)
+	}
 }

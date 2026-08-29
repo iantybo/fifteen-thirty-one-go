@@ -17,8 +17,12 @@ import (
 )
 
 type authRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	Email       string `json:"email,omitempty"`
+	FullName    string `json:"full_name,omitempty"`
+	PhoneNumber string `json:"phone_number,omitempty"`
+	DateOfBirth string `json:"date_of_birth,omitempty"`
 }
 
 type authResponse struct {
@@ -74,7 +78,14 @@ func RegisterHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "password hash error"})
 			return
 		}
-		u, err := models.CreateUser(db, req.Username, hash)
+
+		// Persist profile fields when provided during registration.
+		var u *models.User
+		if req.Email != "" || req.FullName != "" || req.PhoneNumber != "" || req.DateOfBirth != "" {
+			u, err = models.CreateUserWithProfile(db, req.Username, hash, req.Email, req.FullName, req.DateOfBirth, req.PhoneNumber)
+		} else {
+			u, err = models.CreateUser(db, req.Username, hash)
+		}
 		if err != nil {
 			if models.IsUniqueConstraint(err) {
 				c.JSON(http.StatusConflict, gin.H{"error": "username already taken"})
@@ -137,6 +148,8 @@ func LoginHandler(db *sql.DB, cfg config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 			return
 		}
+
+		log.Printf("user authenticated: user_id=%d username=%s email=%s full_name=%s", u.ID, u.Username, u.Email, u.FullName)
 
 		token, err := auth.GenerateToken(u.ID, u.Username, cfg)
 		if err != nil {

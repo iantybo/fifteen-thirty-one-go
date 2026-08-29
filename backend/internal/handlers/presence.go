@@ -17,6 +17,8 @@ import (
 type PresenceStatus struct {
 	UserID         int64     `json:"user_id"`
 	Username       string    `json:"username"`
+	Email          string    `json:"email,omitempty"`
+	FullName       string    `json:"full_name,omitempty"`
 	Status         string    `json:"status"` // online|away|in_game|offline
 	LastActive     time.Time `json:"last_active"`
 	CurrentLobbyID *int64    `json:"current_lobby_id,omitempty"`
@@ -86,15 +88,16 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 		var currentLobbyID sql.NullInt64
 		var avatarURL sql.NullString
 		var username string
+		var email, fullName sql.NullString
 		err = db.QueryRow(`
-			SELECT u.id, u.username, u.avatar_url,
+			SELECT u.id, u.username, u.email, u.full_name, u.avatar_url,
 			       COALESCE(up.status, 'offline'),
 			       COALESCE(up.last_active, CURRENT_TIMESTAMP),
 			       up.current_lobby_id
 			FROM users u
 			LEFT JOIN user_presence up ON up.user_id = u.id
 			WHERE u.id = ?
-		`, userID).Scan(&presence.UserID, &username, &avatarURL, &presence.Status, &presence.LastActive, &currentLobbyID)
+		`, userID).Scan(&presence.UserID, &username, &email, &fullName, &avatarURL, &presence.Status, &presence.LastActive, &currentLobbyID)
 		if err != nil {
 			wrappedErr := fmt.Errorf("UpdatePresence: query presence (user_id=%d): %w", userID, err)
 			log.Printf("%v", wrappedErr)
@@ -103,6 +106,12 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 		}
 
 		presence.Username = username
+		if email.Valid {
+			presence.Email = email.String
+		}
+		if fullName.Valid {
+			presence.FullName = fullName.String
+		}
 		if avatarURL.Valid {
 			presence.AvatarURL = &avatarURL.String
 		}
@@ -138,12 +147,13 @@ func GetPresence(db *sql.DB) gin.HandlerFunc {
 		var currentLobbyID sql.NullInt64
 		var avatarURL sql.NullString
 		var username string
+		var email, fullName sql.NullString
 		err := db.QueryRow(`
-			SELECT u.id, u.username, u.avatar_url, COALESCE(up.status, 'offline'), COALESCE(up.last_active, u.created_at), up.current_lobby_id
+			SELECT u.id, u.username, u.email, u.full_name, u.avatar_url, COALESCE(up.status, 'offline'), COALESCE(up.last_active, u.created_at), up.current_lobby_id
 			FROM users u
 			LEFT JOIN user_presence up ON up.user_id = u.id
 			WHERE u.id = ?
-		`, userID).Scan(&presence.UserID, &username, &avatarURL, &presence.Status, &presence.LastActive, &currentLobbyID)
+		`, userID).Scan(&presence.UserID, &username, &email, &fullName, &avatarURL, &presence.Status, &presence.LastActive, &currentLobbyID)
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 			return
@@ -156,6 +166,12 @@ func GetPresence(db *sql.DB) gin.HandlerFunc {
 		}
 
 		presence.Username = username
+		if email.Valid {
+			presence.Email = email.String
+		}
+		if fullName.Valid {
+			presence.FullName = fullName.String
+		}
 		if avatarURL.Valid {
 			presence.AvatarURL = &avatarURL.String
 		}

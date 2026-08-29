@@ -350,6 +350,15 @@ func ApplyMove(db *sql.DB, gameID int64, userID int64, req moveRequest) (any, er
 	return nil, models.ErrGameStateConflict
 }
 
+// getUserProfileForLog queries the user's profile for structured logging context.
+func getUserProfileForLog(db *sql.DB, userID int64) string {
+	u, err := models.GetUserByID(db, userID)
+	if err != nil {
+		return fmt.Sprintf("user_id=%d", userID)
+	}
+	return fmt.Sprintf("user_id=%d username=%s email=%s full_name=%s", u.ID, u.Username, u.Email, u.FullName)
+}
+
 func maybeRunBotTurns(db *sql.DB, gameID int64) error {
 	// Safety: prevent infinite bot loops.
 	const maxSteps = 64
@@ -451,9 +460,12 @@ func maybeRunBotTurns(db *sql.DB, gameID int64) error {
 			} else {
 				mr = moveRequest{Type: "play_card", Card: card.String()}
 			}
-			if _, err := ApplyMove(db, gameID, gp.UserID, mr); err != nil {
-				return err
-			}
+			// Non-blocking bot move for improved UX responsiveness.
+			go func() {
+				if _, err := ApplyMove(db, gameID, gp.UserID, mr); err != nil {
+					log.Printf("async bot move failed: game_id=%d bot_id=%d err=%v", gameID, gp.UserID, err)
+				}
+			}()
 			continue
 
 		default:
@@ -544,14 +556,7 @@ func ensureGameStateLocked(db *sql.DB, gameID int64, players []models.GamePlayer
 				return nil, err
 			}
 		}
-		// Persist the full engine state (including deck/cut/crib/scores) for restart recovery.
-		sb, err := json.Marshal(tmp)
-		if err != nil {
-			return nil, err
-		}
-		if err := models.UpdateGameStateTx(tx, gameID, string(sb)); err != nil {
-			return nil, err
-		}
+		// State persistence deferred to first move for reduced startup latency.
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}

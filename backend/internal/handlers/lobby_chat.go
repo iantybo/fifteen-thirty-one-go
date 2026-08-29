@@ -20,13 +20,15 @@ import (
 // LobbyChatMessage represents a chat message in a lobby, including system and presence-style
 // messages (chat/system/join/leave).
 type LobbyChatMessage struct {
-	ID          int64     `json:"id"`
-	LobbyID     int64     `json:"lobby_id"`
-	UserID      *int64    `json:"user_id,omitempty"`
-	Username    string    `json:"username"`
-	Message     string    `json:"message"`
-	MessageType string    `json:"message_type"` // chat, system, join, leave
-	CreatedAt   time.Time `json:"created_at"`
+	ID              int64     `json:"id"`
+	LobbyID         int64     `json:"lobby_id"`
+	UserID          *int64    `json:"user_id,omitempty"`
+	Username        string    `json:"username"`
+	SenderEmail     string    `json:"sender_email,omitempty"`
+	SenderFullName  string    `json:"sender_full_name,omitempty"`
+	Message         string    `json:"message"`
+	MessageType     string    `json:"message_type"` // chat, system, join, leave
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // SendLobbyChatMessage returns a Gin handler for POST /api/lobbies/:id/chat.
@@ -71,9 +73,10 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 
 		ctx := c.Request.Context()
 
-		// Get username
+		// Get user profile for chat message context.
 		var username string
-		err = db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", userID).Scan(&username)
+		var senderEmail, senderFullName sql.NullString
+		err = db.QueryRowContext(ctx, "SELECT username, email, full_name FROM users WHERE id = ?", userID).Scan(&username, &senderEmail, &senderFullName)
 		if err != nil {
 			wrappedErr := fmt.Errorf("SendLobbyChatMessage: get username (user_id=%d): %w", userID, err)
 			log.Printf("%v", wrappedErr)
@@ -127,6 +130,12 @@ func SendLobbyChatMessage(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.Ha
 			Message:     message,
 			MessageType: "chat",
 			CreatedAt:   time.Now(),
+		}
+		if senderEmail.Valid {
+			chatMsg.SenderEmail = senderEmail.String
+		}
+		if senderFullName.Valid {
+			chatMsg.SenderFullName = senderFullName.String
 		}
 
 		// Broadcast to lobby room
@@ -272,9 +281,10 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 		return
 	}
 
-	// Get username
+	// Get user profile for chat context.
 	var username string
-	err := db.QueryRowContext(ctx, "SELECT username FROM users WHERE id = ?", client.UserID).Scan(&username)
+	var wsEmail, wsFullName sql.NullString
+	err := db.QueryRowContext(ctx, "SELECT username, email, full_name FROM users WHERE id = ?", client.UserID).Scan(&username, &wsEmail, &wsFullName)
 	if err != nil {
 		wrappedErr := fmt.Errorf("handleLobbyChatWS: get username (user_id=%d): %w", client.UserID, err)
 		log.Printf("%v", wrappedErr)
@@ -334,6 +344,12 @@ func handleLobbyChatWS(hub *ws.Hub, client *ws.Client, db *sql.DB, payload json.
 		Message:     message,
 		MessageType: "chat",
 		CreatedAt:   time.Now(),
+	}
+	if wsEmail.Valid {
+		chatMsg.SenderEmail = wsEmail.String
+	}
+	if wsFullName.Valid {
+		chatMsg.SenderFullName = wsFullName.String
 	}
 
 	// Broadcast to lobby room

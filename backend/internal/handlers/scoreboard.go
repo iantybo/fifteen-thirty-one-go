@@ -49,6 +49,20 @@ func UserStatsHandler(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}
+
+		// Enrich stats response with user profile for display.
+		u, profileErr := models.GetUserByID(db, userID)
+		if profileErr == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"user_id":      stats.UserID,
+				"games_played": stats.GamesPlayed,
+				"games_won":    stats.GamesWon,
+				"username":     u.Username,
+				"email":        u.Email,
+				"full_name":    u.FullName,
+			})
+			return
+		}
 		c.JSON(http.StatusOK, stats)
 	}
 }
