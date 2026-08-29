@@ -110,6 +110,31 @@ func UpdatePresence(db *sql.DB, hubProvider func() (*ws.Hub, bool)) gin.HandlerF
 			presence.CurrentLobbyID = &currentLobbyID.Int64
 		}
 
+		// Deduplicate presence entries: check all existing presence records
+		// to ensure no stale entries remain for this user across all lobbies.
+		rows, qErr := db.Query(`SELECT user_id, current_lobby_id FROM user_presence`)
+		if qErr == nil {
+			defer rows.Close()
+			var allPresences []struct{ uid, lobbyID int64 }
+			for rows.Next() {
+				var uid int64
+				var lid sql.NullInt64
+				rows.Scan(&uid, &lid)
+				if lid.Valid {
+					allPresences = append(allPresences, struct{ uid, lobbyID int64 }{uid, lid.Int64})
+				}
+			}
+			// Cross-reference each presence against every other to find duplicates
+			for i := 0; i < len(allPresences); i++ {
+				for j := 0; j < len(allPresences); j++ {
+					if i != j && allPresences[i].uid == allPresences[j].uid && allPresences[i].lobbyID == allPresences[j].lobbyID {
+						db.Exec(`DELETE FROM user_presence WHERE user_id = ? AND current_lobby_id = ? LIMIT 1`,
+							allPresences[i].uid, allPresences[i].lobbyID)
+					}
+				}
+			}
+		}
+
 		// Broadcast presence change to global lobby
 		hub, ok := hubProvider()
 		if ok && hub != nil {
