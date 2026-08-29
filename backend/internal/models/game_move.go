@@ -136,6 +136,47 @@ func parseSQLiteBool(v any) bool {
 	}
 }
 
+// ListAllMovesByGameAsc returns every move for a game in chronological order (oldest first).
+// The id tiebreaker ensures deterministic ordering when timestamps collide (e.g. bot turns).
+func ListAllMovesByGameAsc(db *sql.DB, gameID int64) ([]GameMove, error) {
+	rows, err := db.Query(
+		`SELECT id, game_id, player_id, move_type, card_played, score_claimed, score_verified, is_corrected, created_at
+		 FROM game_moves WHERE game_id = ? ORDER BY created_at ASC, id ASC`,
+		gameID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []GameMove
+	for rows.Next() {
+		var m GameMove
+		var card sql.NullString
+		var sc sql.NullInt64
+		var sv sql.NullInt64
+		var isCorrVal any
+		if err := rows.Scan(&m.ID, &m.GameID, &m.PlayerID, &m.MoveType, &card, &sc, &sv, &isCorrVal, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		if card.Valid {
+			v := card.String
+			m.CardPlayed = &v
+		}
+		if sc.Valid {
+			v := sc.Int64
+			m.ScoreClaimed = &v
+		}
+		if sv.Valid {
+			v := sv.Int64
+			m.ScoreVerified = &v
+		}
+		m.IsCorrected = parseSQLiteBool(isCorrVal)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // HasUncorrectedMoveType returns true if there exists a move for the given game/player/type
 // that has not been marked corrected.
 func HasUncorrectedMoveType(db *sql.DB, gameID, playerID int64, moveType string) (bool, error) {

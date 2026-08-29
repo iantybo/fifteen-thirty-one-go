@@ -162,3 +162,44 @@ export type GameMove = {
   created_at: string
 }
 
+export type ReplayPlayer = {
+  user_id: number
+  username: string
+  position: number
+  is_bot: boolean
+}
+
+export type ReplayGameInfo = {
+  id: number
+  lobby_id: number
+  created_at: string
+  finished_at?: string
+}
+
+export type ScoreBreakdown = {
+  total: number
+  fifteens: number
+  pairs: number
+  runs: number
+  flush: number
+  nobs: number
+  reasons?: Record<string, number>
+}
+
+export type RoundSummary = {
+  round: number
+  dealer_index: number
+  cut?: Card
+  hands?: Record<string, ScoreBreakdown>
+  crib?: ScoreBreakdown
+  scores_before?: number[]
+  scores_after?: number[]
+}
+
+export type ReplayResponse = {
+  game: ReplayGameInfo
+  players: ReplayPlayer[]
+  rounds: RoundSummary[]
+  moves: GameMove[]
+}
+
