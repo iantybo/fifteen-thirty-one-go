@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"fifteen-thirty-one-go/uservices/pkg/cribbage"
+	"fifteen-thirty-one-go/uservices/pkg/meshclient"
 	"fifteen-thirty-one-go/uservices/pkg/service"
 )
 
@@ -22,8 +23,8 @@ func main() {
 	}
 }
 
-// handleScore fans out to its peer scorers, merges their breakdowns into one
-// subtotal, and returns it.
+// handleScore fans out to its peer scorers concurrently, merges their
+// breakdowns into one subtotal in a deterministic order, and returns it.
 func handleScore(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var hand cribbage.Hand
@@ -38,19 +39,15 @@ func handleScore(svc *service.Service) http.HandlerFunc {
 		ctx, cancel := service.RequestContext(r.Context())
 		defer cancel()
 
-		var result cribbage.ScoreBreakdown
-		var part0 cribbage.ScoreBreakdown
-		if err := svc.Mesh.Call(ctx, "yankees", "/score", hand, &part0); err != nil {
+		var part0, part1 cribbage.ScoreBreakdown
+		if err := svc.Mesh.CallAll(ctx,
+			meshclient.Fanout{Peer: "yankees", Path: "/score", Req: hand, Out: &part0},
+			meshclient.Fanout{Peer: "sage", Path: "/score", Req: hand, Out: &part1},
+		); err != nil {
 			service.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
-		result = result.Merge(part0)
-		var part1 cribbage.ScoreBreakdown
-		if err := svc.Mesh.Call(ctx, "sage", "/score", hand, &part1); err != nil {
-			service.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-			return
-		}
-		result = result.Merge(part1)
+		result := part0.Merge(part1)
 		service.WriteJSON(w, http.StatusOK, result)
 	}
 }

@@ -6,6 +6,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"fifteen-thirty-one-go/uservices/pkg/cribbage"
@@ -65,8 +66,15 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 	if bestLen == 0 {
 		return cribbage.ScoreBreakdown{}
 	}
+	detail := fmt.Sprintf("run of %d", bestLen)
+	if bestMult > 1 {
+		// bestMult is the product of the duplicated ranks' counts, so it can be
+		// any value > 1 (e.g. 4 for a double-double run), not just 2 or 3.
+		detail = fmt.Sprintf("%s scored %d×", detail, bestMult)
+	}
 	return cribbage.ScoreBreakdown{Components: []cribbage.ScoreComponent{{
 		Rule:   "run",
 		Points: bestLen * bestMult,
+		Detail: detail,
 	}}}
 }

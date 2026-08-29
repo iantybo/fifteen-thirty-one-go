@@ -198,18 +198,32 @@ func main() {
 	addr := ":" + port()
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server
-	}, nil)
+	}, &mcp.StreamableHTTPOptions{
+		// This server is meant to run behind a public tunnel (ngrok), so the
+		// inbound Host header is the tunnel's domain while the listener is on
+		// localhost. The SDK's default DNS-rebinding protection rejects that
+		// mismatch with 403 Forbidden. Disable it here; the endpoint is instead
+		// protected by the static API key enforced in requireAPIKey.
+		DisableLocalhostProtection: true,
+	})
 
 	mux := http.NewServeMux()
-	// The /mcp endpoint is exposed publicly via ngrok, so it is gated behind a
+	// The MCP endpoint is exposed publicly via ngrok, so it is gated behind a
 	// static API key. /healthz stays open for liveness probes.
-	mux.Handle("/mcp", requireAPIKey(apiKey, handler))
+	//
+	// We serve the MCP handler at both "/mcp" and the root "/" so it works
+	// whether the client targets <url>/mcp or just <url>. ServeMux routes the
+	// more specific "/healthz" before the "/" catch-all, so health probes are
+	// unaffected.
+	guarded := requireAPIKey(apiKey, handler)
+	mux.Handle("/mcp", guarded)
+	mux.Handle("/", guarded)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
 	})
 
-	log.Printf("service-catalog: MCP endpoint on %s/mcp (API key required)", addr)
+	log.Printf("service-catalog: MCP endpoint on %s (also %s/mcp); API key required", addr, addr)
 	srv := &http.Server{Addr: addr, Handler: mux}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("service-catalog: server error: %v", err)

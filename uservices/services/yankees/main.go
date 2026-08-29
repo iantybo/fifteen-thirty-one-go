@@ -6,6 +6,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"fifteen-thirty-one-go/uservices/pkg/cribbage"
@@ -56,5 +57,6 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 	return cribbage.ScoreBreakdown{Components: []cribbage.ScoreComponent{{
 		Rule:   "pair",
 		Points: points,
+		Detail: fmt.Sprintf("%d pair(s)", points/2),
 	}}}
 }

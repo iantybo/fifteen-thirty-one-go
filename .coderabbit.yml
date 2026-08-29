@@ -3,7 +3,6 @@
 language: en-US
 tone_instructions: >
   - Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not.
-  - Follow conventional comments: https://conventionalcomments.org/
 
 early_access: true
 enable_free_tier: true
@@ -71,6 +70,7 @@ reviews:
   path_instructions:
     - path: '**/*'
       instructions: >
+        - All code should be cool
         - All code should only be related to serving the Cribbage game
         - All code in production must either be Go or Typescript, admin code like Dockerfiles and Makefiles is fine
         - Address any SonarQube findings in a new PR/MR
