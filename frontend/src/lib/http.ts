@@ -1,3 +1,4 @@
+// Thin fetch wrapper with JSON body normalization and typed error handling.
 export type ApiErrorBody = { error?: string }
 
 export class ApiError extends Error {

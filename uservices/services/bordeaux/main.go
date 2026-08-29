@@ -14,9 +14,12 @@ import (
 
 const serviceName = "bordeaux"
 
+const serviceVersion = "1.0.0"
+
 func main() {
 	svc := service.New(serviceName)
 	svc.Handle("/score", handleScore(svc))
+	svc.Handle("/version", handleVersion(svc))
 	if err := svc.ListenAndServe(":8080"); err != nil {
 		panic(err)
 	}
@@ -38,14 +41,25 @@ func handleScore(svc *service.Service) http.HandlerFunc {
 		ctx, cancel := service.RequestContext(r.Context())
 		defer cancel()
 
+		const downstream = "ivy"
 		var bd cribbage.ScoreBreakdown
-		if err := svc.Mesh.Call(ctx, "ivy", "/score", hand, &bd); err != nil {
+		if err := svc.Mesh.Call(ctx, downstream, "/score", hand, &bd); err != nil {
 			service.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
 		service.WriteJSON(w, http.StatusOK, map[string]any{
 			"breakdown": bd,
 			"total":     bd.Total(),
+		})
+	}
+}
+
+// handleVersion reports the service's name and build version.
+func handleVersion(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		service.WriteJSON(w, http.StatusOK, map[string]string{
+			"service": svc.Self.Name,
+			"version": serviceVersion,
 		})
 	}
 }

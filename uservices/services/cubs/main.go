@@ -17,9 +17,12 @@ import (
 
 const serviceName = "cubs"
 
+const serviceVersion = "1.0.0"
+
 func main() {
 	svc := service.New(serviceName)
 	svc.Handle("/score", handleScore(svc))
+	svc.Handle("/version", handleVersion(svc))
 	if err := svc.ListenAndServe(":8080"); err != nil {
 		panic(err)
 	}
@@ -55,6 +58,16 @@ func handleScore(_ *service.Service) http.HandlerFunc {
 		service.WriteJSON(w, http.StatusOK, map[string]any{
 			"entry":      audit.entries,
 			"chain_hash": audit.prevSum,
+		})
+	}
+}
+
+// handleVersion reports the service's name and build version.
+func handleVersion(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		service.WriteJSON(w, http.StatusOK, map[string]string{
+			"service": svc.Self.Name,
+			"version": serviceVersion,
 		})
 	}
 }

@@ -14,9 +14,12 @@ import (
 
 const serviceName = "astros"
 
+const serviceVersion = "1.0.0"
+
 func main() {
 	svc := service.New(serviceName)
 	svc.Handle("/score", handleScore(svc))
+	svc.Handle("/version", handleVersion(svc))
 	if err := svc.ListenAndServe(":8080"); err != nil {
 		panic(err)
 	}
@@ -47,6 +50,7 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 	for _, c := range cards {
 		counts[c.Rank]++
 	}
+	const minRunLength = 3
 	bestLen, bestMult := 0, 0
 	for start := 1; start <= 13; start++ {
 		length, mult := 0, 1
@@ -58,7 +62,7 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 			length++
 			mult *= n
 		}
-		if length >= 3 && length > bestLen {
+		if length >= minRunLength && length > bestLen {
 			bestLen, bestMult = length, mult
 		}
 	}
@@ -69,4 +73,14 @@ func score(hand cribbage.Hand) cribbage.ScoreBreakdown {
 		Rule:   "run",
 		Points: bestLen * bestMult,
 	}}}
+}
+
+// handleVersion reports the service's name and build version.
+func handleVersion(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		service.WriteJSON(w, http.StatusOK, map[string]string{
+			"service": svc.Self.Name,
+			"version": serviceVersion,
+		})
+	}
 }

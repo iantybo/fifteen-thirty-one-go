@@ -1,3 +1,4 @@
+// Typed API client built on top of apiFetch.
 import { apiBaseUrl } from '../lib/env'
 import { ApiError, apiFetch } from '../lib/http'
 import type {
