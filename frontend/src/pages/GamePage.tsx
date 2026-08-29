@@ -81,6 +81,10 @@ function PlayerProfileCard({
   const wins = stats?.games_won ?? 0
   const losses = Math.max(0, gamesPlayed - wins)
   const winRate = gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : null
+  const currentStreak = stats?.current_win_streak ?? 0
+  const longestStreak = stats?.longest_win_streak ?? 0
+  const bestScore = stats?.best_score ?? 0
+  const avgScore = stats?.average_score ?? 0
   const rank =
     gamesPlayed >= 20 ? (winRate !== null && winRate >= 60 ? 'Ace' : winRate !== null && winRate >= 45 ? 'Pro' : 'Regular') : 'Rookie'
 
@@ -213,6 +217,24 @@ function PlayerProfileCard({
             <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Win %</div>
               <div style={{ fontSize: 16, fontWeight: 900 }}>{winRate === null ? '—' : `${winRate}%`}</div>
+            </div>
+            <div
+              style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}
+              title="Current win streak (longest ever)"
+            >
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Streak</div>
+              <div style={{ fontSize: 16, fontWeight: 900 }}>
+                {currentStreak}
+                {longestStreak > 0 ? <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}> / {longestStreak}</span> : null}
+              </div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Best</div>
+              <div style={{ fontSize: 16, fontWeight: 900 }}>{gamesPlayed > 0 ? bestScore : '—'}</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 10, padding: '6px 8px', textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, color: '#475569' }}>Avg</div>
+              <div style={{ fontSize: 16, fontWeight: 900 }}>{gamesPlayed > 0 ? avgScore : '—'}</div>
             </div>
           </div>
         )}
