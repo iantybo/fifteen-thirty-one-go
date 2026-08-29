@@ -6,9 +6,9 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 
+	"fifteen-thirty-one-go/backend/internal/database"
 	"fifteen-thirty-one-go/backend/internal/game/common"
 	"fifteen-thirty-one-go/backend/internal/game/cribbage"
 	"fifteen-thirty-one-go/backend/internal/models"
@@ -31,14 +31,12 @@ func GetGameHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.GetGameHandler")
 		defer span.End()
 
-		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
+		gameID, ok := parseIDParam(c, "id", "game")
+		if !ok {
 			return
 		}
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 		snap, err := BuildGameSnapshotForUser(db, gameID, userID)
@@ -64,14 +62,12 @@ func MoveHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.MoveHandler")
 		defer span.End()
 
-		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
+		gameID, ok := parseIDParam(c, "id", "game")
+		if !ok {
 			return
 		}
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
@@ -111,14 +107,12 @@ func CountHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.CountHandler")
 		defer span.End()
 
-		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
+		gameID, ok := parseIDParam(c, "id", "game")
+		if !ok {
 			return
 		}
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
@@ -239,14 +233,12 @@ func QuitGameHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.QuitGameHandler")
 		defer span.End()
 
-		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil || gameID <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
+		gameID, ok := parseIDParam(c, "id", "game")
+		if !ok {
 			return
 		}
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
@@ -287,14 +279,12 @@ func NextHandHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.NextHandHandler")
 		defer span.End()
 
-		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil || gameID <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
+		gameID, ok := parseIDParam(c, "id", "game")
+		if !ok {
 			return
 		}
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 		isParticipant, err := models.IsUserInGame(db, userID, gameID)
@@ -442,14 +432,12 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.CorrectHandler")
 		defer span.End()
 
-		gameID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game id"})
+		gameID, ok := parseIDParam(c, "id", "game")
+		if !ok {
 			return
 		}
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
@@ -507,36 +495,22 @@ func CorrectHandler(db *sql.DB) gin.HandlerFunc {
 		}
 
 		// Mark original move as corrected before inserting the correction (atomic via tx).
-		tx, err := db.Begin()
-		if err != nil {
-			log.Printf("CorrectHandler begin tx failed: move_id=%d err=%v", req.MoveID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-			return
-		}
-		defer tx.Rollback()
-
-		if err := models.MarkMoveAsCorrectedTx(tx, req.MoveID); err != nil {
-			log.Printf("MarkMoveAsCorrected failed: move_id=%d err=%v", req.MoveID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-			return
-		}
-
 		verified := *prev.ScoreVerified
 		newClaim := req.NewClaim
-		if err := models.InsertMoveTx(tx, models.GameMove{
-			GameID:        gameID,
-			PlayerID:      userID,
-			MoveType:      prev.MoveType + "_correct",
-			ScoreClaimed:  &newClaim,
-			ScoreVerified: &verified,
-			IsCorrected:   false,
+		if err := database.WithTx(db, func(tx *sql.Tx) error {
+			if err := models.MarkMoveAsCorrectedTx(tx, req.MoveID); err != nil {
+				return err
+			}
+			return models.InsertMoveTx(tx, models.GameMove{
+				GameID:        gameID,
+				PlayerID:      userID,
+				MoveType:      prev.MoveType + "_correct",
+				ScoreClaimed:  &newClaim,
+				ScoreVerified: &verified,
+				IsCorrected:   false,
+			})
 		}); err != nil {
-			log.Printf("InsertMoveTx (correction) failed: game_id=%d move_id=%d err=%v", gameID, req.MoveID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
-			return
-		}
-		if err := tx.Commit(); err != nil {
-			log.Printf("CorrectHandler commit failed: move_id=%d err=%v", req.MoveID, err)
+			log.Printf("CorrectHandler tx failed: game_id=%d move_id=%d err=%v", gameID, req.MoveID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 			return
 		}

@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -106,7 +105,7 @@ func WebSocketHandler(hubProvider func() (*ws.Hub, bool), db *sql.DB, cfg config
 		// Preconditions before attempting the upgrade so we can return HTTP errors normally.
 		room := strings.TrimSpace(c.Query("room"))
 		if room == "" {
-			room = "lobby:global"
+			room = GlobalLobbyRoom
 		}
 		hub, ok := hubProvider()
 		if !ok || hub == nil {
@@ -251,7 +250,7 @@ func handleWSMessage(hub *ws.Hub, client *ws.Client, db *sql.DB, msg []byte) {
 		// Broadcast updated snapshot to the game room.
 		snap, err := BuildGameSnapshotPublic(db, p.GameID)
 		if err == nil {
-			hub.Broadcast("game:"+strconv.FormatInt(p.GameID, 10), "game_update", snap)
+			hub.Broadcast(GameRoom(p.GameID), "game_update", snap)
 		} else {
 			log.Printf("BuildGameSnapshotPublic failed: game_id=%d err=%v", p.GameID, err)
 		}

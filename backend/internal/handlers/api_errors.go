@@ -11,82 +11,58 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// apiErrorMapping maps a sentinel error to an HTTP status code and safe
+// client-facing message. Order does not matter; lookup is linear.
+type apiErrorMapping struct {
+	sentinel error
+	status   int
+	message  string
+}
+
+var apiErrorMappings = []apiErrorMapping{
+	// Not-found family
+	{models.ErrNotFound, http.StatusNotFound, "not found"},
+	{models.ErrGameNotFound, http.StatusNotFound, "not found"},
+	{sql.ErrNoRows, http.StatusNotFound, "not found"},
+
+	// Bad-request (validation)
+	{models.ErrInvalidJSON, http.StatusBadRequest, "invalid json"},
+	{models.ErrInvalidCard, http.StatusBadRequest, "invalid card"},
+	{models.ErrWouldExceed31, http.StatusBadRequest, "move would exceed 31"},
+	{models.ErrCardNotInHand, http.StatusBadRequest, "card not in hand"},
+	{models.ErrDiscardCardNotInHand, http.StatusBadRequest, "discard card not in hand"},
+	{models.ErrInvalidDiscardCount, http.StatusBadRequest, "invalid discard count"},
+	{models.ErrInvalidPlayer, http.StatusBadRequest, "invalid player"},
+	{models.ErrInvalidPlayerPosition, http.StatusBadRequest, "invalid player position"},
+	{models.ErrUnknownMoveType, http.StatusBadRequest, "unknown move type"},
+
+	// Forbidden (permissions)
+	{models.ErrNotAPlayer, http.StatusForbidden, "not a player"},
+	{models.ErrLobbyNotJoinable, http.StatusForbidden, "lobby not joinable"},
+	{models.ErrPlayerNotInGame, http.StatusForbidden, "player not in game"},
+
+	// Conflict (state)
+	{models.ErrNotYourTurn, http.StatusConflict, "not your turn"},
+	{models.ErrNotInPeggingStage, http.StatusConflict, "not in pegging stage"},
+	{models.ErrNotInDiscardStage, http.StatusConflict, "not in discard stage"},
+	{models.ErrDiscardAlreadyCompleted, http.StatusConflict, "discard already completed"},
+	{models.ErrHasLegalPlay, http.StatusConflict, "you have a legal play"},
+	{models.ErrGameStateMissing, http.StatusConflict, "game state unavailable; recreate lobby"},
+	{models.ErrGameStateConflict, http.StatusConflict, "game state changed; retry"},
+	{models.ErrLobbyFull, http.StatusConflict, "lobby full"},
+}
+
 func writeAPIError(c *gin.Context, err error) {
 	if err == nil {
-		// This is a programming error: callers should never pass nil here.
-		// Fail fast so we get a stack trace in logs (Gin recovery middleware).
 		log.Printf("BUG: writeAPIError called with nil error")
 		panic("writeAPIError called with nil error")
 	}
 
-	// Known sentinel errors
-	if errors.Is(err, models.ErrNotFound) || errors.Is(err, models.ErrGameNotFound) || errors.Is(err, sql.ErrNoRows) {
-		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
-		return
-	}
-
-	// Safe typed validation / permission / conflict errors (do NOT echo raw errors).
-	switch {
-	case errors.Is(err, models.ErrInvalidJSON):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
-		return
-	case errors.Is(err, models.ErrInvalidCard):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid card"})
-		return
-	case errors.Is(err, models.ErrNotAPlayer):
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "not a player"})
-		return
-	case errors.Is(err, models.ErrNotYourTurn):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "not your turn"})
-		return
-	case errors.Is(err, models.ErrNotInPeggingStage):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "not in pegging stage"})
-		return
-	case errors.Is(err, models.ErrWouldExceed31):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "move would exceed 31"})
-		return
-	case errors.Is(err, models.ErrCardNotInHand):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "card not in hand"})
-		return
-	case errors.Is(err, models.ErrNotInDiscardStage):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "not in discard stage"})
-		return
-	case errors.Is(err, models.ErrDiscardCardNotInHand):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "discard card not in hand"})
-		return
-	case errors.Is(err, models.ErrDiscardAlreadyCompleted):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "discard already completed"})
-		return
-	case errors.Is(err, models.ErrInvalidDiscardCount):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid discard count"})
-		return
-	case errors.Is(err, models.ErrInvalidPlayer):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid player"})
-		return
-	case errors.Is(err, models.ErrInvalidPlayerPosition):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid player position"})
-		return
-	case errors.Is(err, models.ErrUnknownMoveType):
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "unknown move type"})
-		return
-	case errors.Is(err, models.ErrHasLegalPlay):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "you have a legal play"})
-		return
-	case errors.Is(err, models.ErrGameStateMissing):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "game state unavailable; recreate lobby"})
-		return
-	case errors.Is(err, models.ErrGameStateConflict):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "game state changed; retry"})
-		return
-	case errors.Is(err, models.ErrLobbyFull):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "lobby full"})
-		return
-	case errors.Is(err, models.ErrLobbyNotJoinable):
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "lobby not joinable"})
-		return
-	case errors.Is(err, models.ErrPlayerNotInGame):
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "player not in game"})
-		return
+	for _, m := range apiErrorMappings {
+		if errors.Is(err, m.sentinel) {
+			c.AbortWithStatusJSON(m.status, gin.H{"error": m.message})
+			return
+		}
 	}
 
 	// Unknown/internal errors: log details, return generic message.

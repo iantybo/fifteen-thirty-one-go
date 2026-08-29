@@ -183,9 +183,8 @@ func CreateLobbyHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		hostID, ok := userIDFromContext(c)
+		hostID, ok := requireUserID(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
@@ -285,14 +284,12 @@ func JoinLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.JoinLobbyHandler")
 		defer span.End()
 
-		lobbyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lobby id"})
+		lobbyID, ok := parseIDParam(c, "id", "lobby")
+		if !ok {
 			return
 		}
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
@@ -501,14 +498,12 @@ func AddBotToLobbyHandler(db *sql.DB) gin.HandlerFunc {
 		_, span := tracing.StartSpan(c.Request.Context(), "handlers.AddBotToLobbyHandler")
 		defer span.End()
 
-		lobbyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-		if err != nil || lobbyID <= 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lobby id"})
+		lobbyID, ok := parseIDParam(c, "id", "lobby")
+		if !ok {
 			return
 		}
-		userID, ok := userIDFromContext(c)
+		userID, ok := requireUserID(c)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
