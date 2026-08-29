@@ -1,0 +1,18 @@
+{
+  "$schema": "https://example.invalid/claude-preferences.schema.json",
+  "_comment": "Throwaway preferences file. Not read by any tooling. Present for demo purposes only.",
+  "assistant": {
+    "tone": "concise",
+    "emojiInCommitMessages": false,
+    "preferredGreeting": "howdy"
+  },
+  "cribbage": {
+    "favoriteHand": "29",
+    "muggins": false,
+    "skunkLine": 91
+  },
+  "unused": {
+    "flags": ["alpha", "beta", "delta"],
+    "nested": { "deeply": { "pointless": true } }
+  }
+}

@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Card, GameMove, GameSnapshot, UserStats } from '../api/types'
 import { useAuth } from '../auth/auth'
-import { WsClient } from '../ws/wsClient'
+import { useSyncEngine } from '../sync'
+import type { SyncAction } from '../sync'
 import type React from 'react'
 
 // Standard poker-size playing cards are 2.5" x 3.5" (ratio 5:7). Keep our UI cards at that ratio.
@@ -650,13 +651,36 @@ export function GamePage() {
   const isValidId = Number.isFinite(gameId) && gameId > 0
   const { user } = useAuth()
   const nav = useNavigate()
-  const ws = useMemo(() => new WsClient(), [])
-  const [status, setStatus] = useState<string>('disconnected')
-  const [snap, setSnap] = useState<GameSnapshot | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+
+  // Game state now flows through the Optimistic Sync Engine (see src/sync/).
+  // The engine owns the WebSocket connection, the authoritative snapshot, and
+  // the optimistic prediction that lets the board move before the server
+  // confirms. GamePage renders the engine's optimistic view and dispatches
+  // actions instead of awaiting each move then refetching.
+  const {
+    snapshot: engineSnapshot,
+    state: optimisticState,
+    connected,
+    reconciling,
+    pendingCount,
+    dispatch,
+    lastReconcile,
+  } = useSyncEngine(gameId, user?.id)
+
+  // The engine's confirmed snapshot is the source of players/game metadata; the
+  // optimistic state overlays predicted moves on top of the confirmed state.
+  const snap: GameSnapshot | null = useMemo(() => {
+    if (!engineSnapshot) return null
+    return optimisticState ? { ...engineSnapshot, state: optimisticState } : engineSnapshot
+  }, [engineSnapshot, optimisticState])
+
+  const status = connected ? 'connected' : 'disconnected'
+  const loading = !engineSnapshot && isValidId && !!user
+  const [err] = useState<string | null>(null)
   const [moveErr, setMoveErr] = useState<string | null>(null)
-  const [moveBusy, setMoveBusy] = useState(false)
+  // With optimistic dispatch the UI no longer blocks on the network; "busy" now
+  // reflects whether the engine still has unconfirmed actions in flight.
+  const moveBusy = pendingCount > 0
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [moves, setMoves] = useState<GameMove[] | null>(null)
   const [peggingCue, setPeggingCue] = useState<{ pos: number; kind: 'play'; delta?: number; card?: string } | null>(null)
@@ -665,23 +689,20 @@ export function GamePage() {
   const profileFetchRef = useRef<Set<number>>(new Set())
   const lastCueMoveIDRef = useRef<number | null>(null)
 
+  // Surface reconciliation rejections (e.g. an illegal move the server refused)
+  // so the player understands why an optimistic action was rolled back.
+  useEffect(() => {
+    if (lastReconcile && lastReconcile.rejected.length > 0) {
+      setMoveErr('A move was rejected by the server and has been rolled back.')
+    }
+  }, [lastReconcile])
+
+  // Moves are only used for transient visual cues; the engine does not own them,
+  // so we still fetch them here, re-pulling whenever the confirmed revision
+  // advances (a reconciliation just happened).
   useEffect(() => {
     if (!user || !isValidId) return
     let cancelled = false
-
-    async function fetchSnapshot() {
-      setErr(null)
-      try {
-        setLoading(true)
-        const snap = await api.getGame(gameId)
-        if (!cancelled) setSnap(snap)
-      } catch (e: unknown) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : 'failed to load game')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
     async function fetchMoves() {
       try {
         const res = await api.listGameMoves(gameId)
@@ -690,28 +711,11 @@ export function GamePage() {
         // best-effort (used for visual cues only)
       }
     }
-
-    // Fetch an initial snapshot immediately so the UI isn't blank until a WS update arrives.
-    void fetchSnapshot()
     void fetchMoves()
-
-    ws.connect(`game:${gameId}`)
-    const offOpen = ws.on('ws_open', () => setStatus('connected'))
-    const offClose = ws.on('ws_close', () => setStatus('disconnected'))
-    // WS broadcasts a public snapshot (hands hidden). Treat updates as an invalidation signal
-    // and re-fetch the user-specific snapshot via HTTP so "your hand" stays populated.
-    const offUpdate = ws.on('game_update', () => {
-      void fetchSnapshot()
-      void fetchMoves()
-    })
     return () => {
       cancelled = true
-      offOpen()
-      offClose()
-      offUpdate()
-      ws.disconnect()
     }
-  }, [user, gameId, isValidId, ws])
+  }, [user, gameId, isValidId, lastReconcile?.revision])
 
   useEffect(() => {
     setProfilesByUserId({})
@@ -802,33 +806,39 @@ export function GamePage() {
     }
   }, [cutCode])
 
-  async function submitMove(move: Parameters<(typeof api)['moveGame']>[1]) {
+  // Translate a legacy wire move into a sync-engine action and dispatch it. The
+  // engine applies it optimistically (board updates immediately), enqueues it
+  // durably, and reconciles against the server. This replaces the old
+  // await-move-then-refetch flow.
+  function submitMove(move: Parameters<(typeof api)['moveGame']>[1]) {
     if (!isValidId) return
     setMoveErr(null)
-    setMoveBusy(true)
-    try {
-      await api.moveGame(gameId, move)
-      setSelected(new Set())
-      const next = await api.getGame(gameId)
-      setSnap(next)
-    } catch (e: unknown) {
-      setMoveErr(e instanceof Error ? e.message : 'move failed')
-    } finally {
-      setMoveBusy(false)
+    let action: SyncAction
+    switch (move.type) {
+      case 'discard':
+        action = { kind: 'discard', cards: move.cards }
+        break
+      case 'play_card':
+        action = { kind: 'play_card', card: move.card }
+        break
+      case 'go':
+        action = { kind: 'go' }
+        break
     }
+    setSelected(new Set())
+    dispatch(action)
   }
 
+  // Quit still bypasses the optimistic engine: it is a terminal, non-game-move
+  // operation that should block until the server confirms before navigating.
   async function quit() {
     if (!isValidId) return
     setMoveErr(null)
-    setMoveBusy(true)
     try {
       await api.quitGame(gameId)
       nav('/lobbies', { replace: true })
     } catch (e: unknown) {
       setMoveErr(e instanceof Error ? e.message : 'failed to quit')
-    } finally {
-      setMoveBusy(false)
     }
   }
 
@@ -856,7 +866,15 @@ export function GamePage() {
             boxShadow: status === 'connected' ? '0 0 0 3px rgba(34,197,94,0.18)' : '0 0 0 3px rgba(249,115,22,0.18)',
           }}
         />
-        <div style={{ opacity: 0.8 }}>{loading ? 'Loading…' : ''}</div>
+        <div style={{ opacity: 0.8 }}>
+          {loading
+            ? 'Loading…'
+            : reconciling
+              ? 'Syncing…'
+              : pendingCount > 0
+                ? `${pendingCount} move${pendingCount === 1 ? '' : 's'} pending…`
+                : ''}
+        </div>
       </div>
       {err && <div style={{ color: 'crimson', marginTop: 8 }}>{err}</div>}
 
@@ -975,19 +993,12 @@ export function GamePage() {
                       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                         <button
                           type="button"
-                          disabled={moveBusy || loading}
-                          onClick={async () => {
+                          disabled={loading}
+                          onClick={() => {
                             setMoveErr(null)
-                            setMoveBusy(true)
-                            try {
-                              await api.nextHand(gameId)
-                              const next = await api.getGame(gameId)
-                              setSnap(next)
-                            } catch (e: unknown) {
-                              setMoveErr(e instanceof Error ? e.message : 'failed to deal next hand')
-                            } finally {
-                              setMoveBusy(false)
-                            }
+                            // Optimistically flip readiness; the engine reconciles
+                            // against the server-authored next-hand deal.
+                            dispatch({ kind: 'ready_next_hand' })
                           }}
                         >
                           {state?.ready_next_hand?.[myPos ?? -1] ? '✅ Ready (click to unready)' : '▶ Ready for next hand'}
