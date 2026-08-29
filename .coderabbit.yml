@@ -3,7 +3,6 @@
 language: en-US
 tone_instructions: >
   - Serious, clear, precise language only. When giving suggestions, indicate if the code is in the path that would cause a production outage or not.
-  - Follow conventional comments: https://conventionalcomments.org/
 
 early_access: true
 enable_free_tier: true
@@ -71,6 +70,7 @@ reviews:
   path_instructions:
     - path: '**/*'
       instructions: >
+        - All code should be cool
         - All code should only be related to serving the Cribbage game
         - All code in production must either be Go or Typescript, admin code like Dockerfiles and Makefiles is fine
         - Address any SonarQube findings in a new PR/MR
@@ -224,7 +224,45 @@ reviews:
   related_issues: true
   related_prs: true
   suggested_labels: true
-  labeling_instructions: []
+  labeling_instructions:
+    - label: tier-1
+      instructions: >
+        Apply when this PR touches any service whose `service-catalog` MCP
+        `tier` is 1 (highest impact / most critical). For every service folder
+        changed under `uservices/services/`, call the `service-catalog` MCP tool
+        `get_service` with the folder name (e.g. `yankees`, `paris`, `basil`) to
+        retrieve its tier; if many services changed, call `list_services` once
+        and cross-reference. Add this label if ANY touched service is tier 1.
+        Multiple tier labels are expected and must coexist: apply every tier-N
+        label that matches a touched service, one per distinct tier represented
+        in the PR. If the `service-catalog` MCP server is unavailable or a
+        touched folder is not found in the catalog, treat that service as tier 1
+        and apply this label.
+    - label: tier-2
+      instructions: >
+        Apply when this PR touches any service whose `service-catalog` MCP
+        `tier` is 2 (important; degrades gracefully but user-visible). Resolve
+        each touched `uservices/services/` folder's tier via the
+        `service-catalog` MCP tool `get_service` (or `list_services` for many
+        changes). Add this label if ANY touched service is tier 2, in addition
+        to any other tier-N labels that match other services changed in the same
+        PR.
+    - label: tier-3
+      instructions: >
+        Apply when this PR touches any service whose `service-catalog` MCP
+        `tier` is 3 (supporting/internal; limited blast radius). Resolve each
+        touched `uservices/services/` folder's tier via the `service-catalog`
+        MCP tool `get_service` (or `list_services` for many changes). Add this
+        label if ANY touched service is tier 3, in addition to any other tier-N
+        labels that match other services changed in the same PR.
+    - label: tier-4
+      instructions: >
+        Apply when this PR touches any service whose `service-catalog` MCP
+        `tier` is 4 (best-effort; negligible impact). Resolve each touched
+        `uservices/services/` folder's tier via the `service-catalog` MCP tool
+        `get_service` (or `list_services` for many changes). Add this label if
+        ANY touched service is tier 4, in addition to any other tier-N labels
+        that match other services changed in the same PR.
   auto_apply_labels: true
   suggested_reviewers: true
   auto_assign_reviewers: true

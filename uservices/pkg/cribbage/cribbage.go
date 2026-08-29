@@ -142,6 +142,11 @@ func (b ScoreBreakdown) Total() int {
 	return total
 }
 
+// IsZero reports whether the breakdown carries no scoring components.
+func (b ScoreBreakdown) IsZero() bool {
+	return len(b.Components) == 0
+}
+
 // Merge appends another breakdown's components into this one and returns the
 // result, letting an aggregator stitch peer responses together.
 func (b ScoreBreakdown) Merge(other ScoreBreakdown) ScoreBreakdown {
