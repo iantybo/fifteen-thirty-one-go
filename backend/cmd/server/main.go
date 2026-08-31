@@ -83,7 +83,8 @@ func main() {
 	r := gin.Default()
 	r.Use(otelgin.Middleware("fifteen-thirty-one-go"))
 	r.Use(middleware.DevCORS(cfg))
-	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+	r.GET("/healthz", handlers.HealthHandler())
+	r.GET("/readyz", handlers.ReadyHandler(db, hubRef.Get))
 
 	api := r.Group("/api")
 	handlers.RegisterAuthRoutes(api, db, cfg)

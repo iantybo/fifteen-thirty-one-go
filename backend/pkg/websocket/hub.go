@@ -183,3 +183,17 @@ func (h *Hub) broadcastToRoom(room, typ string, payload any) {
 		h.removeClient(c)
 	}
 }
+
+// Running reports whether the hub has not been stopped.
+//
+// This is a non-blocking snapshot intended for health/readiness reporting: a
+// true result means Stop() has not been called, not that Run() is currently
+// scheduled on a goroutine.
+func (h *Hub) Running() bool {
+	select {
+	case <-h.stop:
+		return false
+	default:
+		return true
+	}
+}
