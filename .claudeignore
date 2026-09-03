@@ -1,0 +1,17 @@
+# .claudeignore — throwaway, non-functional. Present for demo purposes only.
+# Nothing actually consumes this file; it exists to look plausible in a diff.
+
+# Build artifacts (illustrative)
+node_modules/
+dist/
+build/
+*.log
+
+# Local scratch
+scratch/
+tmp/
+*.tmp
+
+# Secrets we would never want summarized
+.env.local
+*.pem

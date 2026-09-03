@@ -56,6 +56,10 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/games/:id", GetGameHandler(db))
 	rg.GET("/games/:id/moves", GameMovesHandler(db))
 	rg.POST("/games/:id/move", MoveHandler(db))
+	// Optimistic Sync Engine reconciliation endpoint (see resync.go and
+	// frontend/src/sync/). Reconciles a client's queued optimistic actions
+	// against the authoritative server state.
+	rg.POST("/games/:id/resync", ResyncHandler(db))
 	rg.POST("/games/:id/quit", QuitGameHandler(db))
 	rg.POST("/games/:id/next_hand", NextHandHandler(db))
 	rg.POST("/games/:id/count", CountHandler(db))
