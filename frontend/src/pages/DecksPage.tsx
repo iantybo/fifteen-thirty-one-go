@@ -221,7 +221,15 @@ export function DecksPage() {
       <section style={{ ...cardStyle(), display: 'grid', gap: 18 }}>
         <h2 style={{ margin: 0, fontSize: 18 }}>{editingId === null ? 'Create a deck' : 'Edit deck'}</h2>
 
-        <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'minmax(260px, 1fr) auto' }}>
+        {/* auto-fit so the preview drops below the form instead of overflowing
+            on narrow screens. */}
+        <div
+          style={{
+            display: 'grid',
+            gap: 18,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))',
+          }}
+        >
           <form onSubmit={(e) => void onSubmit(e)} style={{ display: 'grid', gap: 12 }}>
             <label style={labelStyle()}>
               Deck name

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type DeckRequest } from '../api/client'
 import type { DecksResponse } from '../api/types'
 import { useAuth } from '../auth/auth'
@@ -35,6 +35,12 @@ export function DeckProvider({ children }: { children: React.ReactNode }) {
   // Decks are per-user, so (re)load whenever the signed-in user changes and
   // drop any previously loaded decks on sign-out.
   const userId = user?.id
+
+  // Tracks who the decks in state belong to. Async responses check this before
+  // writing, so a request started under a previous session cannot land on the
+  // new user's state.
+  const currentUserIdRef = useRef(userId)
+  currentUserIdRef.current = userId
   useEffect(() => {
     if (!userId) {
       setDecks(undefined)
@@ -54,7 +60,7 @@ export function DeckProvider({ children }: { children: React.ReactNode }) {
     async function load() {
       try {
         const res = await api.listDecks()
-        if (cancelled) return
+        if (cancelled || currentUserIdRef.current !== userId) return
         setDecks(res)
         setActiveRef(res.active_deck)
         setError(undefined)
@@ -75,14 +81,20 @@ export function DeckProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     if (!userId) return
     const res = await api.listDecks()
+    // The signed-in user may have changed while the request was in flight.
+    if (currentUserIdRef.current !== userId) return
     setDecks(res)
     setActiveRef(res.active_deck)
   }, [userId])
 
-  const selectDeck = useCallback(async (ref: string) => {
-    const prefs = await api.setActiveDeck(ref)
-    setActiveRef(prefs.active_deck)
-  }, [])
+  const selectDeck = useCallback(
+    async (ref: string) => {
+      const prefs = await api.setActiveDeck(ref)
+      if (currentUserIdRef.current !== userId) return
+      setActiveRef(prefs.active_deck)
+    },
+    [userId],
+  )
 
   const createDeck = useCallback(
     async (req: DeckRequest) => {

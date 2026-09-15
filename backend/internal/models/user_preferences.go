@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -48,12 +49,19 @@ func defaultPreferences(userID int64) *UserPreferences {
 // GetUserPreferences returns the stored preferences for userID. If no row
 // exists it returns the default preferences rather than sql.ErrNoRows.
 func GetUserPreferences(db *sql.DB, userID int64) (*UserPreferences, error) {
-	p, err := scanPreferencesRow(db.QueryRow(preferencesSelect, userID))
+	return GetUserPreferencesContext(context.Background(), db, userID)
+}
+
+// GetUserPreferencesContext is GetUserPreferences with request-scoped
+// cancellation. If no row exists it returns the default preferences rather
+// than sql.ErrNoRows.
+func GetUserPreferencesContext(ctx context.Context, db *sql.DB, userID int64) (*UserPreferences, error) {
+	p, err := scanPreferencesRow(db.QueryRowContext(ctx, preferencesSelect, userID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return defaultPreferences(userID), nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read user preferences (user_id=%d): %w", userID, err)
 	}
 	return p, nil
 }

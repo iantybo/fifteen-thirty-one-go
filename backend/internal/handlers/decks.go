@@ -99,7 +99,7 @@ func ListDecksHandler(db *sql.DB) gin.HandlerFunc {
 			respondDeckError(c, "ListCardDecks", userID, err)
 			return
 		}
-		prefs, err := models.GetUserPreferences(db, userID)
+		prefs, err := models.GetUserPreferencesContext(ctx, db, userID)
 		if err != nil {
 			respondDeckError(c, "GetUserPreferences", userID, err)
 			return
