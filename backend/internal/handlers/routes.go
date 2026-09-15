@@ -16,6 +16,19 @@ func RegisterAuthRoutes(rg *gin.RouterGroup, db *sql.DB, cfg config.Config) {
 	rg.POST("/auth/logout", LogoutHandler(cfg))
 }
 
+// RegisterPublicSignupRoutes wires the public signup submission endpoint.
+// Creating a signup is intentionally unauthenticated; reading them is not.
+func RegisterPublicSignupRoutes(rg *gin.RouterGroup, db *sql.DB) {
+	rg.POST("/signups", CreateSignupHandler(db))
+}
+
+// RegisterSignupAdminRoutes wires the authenticated signup management
+// endpoints. Signups contain email addresses, so these must stay auth-gated.
+func RegisterSignupAdminRoutes(rg *gin.RouterGroup, db *sql.DB) {
+	rg.GET("/signups", ListSignupsHandler(db))
+	rg.PUT("/signups/:signupId/status", UpdateSignupStatusHandler(db))
+}
+
 // RegisterLobbyRoutes wires lobby endpoints. Implemented fully in Phase 3.
 func RegisterLobbyRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/lobbies", ListLobbiesHandler(db))
@@ -52,6 +65,13 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	// Preferences
 	rg.GET("/me/preferences", GetPreferencesHandler(db))
 	rg.PUT("/me/preferences", PutPreferencesHandler(db))
+
+	// Custom card decks
+	rg.GET("/decks", ListDecksHandler(db))
+	rg.POST("/decks", CreateDeckHandler(db))
+	rg.PUT("/decks/:deckId", UpdateDeckHandler(db))
+	rg.DELETE("/decks/:deckId", DeleteDeckHandler(db))
+	rg.PUT("/me/active_deck", SetActiveDeckHandler(db))
 
 	rg.GET("/games/:id", GetGameHandler(db))
 	rg.GET("/games/:id/moves", GameMovesHandler(db))

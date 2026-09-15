@@ -14,6 +14,7 @@ import (
 	"fifteen-thirty-one-go/backend/internal/config"
 	"fifteen-thirty-one-go/backend/internal/database"
 	"fifteen-thirty-one-go/backend/internal/handlers"
+	"fifteen-thirty-one-go/backend/internal/logging"
 	"fifteen-thirty-one-go/backend/internal/middleware"
 	"fifteen-thirty-one-go/backend/internal/tracing"
 	"fifteen-thirty-one-go/backend/pkg/websocket"
@@ -27,6 +28,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+
+	// Install the structured logger before anything else logs.
+	logging.Setup(cfg.AppEnv)
 
 	// Initialize OpenTelemetry tracing
 	shutdown := tracing.InitTracer("fifteen-thirty-one-go")
@@ -80,18 +84,24 @@ func main() {
 	handlers.SetWebSocketOriginPolicy(cfg.AppEnv == "development", cfg.DevWebSocketsAllowAll, cfg.WSAllowedOrigins)
 	handlers.SetHubProvider(hubRef.Get)
 
-	r := gin.Default()
+	// gin.New + our own logger: gin.Default()'s logger writes unstructured
+	// lines and would duplicate every request log.
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(middleware.RequestLogger())
 	r.Use(otelgin.Middleware("fifteen-thirty-one-go"))
 	r.Use(middleware.DevCORS(cfg))
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
 	api := r.Group("/api")
 	handlers.RegisterAuthRoutes(api, db, cfg)
+	handlers.RegisterPublicSignupRoutes(api, db)
 
 	protected := api.Group("")
 	protected.Use(middleware.RequireAuth(cfg))
 	handlers.RegisterLobbyRoutes(protected, db)
 	handlers.RegisterGameRoutes(protected, db)
+	handlers.RegisterSignupAdminRoutes(protected, db)
 
 	// WebSocket endpoint is auth-gated via token query param or Authorization header.
 	r.GET("/ws", handlers.WebSocketHandler(hubRef.Get, db, cfg))
