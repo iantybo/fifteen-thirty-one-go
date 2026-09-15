@@ -45,6 +45,8 @@ func defaultPreferences(userID int64) *UserPreferences {
 	}
 }
 
+// GetUserPreferences returns the stored preferences for userID. If no row
+// exists it returns the default preferences rather than sql.ErrNoRows.
 func GetUserPreferences(db *sql.DB, userID int64) (*UserPreferences, error) {
 	p, err := scanPreferencesRow(db.QueryRow(preferencesSelect, userID))
 	if errors.Is(err, sql.ErrNoRows) {

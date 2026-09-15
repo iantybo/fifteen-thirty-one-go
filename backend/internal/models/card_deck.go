@@ -111,8 +111,9 @@ type CardDeck struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
-// DeckInput carries the mutable fields of a deck. Nil string pointers mean
-// "leave unchanged" on update; empty strings clear the value.
+// DeckInput carries the mutable fields of a deck. An update replaces every
+// field: an empty image URL or template clears it, and an empty color restores
+// that color's default.
 type DeckInput struct {
 	Name              string
 	BackImageURL      string
