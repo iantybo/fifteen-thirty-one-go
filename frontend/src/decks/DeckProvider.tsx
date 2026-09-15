@@ -45,6 +45,11 @@ export function DeckProvider({ children }: { children: React.ReactNode }) {
     }
 
     let cancelled = false
+    // Drop the previous user's decks before fetching. Otherwise, if this load
+    // fails, user B would keep seeing user A's decks and selection.
+    setDecks(undefined)
+    setActiveRef('')
+    setError(undefined)
     setLoading(true)
     async function load() {
       try {
