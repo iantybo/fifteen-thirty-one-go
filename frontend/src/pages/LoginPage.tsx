@@ -60,6 +60,9 @@ export function LoginPage() {
       <p style={{ marginTop: 16 }}>
         New here? <Link to="/register">Create an account</Link>
       </p>
+      <p style={{ marginTop: 4, fontSize: 14, opacity: 0.8 }}>
+        Don't have an invite yet? <Link to="/signup">Request one</Link>
+      </p>
     </div>
   )
 }

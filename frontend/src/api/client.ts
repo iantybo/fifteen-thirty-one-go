@@ -3,6 +3,9 @@ import { ApiError, apiFetch } from '../lib/http'
 import type {
   AuthResponse,
   CardDeck,
+  Signup,
+  SignupStatus,
+  SignupsResponse,
   DecksResponse,
   Game,
   GameMove,
@@ -28,6 +31,7 @@ export type GameMoveRequest =
 export type AddBotRequest = { difficulty?: 'easy' | 'medium' | 'hard' }
 export type SendChatMessageRequest = { message: string }
 export type UpdatePresenceRequest = { status: 'online' | 'away' | 'in_game' | 'offline' }
+export type CreateSignupRequest = { email: string; name: string; note?: string }
 export type DeckRequest = {
   name: string
   back_image_url?: string
@@ -227,6 +231,33 @@ export const api = {
     const res = await apiFetch<UserPreferences>(`${apiBaseUrl()}/api/me/active_deck`, {
       method: 'PUT',
       body: { active_deck: activeDeck },
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+
+  // Signups
+  async createSignup(req: CreateSignupRequest) {
+    const res = await apiFetch<{ signup: Signup }>(`${apiBaseUrl()}/api/signups`, {
+      method: 'POST',
+      body: req,
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async listSignups(params?: { status?: SignupStatus; limit?: number }) {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    const suffix = qs.toString() ? `?${qs.toString()}` : ''
+    const res = await apiFetch<SignupsResponse>(`${apiBaseUrl()}/api/signups${suffix}`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async updateSignupStatus(signupId: number, status: SignupStatus) {
+    const res = await apiFetch<{ signup: Signup }>(`${apiBaseUrl()}/api/signups/${signupId}/status`, {
+      method: 'PUT',
+      body: { status },
     })
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res

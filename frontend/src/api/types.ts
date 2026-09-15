@@ -199,3 +199,21 @@ export type UserPreferences = {
   active_deck: string
   updated_at: string
 }
+
+export type SignupStatus = 'pending' | 'invited' | 'accepted' | 'rejected'
+
+export type Signup = {
+  id: number
+  email: string
+  name: string
+  note?: string
+  status: SignupStatus
+  user_id?: number
+  created_at: string
+  updated_at: string
+}
+
+export type SignupsResponse = {
+  signups: Signup[]
+  counts: Partial<Record<SignupStatus, number>>
+}
