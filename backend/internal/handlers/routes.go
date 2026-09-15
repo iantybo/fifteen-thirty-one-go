@@ -53,6 +53,13 @@ func RegisterGameRoutes(rg *gin.RouterGroup, db *sql.DB) {
 	rg.GET("/me/preferences", GetPreferencesHandler(db))
 	rg.PUT("/me/preferences", PutPreferencesHandler(db))
 
+	// Custom card decks
+	rg.GET("/decks", ListDecksHandler(db))
+	rg.POST("/decks", CreateDeckHandler(db))
+	rg.PUT("/decks/:deckId", UpdateDeckHandler(db))
+	rg.DELETE("/decks/:deckId", DeleteDeckHandler(db))
+	rg.PUT("/me/active_deck", SetActiveDeckHandler(db))
+
 	rg.GET("/games/:id", GetGameHandler(db))
 	rg.GET("/games/:id/moves", GameMovesHandler(db))
 	rg.POST("/games/:id/move", MoveHandler(db))

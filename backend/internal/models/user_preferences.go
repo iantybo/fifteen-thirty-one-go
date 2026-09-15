@@ -10,22 +10,50 @@ import (
 var ErrInvalidMode = errors.New("invalid mode")
 
 type UserPreferences struct {
-	UserID        int64     `json:"user_id"`
-	AutoCountMode string    `json:"auto_count_mode"` // off|suggest|auto
-	UpdatedAt     time.Time `json:"updated_at"`
+	UserID        int64  `json:"user_id"`
+	AutoCountMode string `json:"auto_count_mode"` // off|suggest|auto
+	// ActiveDeck is the selected deck skin: "builtin:<id>", a custom deck id, or
+	// "" for the default deck.
+	ActiveDeck string    `json:"active_deck"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// preferencesSelect reads every preference column. active_deck is nullable, so
+// it is coalesced to the empty string ("use the default deck").
+const preferencesSelect = `SELECT user_id, auto_count_mode, COALESCE(active_deck, ''), updated_at
+	FROM user_preferences WHERE user_id = ?`
+
+// scanPreferencesRow scans a preferencesSelect row. It works with both *sql.Row
+// and *sql.Tx rows.
+func scanPreferencesRow(row interface {
+	Scan(dest ...any) error
+}) (*UserPreferences, error) {
+	var p UserPreferences
+	if err := row.Scan(&p.UserID, &p.AutoCountMode, &p.ActiveDeck, &p.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// defaultPreferences returns the values used when a user has no stored row.
+func defaultPreferences(userID int64) *UserPreferences {
+	return &UserPreferences{
+		UserID:        userID,
+		AutoCountMode: "suggest",
+		ActiveDeck:    "",
+		UpdatedAt:     time.Now().UTC(),
+	}
 }
 
 func GetUserPreferences(db *sql.DB, userID int64) (*UserPreferences, error) {
-	var p UserPreferences
-	err := db.QueryRow(`SELECT user_id, auto_count_mode, updated_at FROM user_preferences WHERE user_id = ?`, userID).
-		Scan(&p.UserID, &p.AutoCountMode, &p.UpdatedAt)
+	p, err := scanPreferencesRow(db.QueryRow(preferencesSelect, userID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return &UserPreferences{UserID: userID, AutoCountMode: "suggest", UpdatedAt: time.Now().UTC()}, nil
+		return defaultPreferences(userID), nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &p, nil
+	return p, nil
 }
 
 func SetUserAutoCountMode(db *sql.DB, userID int64, mode string) error {
@@ -60,9 +88,7 @@ func SetUserAutoCountModeAndGetPreferencesTx(db *sql.DB, userID int64, mode stri
 		return nil, err
 	}
 
-	var p UserPreferences
-	err = tx.QueryRow(`SELECT user_id, auto_count_mode, updated_at FROM user_preferences WHERE user_id = ?`, userID).
-		Scan(&p.UserID, &p.AutoCountMode, &p.UpdatedAt)
+	p, err := scanPreferencesRow(tx.QueryRow(preferencesSelect, userID))
 	if err != nil {
 		// Extremely defensive: after an upsert, the row should exist.
 		// Preserve GetUserPreferences semantics if it somehow doesn't.
@@ -72,7 +98,9 @@ func SetUserAutoCountModeAndGetPreferencesTx(db *sql.DB, userID int64, mode stri
 			if err := tx.Commit(); err != nil {
 				return nil, fmt.Errorf("commit user_preferences tx: %w", err)
 			}
-			return &UserPreferences{UserID: userID, AutoCountMode: mode, UpdatedAt: time.Now().UTC()}, nil
+			p := defaultPreferences(userID)
+			p.AutoCountMode = mode
+			return p, nil
 		}
 		_ = tx.Rollback()
 		return nil, err
@@ -81,5 +109,5 @@ func SetUserAutoCountModeAndGetPreferencesTx(db *sql.DB, userID int64, mode stri
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &p, nil
+	return p, nil
 }

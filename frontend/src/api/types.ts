@@ -162,3 +162,40 @@ export type GameMove = {
   created_at: string
 }
 
+
+export type CardDeck = {
+  id: number
+  owner_id: number
+  name: string
+  back_image_url?: string
+  face_image_template?: string
+  red_suit_color: string
+  black_suit_color: string
+  border_color: string
+  created_at: string
+  updated_at: string
+}
+
+export type BuiltinDeck = {
+  id: string
+  name: string
+  back_image_url?: string
+  face_image_template?: string
+  red_suit_color: string
+  black_suit_color: string
+  border_color: string
+}
+
+export type DecksResponse = {
+  builtin: BuiltinDeck[]
+  custom: CardDeck[]
+  /** "builtin:<id>", a custom deck id as a string, or "" for the default deck. */
+  active_deck: string
+}
+
+export type UserPreferences = {
+  user_id: number
+  auto_count_mode: 'off' | 'suggest' | 'auto'
+  active_deck: string
+  updated_at: string
+}

@@ -2,6 +2,8 @@ import { apiBaseUrl } from '../lib/env'
 import { ApiError, apiFetch } from '../lib/http'
 import type {
   AuthResponse,
+  CardDeck,
+  DecksResponse,
   Game,
   GameMove,
   GameSnapshot,
@@ -11,6 +13,7 @@ import type {
   PresenceStatus,
   SpectatorInfo,
   User,
+  UserPreferences,
   UserStats,
 } from './types'
 
@@ -25,6 +28,14 @@ export type GameMoveRequest =
 export type AddBotRequest = { difficulty?: 'easy' | 'medium' | 'hard' }
 export type SendChatMessageRequest = { message: string }
 export type UpdatePresenceRequest = { status: 'online' | 'away' | 'in_game' | 'offline' }
+export type DeckRequest = {
+  name: string
+  back_image_url?: string
+  face_image_template?: string
+  red_suit_color?: string
+  black_suit_color?: string
+  border_color?: string
+}
 
 const UNEXPECTED_EMPTY_RESPONSE_STATUS = 599
 
@@ -185,5 +196,39 @@ export const api = {
     if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
     return res
   },
-}
 
+  // Card decks
+  async listDecks() {
+    const res = await apiFetch<DecksResponse>(`${apiBaseUrl()}/api/decks`)
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async createDeck(req: DeckRequest) {
+    const res = await apiFetch<{ deck: CardDeck }>(`${apiBaseUrl()}/api/decks`, {
+      method: 'POST',
+      body: req,
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async updateDeck(deckId: number, req: DeckRequest) {
+    const res = await apiFetch<{ deck: CardDeck }>(`${apiBaseUrl()}/api/decks/${deckId}`, {
+      method: 'PUT',
+      body: req,
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+  async deleteDeck(deckId: number) {
+    // Responds 204 with no body.
+    await apiFetch<void>(`${apiBaseUrl()}/api/decks/${deckId}`, { method: 'DELETE' })
+  },
+  async setActiveDeck(activeDeck: string) {
+    const res = await apiFetch<UserPreferences>(`${apiBaseUrl()}/api/me/active_deck`, {
+      method: 'PUT',
+      body: { active_deck: activeDeck },
+    })
+    if (!res) throw new ApiError('Unexpected empty response', UNEXPECTED_EMPTY_RESPONSE_STATUS)
+    return res
+  },
+}
