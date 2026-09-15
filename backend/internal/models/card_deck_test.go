@@ -1,8 +1,10 @@
 package models
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 
 	"fifteen-thirty-one-go/backend/internal/database"
@@ -100,6 +102,7 @@ func TestValidateDeckName(t *testing.T) {
 }
 
 func TestCardDeckCRUD(t *testing.T) {
+	ctx := context.Background()
 	db := newTestDB(t)
 
 	in := DeckInput{
@@ -108,7 +111,7 @@ func TestCardDeckCRUD(t *testing.T) {
 		FaceImageTemplate: "https://cdn.example.com/{code}.svg",
 		RedSuitColor:      "#FF00AA",
 	}
-	deck, err := CreateCardDeck(db, 1, in)
+	deck, err := CreateCardDeck(ctx, db, 1, in)
 	if err != nil {
 		t.Fatalf("CreateCardDeck: %v", err)
 	}
@@ -121,20 +124,20 @@ func TestCardDeckCRUD(t *testing.T) {
 	}
 
 	// Duplicate names per owner are rejected...
-	if _, err := CreateCardDeck(db, 1, in); !errors.Is(err, ErrDeckNameTaken) {
+	if _, err := CreateCardDeck(ctx, db, 1, in); !errors.Is(err, ErrDeckNameTaken) {
 		t.Errorf("duplicate name = %v, want ErrDeckNameTaken", err)
 	}
 	// ...but a different owner may reuse the name.
-	if _, err := CreateCardDeck(db, 2, in); err != nil {
+	if _, err := CreateCardDeck(ctx, db, 2, in); err != nil {
 		t.Errorf("other owner should be able to reuse name: %v", err)
 	}
 
 	// Another user's deck is invisible.
-	if _, err := GetCardDeck(db, 2, deck.ID); !errors.Is(err, ErrDeckNotFound) {
+	if _, err := GetCardDeck(ctx, db, 2, deck.ID); !errors.Is(err, ErrDeckNotFound) {
 		t.Errorf("cross-owner read = %v, want ErrDeckNotFound", err)
 	}
 
-	updated, err := UpdateCardDeck(db, 1, deck.ID, DeckInput{Name: "Neon v2", BorderColor: "#123456"})
+	updated, err := UpdateCardDeck(ctx, db, 1, deck.ID, DeckInput{Name: "Neon v2", BorderColor: "#123456"})
 	if err != nil {
 		t.Fatalf("UpdateCardDeck: %v", err)
 	}
@@ -147,36 +150,37 @@ func TestCardDeckCRUD(t *testing.T) {
 	}
 
 	// A non-owner cannot update or delete.
-	if _, err := UpdateCardDeck(db, 2, deck.ID, DeckInput{Name: "hijack"}); !errors.Is(err, ErrDeckNotFound) {
+	if _, err := UpdateCardDeck(ctx, db, 2, deck.ID, DeckInput{Name: "hijack"}); !errors.Is(err, ErrDeckNotFound) {
 		t.Errorf("cross-owner update = %v, want ErrDeckNotFound", err)
 	}
-	if err := DeleteCardDeck(db, 2, deck.ID); !errors.Is(err, ErrDeckNotFound) {
+	if err := DeleteCardDeck(ctx, db, 2, deck.ID); !errors.Is(err, ErrDeckNotFound) {
 		t.Errorf("cross-owner delete = %v, want ErrDeckNotFound", err)
 	}
 
-	decks, err := ListCardDecks(db, 1)
+	decks, err := ListCardDecks(ctx, db, 1)
 	if err != nil || len(decks) != 1 {
 		t.Fatalf("ListCardDecks = %v, %v", decks, err)
 	}
 
-	if err := DeleteCardDeck(db, 1, deck.ID); err != nil {
+	if err := DeleteCardDeck(ctx, db, 1, deck.ID); err != nil {
 		t.Fatalf("DeleteCardDeck: %v", err)
 	}
-	if decks, err := ListCardDecks(db, 1); err != nil || len(decks) != 0 {
+	if decks, err := ListCardDecks(ctx, db, 1); err != nil || len(decks) != 0 {
 		t.Fatalf("after delete: %v, %v", decks, err)
 	}
 }
 
 func TestSetActiveDeck(t *testing.T) {
+	ctx := context.Background()
 	db := newTestDB(t)
 
-	deck, err := CreateCardDeck(db, 1, DeckInput{Name: "Mine"})
+	deck, err := CreateCardDeck(ctx, db, 1, DeckInput{Name: "Mine"})
 	if err != nil {
 		t.Fatalf("CreateCardDeck: %v", err)
 	}
 
 	// A built-in reference is accepted.
-	prefs, err := SetActiveDeck(db, 1, BuiltinDeckPrefix+"midnight")
+	prefs, err := SetActiveDeck(ctx, db, 1, BuiltinDeckPrefix+"midnight")
 	if err != nil || prefs.ActiveDeck != BuiltinDeckPrefix+"midnight" {
 		t.Fatalf("builtin selection = %+v, %v", prefs, err)
 	}
@@ -186,7 +190,7 @@ func TestSetActiveDeck(t *testing.T) {
 	}
 
 	// The default deck normalizes to the empty string.
-	if prefs, err = SetActiveDeck(db, 1, BuiltinDeckPrefix+DefaultDeckID); err != nil || prefs.ActiveDeck != "" {
+	if prefs, err = SetActiveDeck(ctx, db, 1, BuiltinDeckPrefix+DefaultDeckID); err != nil || prefs.ActiveDeck != "" {
 		t.Fatalf("default selection = %+v, %v", prefs, err)
 	}
 
@@ -195,23 +199,23 @@ func TestSetActiveDeck(t *testing.T) {
 	if deck.ID != 1 {
 		t.Fatalf("expected first deck id 1, got %d", deck.ID)
 	}
-	if prefs, err = SetActiveDeck(db, 1, own); err != nil || prefs.ActiveDeck != own {
+	if prefs, err = SetActiveDeck(ctx, db, 1, own); err != nil || prefs.ActiveDeck != own {
 		t.Fatalf("custom selection = %+v, %v", prefs, err)
 	}
 
 	// Unknown built-in and malformed references are rejected.
 	for _, bad := range []string{BuiltinDeckPrefix + "nope", "abc", "-1", "0"} {
-		if _, err := SetActiveDeck(db, 1, bad); !errors.Is(err, ErrInvalidDeckRef) {
+		if _, err := SetActiveDeck(ctx, db, 1, bad); !errors.Is(err, ErrInvalidDeckRef) {
 			t.Errorf("SetActiveDeck(%q) = %v, want ErrInvalidDeckRef", bad, err)
 		}
 	}
 	// Another user's deck cannot be selected.
-	if _, err := SetActiveDeck(db, 2, own); !errors.Is(err, ErrDeckNotFound) {
+	if _, err := SetActiveDeck(ctx, db, 2, own); !errors.Is(err, ErrDeckNotFound) {
 		t.Errorf("cross-owner selection = %v, want ErrDeckNotFound", err)
 	}
 
 	// Deleting the active deck clears the selection rather than dangling.
-	if err := DeleteCardDeck(db, 1, deck.ID); err != nil {
+	if err := DeleteCardDeck(ctx, db, 1, deck.ID); err != nil {
 		t.Fatalf("DeleteCardDeck: %v", err)
 	}
 	prefs, err = GetUserPreferences(db, 1)
@@ -224,12 +228,13 @@ func TestSetActiveDeck(t *testing.T) {
 }
 
 func TestSetActiveDeckPreservesAutoCountMode(t *testing.T) {
+	ctx := context.Background()
 	db := newTestDB(t)
 
 	if _, err := SetUserAutoCountModeAndGetPreferencesTx(db, 1, "auto"); err != nil {
 		t.Fatalf("set auto count: %v", err)
 	}
-	prefs, err := SetActiveDeck(db, 1, BuiltinDeckPrefix+"forest")
+	prefs, err := SetActiveDeck(ctx, db, 1, BuiltinDeckPrefix+"forest")
 	if err != nil {
 		t.Fatalf("SetActiveDeck: %v", err)
 	}
@@ -238,5 +243,92 @@ func TestSetActiveDeckPreservesAutoCountMode(t *testing.T) {
 	}
 	if prefs.ActiveDeck != BuiltinDeckPrefix+"forest" {
 		t.Errorf("active_deck = %q", prefs.ActiveDeck)
+	}
+}
+
+func TestActiveDeckRefStoredCanonically(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	deck, err := CreateCardDeck(ctx, db, 1, DeckInput{Name: "Mine"})
+	if err != nil {
+		t.Fatalf("CreateCardDeck: %v", err)
+	}
+
+	// A non-canonical numeric ref must be stored in canonical decimal form,
+	// otherwise DeleteCardDeck's string comparison misses it and the
+	// preference is left dangling at a deleted deck.
+	prefs, err := SetActiveDeck(ctx, db, 1, "0000001")
+	if err != nil {
+		t.Fatalf("SetActiveDeck: %v", err)
+	}
+	if prefs.ActiveDeck != "1" {
+		t.Fatalf("active_deck = %q, want canonical %q", prefs.ActiveDeck, "1")
+	}
+
+	if err := DeleteCardDeck(ctx, db, 1, deck.ID); err != nil {
+		t.Fatalf("DeleteCardDeck: %v", err)
+	}
+	after, err := GetUserPreferences(db, 1)
+	if err != nil {
+		t.Fatalf("GetUserPreferences: %v", err)
+	}
+	if after.ActiveDeck != "" {
+		t.Errorf("active_deck = %q after delete, want cleared", after.ActiveDeck)
+	}
+}
+
+func TestCreateCardDeckEnforcesPerUserLimit(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	for i := 0; i < maxDecksPerUser; i++ {
+		if _, err := CreateCardDeck(ctx, db, 1, DeckInput{Name: fmt.Sprintf("deck-%d", i)}); err != nil {
+			t.Fatalf("CreateCardDeck(%d): %v", i, err)
+		}
+	}
+	if _, err := CreateCardDeck(ctx, db, 1, DeckInput{Name: "one-too-many"}); !errors.Is(err, ErrTooManyDecks) {
+		t.Errorf("create past limit = %v, want ErrTooManyDecks", err)
+	}
+	// The cap is per user, so another account is unaffected.
+	if _, err := CreateCardDeck(ctx, db, 2, DeckInput{Name: "fresh"}); err != nil {
+		t.Errorf("other user should not be capped: %v", err)
+	}
+
+	// Listing stays bounded by the same limit.
+	decks, err := ListCardDecks(ctx, db, 1)
+	if err != nil {
+		t.Fatalf("ListCardDecks: %v", err)
+	}
+	if len(decks) > maxDecksPerUser {
+		t.Errorf("ListCardDecks returned %d decks, want <= %d", len(decks), maxDecksPerUser)
+	}
+}
+
+func TestSentinelErrorsSurviveWrapping(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	// Domain sentinels must stay recognizable to errors.Is so handlers keep
+	// mapping them to 404/409 rather than 500.
+	if _, err := GetCardDeck(ctx, db, 1, 4242); !errors.Is(err, ErrDeckNotFound) {
+		t.Errorf("GetCardDeck(missing) = %v, want ErrDeckNotFound", err)
+	}
+	if _, err := CreateCardDeck(ctx, db, 1, DeckInput{Name: "dup"}); err != nil {
+		t.Fatalf("CreateCardDeck: %v", err)
+	}
+	if _, err := CreateCardDeck(ctx, db, 1, DeckInput{Name: "dup"}); !errors.Is(err, ErrDeckNameTaken) {
+		t.Errorf("duplicate = %v, want ErrDeckNameTaken", err)
+	}
+}
+
+func TestCanceledContextIsPropagated(t *testing.T) {
+	db := newTestDB(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// With a canceled context the DB call must fail rather than run anyway.
+	if _, err := ListCardDecks(ctx, db, 1); !errors.Is(err, context.Canceled) {
+		t.Errorf("ListCardDecks(canceled) = %v, want context.Canceled", err)
 	}
 }

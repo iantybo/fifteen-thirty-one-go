@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ var (
 	ErrDeckNameTaken       = errors.New("deck name already taken")
 	ErrDeckNotFound        = errors.New("deck not found")
 	ErrInvalidDeckRef      = errors.New("invalid deck reference")
+	ErrTooManyDecks        = errors.New("too many decks")
 )
 
 const (
@@ -29,6 +31,9 @@ const (
 	BuiltinDeckPrefix = "builtin:"
 	// DefaultDeckID is the built-in deck used when a user has made no selection.
 	DefaultDeckID = "classic"
+	// maxDecksPerUser bounds both creation and listing so a single account
+	// cannot grow an unbounded deck collection or response.
+	maxDecksPerUser = 50
 )
 
 // BuiltinDeck is a server-defined deck skin that every user can select.
@@ -247,11 +252,14 @@ func scanDeck(s interface {
 	return &d, nil
 }
 
-// ListCardDecks returns every deck owned by userID, newest name-ordered first.
-func ListCardDecks(db *sql.DB, userID int64) ([]CardDeck, error) {
-	rows, err := db.Query(`SELECT `+deckColumns+` FROM card_decks WHERE owner_id = ? ORDER BY name COLLATE NOCASE`, userID)
+// ListCardDecks returns every deck owned by userID, name-ordered.
+// Results are capped at maxDecksPerUser so the response stays bounded.
+func ListCardDecks(ctx context.Context, db *sql.DB, userID int64) ([]CardDeck, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT `+deckColumns+` FROM card_decks WHERE owner_id = ? ORDER BY name COLLATE NOCASE LIMIT ?`,
+		userID, maxDecksPerUser)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query card decks (user_id=%d): %w", userID, err)
 	}
 	defer rows.Close()
 
@@ -259,37 +267,66 @@ func ListCardDecks(db *sql.DB, userID int64) ([]CardDeck, error) {
 	for rows.Next() {
 		d, err := scanDeck(rows)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan card deck (user_id=%d): %w", userID, err)
 		}
 		decks = append(decks, *d)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("iterate card decks (user_id=%d): %w", userID, err)
 	}
 	return decks, nil
 }
 
-// GetCardDeck loads a single deck owned by userID.
-func GetCardDeck(db *sql.DB, userID, deckID int64) (*CardDeck, error) {
-	row := db.QueryRow(`SELECT `+deckColumns+` FROM card_decks WHERE id = ? AND owner_id = ?`, deckID, userID)
+// getCardDeckTx loads a deck owned by userID through an open transaction.
+func getCardDeckTx(ctx context.Context, tx *sql.Tx, userID, deckID int64) (*CardDeck, error) {
+	row := tx.QueryRowContext(ctx, `SELECT `+deckColumns+` FROM card_decks WHERE id = ? AND owner_id = ?`, deckID, userID)
 	d, err := scanDeck(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrDeckNotFound
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan card deck in tx (id=%d user_id=%d): %w", deckID, userID, err)
 	}
 	return d, nil
 }
 
-// CreateCardDeck validates and inserts a new deck for userID.
-func CreateCardDeck(db *sql.DB, userID int64, in DeckInput) (*CardDeck, error) {
+// GetCardDeck loads a single deck owned by userID.
+func GetCardDeck(ctx context.Context, db *sql.DB, userID, deckID int64) (*CardDeck, error) {
+	row := db.QueryRowContext(ctx, `SELECT `+deckColumns+` FROM card_decks WHERE id = ? AND owner_id = ?`, deckID, userID)
+	d, err := scanDeck(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrDeckNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan card deck (id=%d user_id=%d): %w", deckID, userID, err)
+	}
+	return d, nil
+}
+
+// CreateCardDeck validates and inserts a new deck for userID. The per-user
+// deck count is checked inside the transaction so concurrent creates cannot
+// both slip past the limit.
+func CreateCardDeck(ctx context.Context, db *sql.DB, userID int64, in DeckInput) (*CardDeck, error) {
 	n, err := normalizeDeckInput(in)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := db.Exec(
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin create deck tx (user_id=%d): %w", userID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var count int64
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM card_decks WHERE owner_id = ?`, userID).Scan(&count); err != nil {
+		return nil, fmt.Errorf("count card decks (user_id=%d): %w", userID, err)
+	}
+	if count >= maxDecksPerUser {
+		return nil, ErrTooManyDecks
+	}
+
+	res, err := tx.ExecContext(ctx,
 		`INSERT INTO card_decks(owner_id, name, back_image_url, face_image_template,
 			red_suit_color, black_suit_color, border_color)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -300,23 +337,32 @@ func CreateCardDeck(db *sql.DB, userID int64, in DeckInput) (*CardDeck, error) {
 		if isUniqueViolation(err) {
 			return nil, ErrDeckNameTaken
 		}
-		return nil, err
+		return nil, fmt.Errorf("insert card deck (user_id=%d): %w", userID, err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("last insert id for card deck (user_id=%d): %w", userID, err)
 	}
-	return GetCardDeck(db, userID, id)
+
+	deck, err := scanDeck(tx.QueryRowContext(ctx,
+		`SELECT `+deckColumns+` FROM card_decks WHERE id = ? AND owner_id = ?`, id, userID))
+	if err != nil {
+		return nil, fmt.Errorf("read back created deck (id=%d user_id=%d): %w", id, userID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit create deck tx (user_id=%d): %w", userID, err)
+	}
+	return deck, nil
 }
 
 // UpdateCardDeck replaces the mutable fields of an existing deck.
-func UpdateCardDeck(db *sql.DB, userID, deckID int64, in DeckInput) (*CardDeck, error) {
+func UpdateCardDeck(ctx context.Context, db *sql.DB, userID, deckID int64, in DeckInput) (*CardDeck, error) {
 	n, err := normalizeDeckInput(in)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := db.Exec(
+	res, err := db.ExecContext(ctx,
 		`UPDATE card_decks
 		 SET name = ?, back_image_url = ?, face_image_template = ?,
 		     red_suit_color = ?, black_suit_color = ?, border_color = ?,
@@ -329,99 +375,103 @@ func UpdateCardDeck(db *sql.DB, userID, deckID int64, in DeckInput) (*CardDeck, 
 		if isUniqueViolation(err) {
 			return nil, ErrDeckNameTaken
 		}
-		return nil, err
+		return nil, fmt.Errorf("update card deck (id=%d user_id=%d): %w", deckID, userID, err)
 	}
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("update card deck rows affected (id=%d user_id=%d): %w", deckID, userID, err)
 	}
 	if affected == 0 {
 		return nil, ErrDeckNotFound
 	}
-	return GetCardDeck(db, userID, deckID)
+	return GetCardDeck(ctx, db, userID, deckID)
 }
 
 // DeleteCardDeck removes a deck. If it was the user's active deck, the selection
 // falls back to the default built-in deck so nobody is left pointing at a
 // deleted row.
-func DeleteCardDeck(db *sql.DB, userID, deckID int64) error {
-	tx, err := db.Begin()
+func DeleteCardDeck(ctx context.Context, db *sql.DB, userID, deckID int64) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin delete deck tx (id=%d user_id=%d): %w", deckID, userID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	res, err := tx.Exec(`DELETE FROM card_decks WHERE id = ? AND owner_id = ?`, deckID, userID)
+	res, err := tx.ExecContext(ctx, `DELETE FROM card_decks WHERE id = ? AND owner_id = ?`, deckID, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("delete card deck (id=%d user_id=%d): %w", deckID, userID, err)
 	}
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("delete card deck rows affected (id=%d user_id=%d): %w", deckID, userID, err)
 	}
 	if affected == 0 {
 		return ErrDeckNotFound
 	}
 
-	if _, err := tx.Exec(
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE user_preferences SET active_deck = NULL, updated_at = CURRENT_TIMESTAMP
 		 WHERE user_id = ? AND active_deck = ?`,
 		userID, strconv.FormatInt(deckID, 10),
 	); err != nil {
-		return err
+		return fmt.Errorf("clear active deck (id=%d user_id=%d): %w", deckID, userID, err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete deck tx (id=%d user_id=%d): %w", deckID, userID, err)
+	}
+	return nil
 }
 
 // SetActiveDeck records the user's deck selection. ref is either
 // "builtin:<id>" or the decimal id of a deck the user owns; an empty ref
 // resets to the default deck.
-func SetActiveDeck(db *sql.DB, userID int64, ref string) (*UserPreferences, error) {
-	normalized, err := normalizeDeckRef(db, userID, ref)
+func SetActiveDeck(ctx context.Context, db *sql.DB, userID int64, ref string) (*UserPreferences, error) {
+	// Begin the transaction before validating so the ownership check and the
+	// upsert observe the same snapshot.
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
-	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("begin active_deck tx (user_id=%d): %w", userID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(
+	normalized, err := normalizeDeckRef(ctx, tx, userID, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO user_preferences(user_id, active_deck) VALUES (?, ?)
 		 ON CONFLICT(user_id) DO UPDATE SET active_deck = excluded.active_deck, updated_at = CURRENT_TIMESTAMP`,
 		userID, nullIfEmpty(normalized),
 	); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("upsert active_deck (user_id=%d): %w", userID, err)
 	}
 
-	p, err := scanPreferencesRow(tx.QueryRow(preferencesSelect, userID))
+	p, err := scanPreferencesRow(tx.QueryRowContext(ctx, preferencesSelect, userID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// Unreachable after an upsert, but keep the write and return intent.
 			if err := tx.Commit(); err != nil {
-				return nil, fmt.Errorf("commit active_deck tx: %w", err)
+				return nil, fmt.Errorf("commit active_deck tx (user_id=%d): %w", userID, err)
 			}
-			return &UserPreferences{
-				UserID:        userID,
-				AutoCountMode: "suggest",
-				ActiveDeck:    normalized,
-				UpdatedAt:     time.Now().UTC(),
-			}, nil
+			p := defaultPreferences(userID)
+			p.ActiveDeck = normalized
+			return p, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("read back preferences (user_id=%d): %w", userID, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("commit active_deck tx (user_id=%d): %w", userID, err)
 	}
 	return p, nil
 }
 
 // normalizeDeckRef validates a deck reference and returns its canonical form.
-// An empty result means "use the default deck".
-func normalizeDeckRef(db *sql.DB, userID int64, ref string) (string, error) {
+// An empty result means "use the default deck". Ownership is checked through
+// the caller's transaction so a concurrent delete cannot leave a dangling
+// active_deck reference.
+func normalizeDeckRef(ctx context.Context, tx *sql.Tx, userID int64, ref string) (string, error) {
 	s := strings.TrimSpace(ref)
 	if s == "" || s == BuiltinDeckPrefix+DefaultDeckID {
 		return "", nil
@@ -437,13 +487,15 @@ func normalizeDeckRef(db *sql.DB, userID int64, ref string) (string, error) {
 		return "", ErrInvalidDeckRef
 	}
 	// Verify ownership so a user cannot select someone else's deck.
-	if _, err := GetCardDeck(db, userID, id); err != nil {
+	if _, err := getCardDeckTx(ctx, tx, userID, id); err != nil {
 		if errors.Is(err, ErrDeckNotFound) {
 			return "", ErrDeckNotFound
 		}
 		return "", err
 	}
-	return s, nil
+	// Return the canonical decimal form: DeleteCardDeck clears the selection by
+	// string comparison, so a non-canonical ref like "007" would dangle.
+	return strconv.FormatInt(id, 10), nil
 }
 
 func nullIfEmpty(s string) any {

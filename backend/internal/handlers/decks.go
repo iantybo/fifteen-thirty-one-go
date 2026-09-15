@@ -53,6 +53,8 @@ func deckErrorStatus(err error) (status int, msg string, ok bool) {
 		return http.StatusConflict, "a deck with that name already exists", true
 	case errors.Is(err, models.ErrDeckNotFound):
 		return http.StatusNotFound, "deck not found", true
+	case errors.Is(err, models.ErrTooManyDecks):
+		return http.StatusConflict, "you have reached the maximum number of custom decks", true
 	case errors.Is(err, models.ErrInvalidDeckRef):
 		return http.StatusBadRequest, "invalid deck selection", true
 	}
@@ -83,7 +85,7 @@ func deckIDParam(c *gin.Context) (int64, bool) {
 // the caller's current selection.
 func ListDecksHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, span := tracing.StartSpan(c.Request.Context(), "handlers.ListDecksHandler")
+		ctx, span := tracing.StartSpan(c.Request.Context(), "handlers.ListDecksHandler")
 		defer span.End()
 
 		userID, ok := userIDFromContext(c)
@@ -92,7 +94,7 @@ func ListDecksHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		decks, err := models.ListCardDecks(db, userID)
+		decks, err := models.ListCardDecks(ctx, db, userID)
 		if err != nil {
 			respondDeckError(c, "ListCardDecks", userID, err)
 			return
@@ -114,7 +116,7 @@ func ListDecksHandler(db *sql.DB) gin.HandlerFunc {
 // CreateDeckHandler creates a custom deck for the caller.
 func CreateDeckHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, span := tracing.StartSpan(c.Request.Context(), "handlers.CreateDeckHandler")
+		ctx, span := tracing.StartSpan(c.Request.Context(), "handlers.CreateDeckHandler")
 		defer span.End()
 
 		userID, ok := userIDFromContext(c)
@@ -129,7 +131,7 @@ func CreateDeckHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		deck, err := models.CreateCardDeck(db, userID, req.toInput())
+		deck, err := models.CreateCardDeck(ctx, db, userID, req.toInput())
 		if err != nil {
 			respondDeckError(c, "CreateCardDeck", userID, err)
 			return
@@ -141,7 +143,7 @@ func CreateDeckHandler(db *sql.DB) gin.HandlerFunc {
 // UpdateDeckHandler replaces a custom deck owned by the caller.
 func UpdateDeckHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, span := tracing.StartSpan(c.Request.Context(), "handlers.UpdateDeckHandler")
+		ctx, span := tracing.StartSpan(c.Request.Context(), "handlers.UpdateDeckHandler")
 		defer span.End()
 
 		userID, ok := userIDFromContext(c)
@@ -160,7 +162,7 @@ func UpdateDeckHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		deck, err := models.UpdateCardDeck(db, userID, deckID, req.toInput())
+		deck, err := models.UpdateCardDeck(ctx, db, userID, deckID, req.toInput())
 		if err != nil {
 			respondDeckError(c, "UpdateCardDeck", userID, err)
 			return
@@ -172,7 +174,7 @@ func UpdateDeckHandler(db *sql.DB) gin.HandlerFunc {
 // DeleteDeckHandler removes a custom deck owned by the caller.
 func DeleteDeckHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, span := tracing.StartSpan(c.Request.Context(), "handlers.DeleteDeckHandler")
+		ctx, span := tracing.StartSpan(c.Request.Context(), "handlers.DeleteDeckHandler")
 		defer span.End()
 
 		userID, ok := userIDFromContext(c)
@@ -185,7 +187,7 @@ func DeleteDeckHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		if err := models.DeleteCardDeck(db, userID, deckID); err != nil {
+		if err := models.DeleteCardDeck(ctx, db, userID, deckID); err != nil {
 			respondDeckError(c, "DeleteCardDeck", userID, err)
 			return
 		}
@@ -196,7 +198,7 @@ func DeleteDeckHandler(db *sql.DB) gin.HandlerFunc {
 // SetActiveDeckHandler records the caller's deck selection.
 func SetActiveDeckHandler(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, span := tracing.StartSpan(c.Request.Context(), "handlers.SetActiveDeckHandler")
+		ctx, span := tracing.StartSpan(c.Request.Context(), "handlers.SetActiveDeckHandler")
 		defer span.End()
 
 		userID, ok := userIDFromContext(c)
@@ -211,7 +213,7 @@ func SetActiveDeckHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		prefs, err := models.SetActiveDeck(db, userID, req.ActiveDeck)
+		prefs, err := models.SetActiveDeck(ctx, db, userID, req.ActiveDeck)
 		if err != nil {
 			respondDeckError(c, "SetActiveDeck", userID, err)
 			return
