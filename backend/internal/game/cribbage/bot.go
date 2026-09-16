@@ -42,22 +42,34 @@ func ChooseDiscardN(hand []common.Card, discardCount int, difficulty BotDifficul
 		botRand.Shuffle(len(cards), func(i, j int) { cards[i], cards[j] = cards[j], cards[i] })
 		botRandMu.Unlock()
 		return cards[:discardCount], nil
-	case BotMedium, BotHard:
-		// Simple heuristic: discard two lowest Value15 cards, breaking ties by rank.
-		sort.Slice(cards, func(i, j int) bool {
-			vi, vj := cards[i].Value15(), cards[j].Value15()
-			if vi != vj {
-				return vi < vj
-			}
-			if cards[i].Rank != cards[j].Rank {
-				return cards[i].Rank < cards[j].Rank
-			}
-			return cards[i].Suit < cards[j].Suit
-		})
-		return cards[:discardCount], nil
+	case BotHard:
+		// Expected-value lookahead over every keep/cut combination. Falls back
+		// to the heuristic below if the search cannot produce a discard.
+		if d := chooseDiscardEV(cards, discardCount); len(d) == discardCount {
+			return d, nil
+		}
+		return lowestValueDiscard(cards, discardCount), nil
+	case BotMedium:
+		return lowestValueDiscard(cards, discardCount), nil
 	default:
 		return ChooseDiscardN(hand, discardCount, BotEasy)
 	}
+}
+
+// lowestValueDiscard discards the lowest Value15 cards, breaking ties by rank
+// then suit so the choice is deterministic.
+func lowestValueDiscard(cards []common.Card, discardCount int) []common.Card {
+	sort.Slice(cards, func(i, j int) bool {
+		vi, vj := cards[i].Value15(), cards[j].Value15()
+		if vi != vj {
+			return vi < vj
+		}
+		if cards[i].Rank != cards[j].Rank {
+			return cards[i].Rank < cards[j].Rank
+		}
+		return cards[i].Suit < cards[j].Suit
+	})
+	return cards[:discardCount]
 }
 
 // ChoosePeggingPlay returns either a card to play, or go=true if no legal play exists.

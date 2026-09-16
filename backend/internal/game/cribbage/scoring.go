@@ -18,7 +18,45 @@ type ScoreBreakdown struct {
 
 // ScoreHand scores a cribbage hand: 4 hand cards + cut card. (Pass the 4-card hand as hand.)
 func ScoreHand(hand []common.Card, cut common.Card, isCrib bool) ScoreBreakdown {
-	all := make([]common.Card, 0, len(hand)+1)
+	sb := scoreParts(hand, cut, isCrib)
+
+	// Allocate Reasons only once we know at least one category scored; a
+	// scoreless hand keeps it nil, which is what the JSON contract expects.
+	set := func(key string, v int) {
+		if v == 0 {
+			return
+		}
+		if sb.Reasons == nil {
+			sb.Reasons = make(map[string]int, 5)
+		}
+		sb.Reasons[key] = v
+	}
+	set("fifteens", sb.Fifteens)
+	set("pairs", sb.Pairs)
+	set("runs", sb.Runs)
+	set("flush", sb.Flush)
+	set("nobs", sb.Nobs)
+
+	return sb
+}
+
+// scoreParts computes every scoring category without allocating: the 5 cards
+// are held in a stack array and Reasons is left nil. ScoreHand adds the
+// Reasons map on top; bulk callers such as the discard search use this
+// directly and stay allocation-free across hundreds of thousands of hands.
+func scoreParts(hand []common.Card, cut common.Card, isCrib bool) ScoreBreakdown {
+	// A scored hand is 4 cards plus the cut. Sizing for the common case keeps
+	// the cards on the stack; longer hands fall back to a heap slice rather
+	// than being truncated.
+	const stackCards = 5
+	var allBuf [stackCards]common.Card
+
+	var all []common.Card
+	if n := len(hand) + 1; n <= stackCards {
+		all = allBuf[:0:stackCards]
+	} else {
+		all = make([]common.Card, 0, n)
+	}
 	all = append(all, hand...)
 	all = append(all, cut)
 
@@ -38,24 +76,6 @@ func ScoreHand(hand []common.Card, cut common.Card, isCrib bool) ScoreBreakdown 
 	sb.Nobs = scoreNobs(hand, cut)
 
 	sb.Total = sb.Fifteens + sb.Pairs + sb.Runs + sb.Flush + sb.Nobs
-
-	// Allocate Reasons only once we know at least one category scored; a
-	// scoreless hand keeps it nil, which is what the JSON contract expects.
-	set := func(key string, v int) {
-		if v == 0 {
-			return
-		}
-		if sb.Reasons == nil {
-			sb.Reasons = make(map[string]int, 5)
-		}
-		sb.Reasons[key] = v
-	}
-	set("fifteens", sb.Fifteens)
-	set("pairs", sb.Pairs)
-	set("runs", sb.Runs)
-	set("flush", sb.Flush)
-	set("nobs", sb.Nobs)
-
 	return sb
 }
 

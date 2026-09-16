@@ -85,3 +85,42 @@ func BenchmarkChoosePeggingPlay(b *testing.B) {
 		ChoosePeggingPlay(hand, 12, seq, BotHard)
 	}
 }
+
+// BenchmarkChooseDiscardN compares the discard strategies. Hard runs the full
+// expected-value search (C(6,2) keeps x 46 cuts), medium the cheap heuristic,
+// so the pair shows what the lookahead actually costs per decision.
+func BenchmarkChooseDiscardN(b *testing.B) {
+	hand := []common.Card{
+		{Rank: 5, Suit: common.Spades},
+		{Rank: common.Queen, Suit: common.Clubs},
+		{Rank: 7, Suit: common.Hearts},
+		{Rank: 5, Suit: common.Hearts},
+		{Rank: 8, Suit: common.Hearts},
+		{Rank: 10, Suit: common.Spades},
+	}
+
+	for _, diff := range []BotDifficulty{BotMedium, BotHard} {
+		b.Run(string(diff), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if _, err := ChooseDiscardN(hand, 2, diff); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkScoreParts measures the allocation-free scoring core used by the
+// discard search, without the Reasons map that ScoreHand builds.
+func BenchmarkScoreParts(b *testing.B) {
+	b.ReportAllocs()
+	var sink int
+	for i := 0; i < b.N; i++ {
+		h := benchHands[i%len(benchHands)]
+		sink += scoreParts(h.hand, h.cut, false).Total
+	}
+	if sink < 0 {
+		b.Fatal("unreachable")
+	}
+}
