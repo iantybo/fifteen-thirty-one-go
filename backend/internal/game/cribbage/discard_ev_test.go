@@ -244,3 +244,46 @@ func TestSuitIndexRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestMalformedRanksDoNotPanic covers hands rehydrated from stored JSON: a
+// rank outside 1..13 is not a dealable card, and must be ignored rather than
+// indexing past the rank tallies and panicking inside a request handler.
+func TestMalformedRanksDoNotPanic(t *testing.T) {
+	bad := []common.Rank{-1, 0, 14, 99}
+
+	for _, r := range bad {
+		hand := []common.Card{
+			{Rank: r, Suit: common.Hearts},
+			{Rank: 5, Suit: common.Spades},
+			{Rank: 5, Suit: common.Clubs},
+			{Rank: common.Jack, Suit: common.Diamonds},
+			{Rank: 4, Suit: common.Hearts},
+			{Rank: 6, Suit: common.Spades},
+		}
+		cut := common.Card{Rank: 5, Suit: common.Diamonds}
+
+		func() {
+			defer func() {
+				if p := recover(); p != nil {
+					t.Fatalf("rank %d: ScoreHand panicked: %v", r, p)
+				}
+			}()
+			ScoreHand(hand[:4], cut, false)
+		}()
+
+		func() {
+			defer func() {
+				if p := recover(); p != nil {
+					t.Fatalf("rank %d: ChooseDiscardN panicked: %v", r, p)
+				}
+			}()
+			got, err := ChooseDiscardN(hand, 2, BotHard)
+			if err != nil {
+				t.Fatalf("rank %d: %v", r, err)
+			}
+			if len(got) != 2 {
+				t.Fatalf("rank %d: got %d discards, want 2", r, len(got))
+			}
+		}()
+	}
+}

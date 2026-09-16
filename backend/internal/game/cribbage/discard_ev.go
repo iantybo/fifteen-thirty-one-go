@@ -34,14 +34,19 @@ func chooseDiscardEV(hand []common.Card, discardCount int) []common.Card {
 	// enumerated as concrete cards.
 	var dealt [deckRanks + 1][suitsPerRank]bool
 	for _, c := range hand {
+		// Ranks outside 1..13 are not dealable cards; ignoring them keeps the
+		// cut enumeration in range for hands rehydrated from stored JSON.
+		if c.Rank < 1 || c.Rank > deckRanks {
+			continue
+		}
 		dealt[c.Rank][suitIndex(c.Suit)] = true
 	}
 
 	var (
-		bestEV    = -1
+		bestEV    int
 		bestKeep  []common.Card
 		keep      = make([]common.Card, 0, keepCount)
-		bestFound = false
+		bestFound bool
 	)
 
 	forEachCombination(len(hand), keepCount, func(idx []int) {
@@ -83,19 +88,28 @@ func chooseDiscardEV(hand []common.Card, discardCount int) []common.Card {
 }
 
 // complementOf returns the cards of hand that are not present in keep.
-// Membership is by exact rank+suit, which is unique within a single hand.
+//
+// keep is always a subset of hand built from distinct positions, so matching
+// is done by walking hand and consuming keep entries by value. That avoids
+// indexing by rank, which would need bounds checks for malformed input, and
+// correctly handles the case where hand contains duplicate cards.
 func complementOf(hand, keep []common.Card) []common.Card {
-	var kept [deckRanks + 1][suitsPerRank]bool
-	for _, c := range keep {
-		kept[c.Rank][suitIndex(c.Suit)] = true
-	}
+	used := make([]bool, len(keep))
 
 	out := make([]common.Card, 0, len(hand)-len(keep))
 	for _, c := range hand {
-		if kept[c.Rank][suitIndex(c.Suit)] {
-			continue
+		matched := false
+		for i, k := range keep {
+			if used[i] || k != c {
+				continue
+			}
+			used[i] = true
+			matched = true
+			break
 		}
-		out = append(out, c)
+		if !matched {
+			out = append(out, c)
+		}
 	}
 	return out
 }

@@ -1,0 +1,13 @@
+{
+  "name": "fifteen-thirty-one-go",
+  "private": true,
+  "type": "module",
+  "description": "Root workspace holding the CodeRabbit configuration-as-code toolchain.",
+  "scripts": {
+    "coderabbit:check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@coderabbitai/config": "next",
+    "typescript": "^5.9.3"
+  }
+}

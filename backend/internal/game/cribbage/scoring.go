@@ -64,8 +64,14 @@ func scoreParts(hand []common.Card, cut common.Card, isCrib bool) ScoreBreakdown
 
 	// rankCount is indexed by rank (1..13); index 0 is unused. Counting once
 	// here lets pairs and runs share the tally instead of each building a map.
-	var rankCount [14]int
+	// Ranks outside 1..13 cannot come from a real deck, but hands are rehydrated
+	// from stored JSON, so they are skipped rather than allowed to index out of
+	// range and panic in a request handler.
+	var rankCount [deckRanks + 1]int
 	for _, c := range all {
+		if c.Rank < 1 || c.Rank > deckRanks {
+			continue
+		}
 		rankCount[c.Rank]++
 	}
 
