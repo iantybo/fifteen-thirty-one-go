@@ -49,9 +49,12 @@ MCP endpoint is that URL plus `/mcp`.
 
 ## Wiring into CodeRabbit
 
-Add the public endpoint as an MCP server in CodeRabbit's settings (the
-`.coderabbit.yml` `knowledge_base.mcp` block keeps MCP usage enabled). Point it
-at `<ngrok-url>/mcp` with the `Authorization: Bearer <key>` header. CodeRabbit
-is instructed (see the repo `.coderabbit.yml` path instructions) to call
-`get_service` / `list_services` to assess the blast radius of a change by the
-owning service's tier.
+Add the public endpoint as an MCP server in CodeRabbit's settings, pointing it
+at `<ngrok-url>/mcp` with the `Authorization: Bearer <key>` header. Once wired
+up, CodeRabbit can call `get_service` / `list_services` to assess the blast
+radius of a change by the owning service's tier.
+
+Repo configuration lives in `.coderabbit.config.ts`. Enabling MCP usage
+(`knowledge_base.mcp`) and adding path instructions that tell CodeRabbit to
+call these tools are not currently part of that config; add them there if you
+want this wiring to take effect.

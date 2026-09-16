@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "scripts": {
+    "typecheck:coderabbit": "tsc -p tsconfig.coderabbit.json"
+  },
+  "devDependencies": {
+    "@coderabbitai/config": "^1.0.0",
+    "typescript": "~5.9.3"
+  }
+}
