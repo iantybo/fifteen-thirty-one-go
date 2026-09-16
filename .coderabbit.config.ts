@@ -12,7 +12,9 @@ import { defineConfig } from "@coderabbitai/config"
  */
 export default defineConfig({
   knowledge_base: {
-    automatic_repository_linking: true,
+    // `automatic_repository_linking` is deprecated and has no effect;
+    // "enabled" is its equivalent under the current schema.
+    automatic_linking_mode: "enabled",
     code_guidelines: {
       filePatterns: [],
     },
