@@ -201,9 +201,10 @@ func scoreNobs(hand []common.Card, cut common.Card) int {
 func PeggingScore(playSeq []common.Card, newCard common.Card, currentTotal int) (points int, newTotal int, reasons []string) {
 	newTotal = currentTotal + newCard.Value15()
 
-	// reasons stays nil until something actually scores, so a scoreless play
-	// costs no allocation at all. Callers that only read points (the bot) never
-	// pay for it; the previous []string{} preamble always did.
+			if reasons == nil {
+				reasons = []string{}
+			}
+			resp = map[string]any{"points": points, "reasons": reasons, "total": working.PeggingTotal}
 	if newTotal == 15 {
 		points += 2
 		reasons = append(reasons, "15")
