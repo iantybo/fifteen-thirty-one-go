@@ -59,6 +59,7 @@ func ScoreHand(hand []common.Card, cut common.Card, isCrib bool) ScoreBreakdown 
 	return sb
 }
 
+// scoreFifteens scores every subset of cards whose value sums to fifteen.
 func scoreFifteens(cards []common.Card) int {
 	// Count all subsets that sum to 15, each worth 2 points.
 	//
@@ -201,10 +202,6 @@ func scoreNobs(hand []common.Card, cut common.Card) int {
 func PeggingScore(playSeq []common.Card, newCard common.Card, currentTotal int) (points int, newTotal int, reasons []string) {
 	newTotal = currentTotal + newCard.Value15()
 
-			if reasons == nil {
-				reasons = []string{}
-			}
-			resp = map[string]any{"points": points, "reasons": reasons, "total": working.PeggingTotal}
 	if newTotal == 15 {
 		points += 2
 		reasons = append(reasons, "15")

@@ -6,6 +6,7 @@ import (
 	"fifteen-thirty-one-go/backend/internal/game/common"
 )
 
+// c constructs a card for tests that do not need compact card parsing.
 func c(r common.Rank, s common.Suit) common.Card { return common.Card{Rank: r, Suit: s} }
 
 // mustCards parses a compact "5H 5S 5D JC" spec into cards.
@@ -28,6 +29,7 @@ func mustCards(t *testing.T, spec string) []common.Card {
 	return out
 }
 
+// TestScoreHand covers each hand-scoring category and their combinations.
 func TestScoreHand(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -151,6 +153,7 @@ func TestScoreHand(t *testing.T) {
 	}
 }
 
+// TestScoreHandReasons checks that scoring reasons are allocated only when used.
 func TestScoreHandReasons(t *testing.T) {
 	t.Run("nil when scoreless", func(t *testing.T) {
 		got := ScoreHand(mustCards(t, "2H 4S 6C 8D"), c(common.King, common.Hearts), false)
@@ -173,6 +176,7 @@ func TestScoreHandReasons(t *testing.T) {
 	})
 }
 
+// TestPeggingScore covers totals, pairs, and runs during pegging play.
 func TestPeggingScore(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -259,6 +263,7 @@ func TestPeggingScore(t *testing.T) {
 	}
 }
 
+// TestPeggingScoreDoesNotMutateSequence protects the caller's play sequence.
 func TestPeggingScoreDoesNotMutateSequence(t *testing.T) {
 	seq := mustCards(t, "3H 4S 5C")
 	before := append([]common.Card(nil), seq...)

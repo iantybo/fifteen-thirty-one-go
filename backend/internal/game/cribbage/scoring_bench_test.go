@@ -34,6 +34,7 @@ var benchHands = []struct {
 	},
 }
 
+// BenchmarkScoreHand measures scoring across representative hand shapes.
 func BenchmarkScoreHand(b *testing.B) {
 	b.ReportAllocs()
 	var sink int
@@ -46,6 +47,7 @@ func BenchmarkScoreHand(b *testing.B) {
 	}
 }
 
+// BenchmarkPeggingScore measures a common run-scoring pegging evaluation.
 func BenchmarkPeggingScore(b *testing.B) {
 	seq := []common.Card{
 		{Rank: 3, Suit: common.Hearts},
