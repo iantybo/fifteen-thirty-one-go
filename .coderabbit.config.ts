@@ -3,8 +3,8 @@ import { defineConfig } from "@coderabbitai/config"
 // CodeRabbit TypeScript Configuration Documentation:
 // https://docs.coderabbit.ai/configuration/typescript-configuration
 //
-// Note: a committed .coderabbit.yaml / .coderabbit.yml always takes precedence
-// over this file. Remove the YAML config for this file to take effect.
+// Note: a committed .coderabbit.yaml / .coderabbit.yml would take precedence
+// over this file, so the repo must not contain one.
 
 export default defineConfig({
   knowledge_base: {
