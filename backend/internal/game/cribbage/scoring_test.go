@@ -271,3 +271,26 @@ func TestPeggingScoreDoesNotMutateSequence(t *testing.T) {
 		}
 	}
 }
+
+// TestScoreFifteensLargeHand guards the heap fallback for hands bigger than the
+// stack-sized subset table, which must count subsets rather than truncate.
+func TestScoreFifteensLargeHand(t *testing.T) {
+	// 4 fives + 3 kings: 4x3 = 12 five-plus-king pairs, plus C(4,3) = 4
+	// triples of fives. 16 subsets x2 = 32.
+	if got, want := scoreFifteens(mustCards(t, "5H 5S 5C 5D KH KS KC")), 32; got != want {
+		t.Errorf("scoreFifteens(7 cards) = %d, want %d", got, want)
+	}
+
+	// 6 cards is the stack/heap boundary: 3x3 = 9 pairs plus the one triple of
+	// fives. 10 subsets x2 = 20.
+	if got, want := scoreFifteens(mustCards(t, "5H 5S 5C KH KS KC")), 20; got != want {
+		t.Errorf("scoreFifteens(6 cards) = %d, want %d", got, want)
+	}
+
+	// 7 cards must not be silently truncated to the 6-card stack table.
+	// A-2-3-4-5-6-9 has 8 subsets summing to 15: 6+9, A+5+9, 2+4+9, 4+5+6,
+	// A+2+3+9, A+3+5+6, 2+3+4+6, A+2+3+4+5. 8 x2 = 16.
+	if got, want := scoreFifteens(mustCards(t, "AH 2S 3C 4D 5H 6S 9C")), 16; got != want {
+		t.Errorf("scoreFifteens(7 low cards) = %d, want %d", got, want)
+	}
+}
