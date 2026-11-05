@@ -9,6 +9,10 @@ public with sharing class ACME_LeadTriggerHandler {
     @TestVisible
     private static final String WAITLIST_CAMPAIGN_NAME = 'Cribbage Invite Waitlist';
 
+    /** @description Lead status applied to signups that duplicate an open app Lead. */
+    @TestVisible
+    private static final String DUPLICATE_STATUS = 'Closed - Not Converted';
+
     /** @description CampaignMember status for newly enrolled signups. */
     @TestVisible
     private static final String MEMBER_STATUS = 'Sent';
@@ -27,6 +31,7 @@ public with sharing class ACME_LeadTriggerHandler {
         if (signupLeads.isEmpty()) {
             return;
         }
+        flagDuplicates(signupLeads);
 
         List<Campaign> waitlist = [
             SELECT Id
@@ -44,5 +49,32 @@ public with sharing class ACME_LeadTriggerHandler {
             members.add(new CampaignMember(CampaignId = waitlist[0].Id, LeadId = lead.Id, Status = MEMBER_STATUS));
         }
         insert as user members;
+    }
+
+    /**
+     * @description Marks new app Leads whose email already belongs to an open app Lead, so the
+     *              CRM team works one record per player.
+     * @param signupLeads newly inserted cribbage-app Leads
+     */
+    private static void flagDuplicates(List<Lead> signupLeads) {
+        Map<String, Lead> openByEmail = new Map<String, Lead>();
+        for (Lead existing : [
+            SELECT Id, Email
+            FROM Lead
+            WHERE LeadSource = :ACME_SignupLeadService.LEAD_SOURCE AND IsConverted = false
+            WITH USER_MODE
+        ]) {
+            openByEmail.put(existing.Email.toLowerCase(), existing);
+        }
+
+        List<Lead> duplicates = new List<Lead>();
+        for (Lead lead : signupLeads) {
+            if (openByEmail.containsKey(lead.Email.toLowerCase())) {
+                duplicates.add(new Lead(Id = lead.Id, Status = DUPLICATE_STATUS));
+            }
+        }
+        if (!duplicates.isEmpty()) {
+            update as user duplicates;
+        }
     }
 }
