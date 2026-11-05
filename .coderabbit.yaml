@@ -144,8 +144,23 @@ reviews:
           and salesforce/standards/learned/.
         - Treat the code as running in a 200-record trigger chunk on high-volume objects (Lead, Contact,
           CampaignMember, User), even when it is not obviously trigger-invoked.
-        - A WHERE clause is not proof of safety. Use the apexguru MCP explain_soql tool to check selectivity
-          and estimated rows in uat and prod before accepting any new query.
+        - Use the "apexguru" MCP server for every changed .cls and .trigger file. Do not rely on reading the
+          code alone; a query that is fine in dev can fail at UAT/prod volumes.
+          1. apexguru_scan: pass the full file content of every changed .cls/.trigger, once with
+             environment "uat" and once with "prod". Report each Critical (1) or High (2) violation as a
+             finding at the reported file:line.
+          2. explain_soql: call for every SOQL statement added or modified in the diff, even when it has a
+             WHERE clause or a LIMIT. Use context "trigger" for code in a trigger or a *TriggerHandler class,
+             otherwise "sync". Any FAIL verdict in uat or prod is a finding.
+          3. get_runtime_hotspots: call for every changed class that already exists on the base branch, in
+             "uat". If the change adds SOQL, DML, or CPU to a method, compare it with the remaining headroom
+             (for example p95 61/100 SOQL) and flag changes that exhaust it.
+          4. get_object_volumes and get_governor_limits: use them to justify the numbers in a finding.
+        - In every MCP-backed finding, quote the org, row counts, and limit message from the tool output, and
+          tag it [apexguru-mcp]. Say "dev passes" when the tool shows dev passing, so the author sees why
+          local testing missed it.
+        - If the apexguru MCP server is unreachable, post one finding saying so; do not skip the analysis
+          silently.
         - Flag Leads created without Signup_External_Id__c, because retries then create duplicates.
         - Flag swallowed exceptions (empty catch blocks, Database.* with allOrNone=false and no result handling).
 
@@ -155,6 +170,9 @@ reviews:
         - Flag innerHTML, outerHTML, insertAdjacentHTML, and lwc:dom="manual" with untrusted data.
         - Flag wire or imperative Apex calls without error handling, and errors that are logged but not shown.
         - Flag client-side filtering of large record sets that belongs in a selective SOQL query.
+        - For every @salesforce/apex import, open the Apex method it calls and run its SOQL through the
+          apexguru MCP explain_soql tool (context "sync", environments uat and prod). A component that loads
+          an unbounded or non-selective query fails for users in prod even when it renders in dev.
 
     - path: "salesforce/**/*-meta.xml"
       instructions: >

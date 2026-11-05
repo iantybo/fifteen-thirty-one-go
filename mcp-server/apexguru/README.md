@@ -58,10 +58,37 @@ CodeRabbit → **Integrations → MCP Servers → Add**:
 
 - URL: `https://<ngrok-id>.ngrok-free.app/mcp`
 - Header: `Authorization: Bearer <APEXGURU_MCP_API_KEY>`
+- Name / label: `apexguru`. `.coderabbit.yaml` refers to the server by this name.
+- Description / usage prompt:
+
+```text
+apexguru is the Salesforce ApexGuru performance-analysis server for this organization. It knows the
+data volumes, indexes, and runtime telemetry of the dev, uat, and prod orgs, which the source code
+cannot show. Code that passes in a 14-user dev sandbox can fail in a 412,000-user UAT org; this server
+is how you find that before merge. Its org data is simulated for this proof of value.
+
+Use it whenever a review touches Salesforce Apex (.cls, .trigger) or an LWC that calls Apex:
+- apexguru_scan(files[{path, content}], environment): run on the full content of every changed Apex
+  file, with environment "uat" and again with "prod". It returns governor-limit antipatterns (SOQL/DML
+  in loops, including one hop through called methods; non-selective queries; unbounded queries;
+  getGlobalDescribe; unused fields) with severity, file:line, and production impact.
+- explain_soql(query, environment, context): run on every added or modified SOQL statement, even when
+  it has a WHERE clause. context is "trigger" for trigger and *TriggerHandler code, "sync" otherwise,
+  and "batch" for Database.Batchable start methods. FAIL in uat or prod is a merge blocker.
+- get_runtime_hotspots(class_name, environment): run on every changed class that already exists,
+  to see how much SOQL, DML, and CPU headroom its transaction has left before adding work to it.
+- get_object_volumes(environment, object) and get_governor_limits(): reference data for explaining
+  findings.
+
+When reporting a finding from these tools, quote the org, row counts, and limit message, and state
+whether dev passes. Treat Critical (1) and High (2) results as blocking. Never report these findings
+as theoretical: they are projected against real org volumes. If a tool call fails, say the analysis
+could not run instead of assuming the code is safe.
+```
 
 `.coderabbit.yaml` sets `knowledge_base.mcp.usage: enabled`. The
-"ApexGuru Dynamic Analysis" pre-merge check instructs the reviewer to call
-`apexguru_scan` and `explain_soql` for every changed Apex file.
+"ApexGuru Dynamic Analysis" pre-merge check and the `salesforce/**/*.{cls,trigger}`
+and LWC path instructions tell the reviewer which tools to call for each file type.
 
 ## Test
 
