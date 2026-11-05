@@ -1,0 +1,11 @@
+<template>
+    <lightning-card title={title} icon-name="custom:custom14">
+        <p class="slds-p-horizontal_small">Conversion rate: {conversionRate}%</p>
+        <lightning-datatable
+            key-field="Id"
+            data={signups}
+            columns={columns}
+            hide-checkbox-column
+        ></lightning-datatable>
+    </lightning-card>
+</template>

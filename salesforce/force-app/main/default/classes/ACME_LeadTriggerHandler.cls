@@ -28,6 +28,29 @@ public with sharing class ACME_LeadTriggerHandler {
             return;
         }
 
+        // Keep Signup__c in step with Leads created outside the approval queueable (REST, imports).
+        Map<String, Lead> leadsByEmail = new Map<String, Lead>();
+        for (Lead lead : signupLeads) {
+            if (lead.Email != null) {
+                leadsByEmail.put(lead.Email.toLowerCase(), lead);
+            }
+        }
+        List<Signup__c> converted = new List<Signup__c>();
+        for (Signup__c signup : [
+            SELECT Id, Email__c
+            FROM Signup__c
+            WHERE Signup_Status__c = 'Pending'
+            WITH USER_MODE
+        ]) {
+            Lead match = leadsByEmail.get(signup.Email__c.toLowerCase());
+            if (match != null) {
+                signup.Lead__c = match.Id;
+                signup.Signup_Status__c = 'Converted';
+                converted.add(signup);
+            }
+        }
+        update as user converted;
+
         List<Campaign> waitlist = [
             SELECT Id
             FROM Campaign

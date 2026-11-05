@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>External_Id__c</fullName>
+    <caseSensitive>true</caseSensitive>
+    <description>Opaque signup identifier from the cribbage app. Matches Lead.Signup_External_Id__c once converted.</description>
+    <externalId>true</externalId>
+    <label>External Id</label>
+    <length>64</length>
+    <required>true</required>
+    <type>Text</type>
+    <unique>true</unique>
+</CustomField>
