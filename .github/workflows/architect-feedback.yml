@@ -1,0 +1,111 @@
+# architect-feedback turns a human architect's review finding into a governed
+# CodeRabbit rule.
+#
+# When an allowlisted architect leaves a PR review (or review comment) that
+# starts with `/standard`, this workflow writes the finding to
+# salesforce/standards/learned/<date>-pr<N>-<id>.md on a new branch and opens a
+# `standards-update` PR. CODEOWNERS requires an architect to approve that PR.
+# Once merged, CodeRabbit loads the file as a code guideline on every review,
+# and developers pick it up locally on their next pull.
+#
+# Setup: create a repository variable ARCHITECTS holding a JSON array of GitHub
+# logins, e.g. ["alice","bob"]. Leave it unset to disable the workflow.
+#
+# Security: comment text is untrusted. It is passed only through env vars,
+# never interpolated into a run script, and lands as quoted text in a PR that
+# a human must approve. Review events from fork PRs get a read-only token, so
+# this workflow only acts on same-repo PRs.
+name: architect-feedback
+
+on:
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: architect-feedback-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.comment.body || github.event.review.body || '', '/standard') &&
+      contains(fromJSON(vars.ARCHITECTS || '[]'), github.event.comment.user.login || github.event.review.user.login)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Write learned-standard entry and open approval PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ github.event.comment.body || github.event.review.body }}
+          AUTHOR: ${{ github.event.comment.user.login || github.event.review.user.login }}
+          SOURCE_ID: ${{ github.event.comment.id || github.event.review.id }}
+          SOURCE_URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
+          FILE_PATH: ${{ github.event.comment.path }}
+          FILE_LINE: ${{ github.event.comment.line }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          case "$PR_NUMBER" in ''|*[!0-9]*) echo "invalid PR number" >&2; exit 1 ;; esac
+          case "$SOURCE_ID" in ''|*[!0-9]*) echo "invalid source id" >&2; exit 1 ;; esac
+
+          # Strip the /standard trigger, cap the length, and quote every line so
+          # the text renders as a citation rather than as document structure.
+          rule="$(printf '%s' "$BODY" | sed '1s#^/standard[[:space:]]*##' | head -c 4000)"
+          if [ -z "$(printf '%s' "$rule" | tr -d '[:space:]')" ]; then
+            echo "empty /standard comment; nothing to capture" >&2
+            exit 0
+          fi
+          quoted="$(printf '%s\n' "$rule" | sed 's/^/> /')"
+
+          today="$(date -u +%F)"
+          file="salesforce/standards/learned/${today}-pr${PR_NUMBER}-${SOURCE_ID}.md"
+          branch="standards/pr${PR_NUMBER}-${SOURCE_ID}"
+          location="(PR-level review)"
+          if [ -n "${FILE_PATH:-}" ]; then
+            location="\`${FILE_PATH}${FILE_LINE:+:${FILE_LINE}}\`"
+          fi
+
+          mkdir -p salesforce/standards/learned
+          {
+            printf '# Learned standard from PR #%s\n\n' "$PR_NUMBER"
+            printf -- '- **Status:** proposed; an architect must approve this PR before it takes effect\n'
+            printf -- '- **Raised by:** @%s\n' "$AUTHOR"
+            printf -- '- **Where it was caught:** %s in %s\n' "$location" "$PR_URL"
+            printf -- '- **Source comment:** %s\n\n' "$SOURCE_URL"
+            printf '## Rule (as written by the architect)\n\n%s\n\n' "$quoted"
+            printf '## Reviewer guidance\n\n'
+            printf 'Apply this rule to future changes under `salesforce/`. Before approving, the\n'
+            printf 'architect should restate it as a single precise, checkable rule.\n'
+          } > "$file"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add "$file"
+          git commit -m "docs(standards): capture architect rule from PR #${PR_NUMBER}"
+          git push origin "$branch"
+
+          gh label create standards-update --force --color 0E8A16 \
+            --description "Architect-approved review rule for CodeRabbit"
+          gh pr create \
+            --base "$BASE_BRANCH" \
+            --head "$branch" \
+            --label standards-update \
+            --title "docs(standards): learned rule from PR #${PR_NUMBER}" \
+            --body "Captures an architect review finding from ${PR_URL} as a CodeRabbit code guideline. Once this merges, CodeRabbit enforces it on PR reviews and in local CLI runs. CODEOWNERS requires architect approval."

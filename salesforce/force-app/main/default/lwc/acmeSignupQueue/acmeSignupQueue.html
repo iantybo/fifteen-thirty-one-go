@@ -1,0 +1,18 @@
+<template>
+    <lightning-card title="Cribbage App Signups" icon-name="standard:lead">
+        <template lwc:if={error}>
+            <p class="slds-p-horizontal_small slds-text-color_error">{error}</p>
+        </template>
+        <template lwc:elseif={hasLeads}>
+            <lightning-datatable
+                key-field="Id"
+                data={leads}
+                columns={columns}
+                hide-checkbox-column
+            ></lightning-datatable>
+        </template>
+        <template lwc:else>
+            <p class="slds-p-horizontal_small">No signups in the last 30 days.</p>
+        </template>
+    </lightning-card>
+</template>

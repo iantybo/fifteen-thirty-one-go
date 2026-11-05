@@ -1,0 +1,7 @@
+# Architect approval gates for the Salesforce POV.
+# In a real org, replace the user below with the architects team (e.g. org/crm-architects).
+
+/salesforce/standards/                      @iantybo
+/salesforce/standards/learned/              @iantybo
+/.coderabbit.yaml                           @iantybo
+/.github/workflows/architect-feedback.yml   @iantybo

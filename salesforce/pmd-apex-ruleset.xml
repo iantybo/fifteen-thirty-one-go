@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Acme Energy Apex"
+    xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+    <description>PMD 7 Apex rules used by CodeRabbit for the Salesforce module.</description>
+
+    <rule ref="category/apex/performance.xml"/>
+    <rule ref="category/apex/security.xml"/>
+    <rule ref="category/apex/errorprone.xml"/>
+    <rule ref="category/apex/bestpractices.xml">
+        <!-- Assert messages are encouraged in standards, not enforced by PMD. -->
+        <exclude name="ApexAssertionsShouldIncludeMessage"/>
+        <exclude name="ApexUnitTestClassShouldHaveRunAs"/>
+    </rule>
+</ruleset>

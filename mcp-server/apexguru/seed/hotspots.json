@@ -1,0 +1,27 @@
+{
+  "_comment": "SIMULATED runtime telemetry (as if aggregated from UAT/prod Apex debug logs) for the CodeRabbit POV demo.",
+  "classes": {
+    "ACME_SignupLeadService": {
+      "uat":  [
+        {"method": "upsertLeads", "avg_cpu_ms": 410, "p95_cpu_ms": 980, "avg_heap_kb": 820, "p95_soql_queries": 3, "p95_dml_statements": 1, "invocations_per_day": 5200, "exceptions_7d": 0}
+      ],
+      "prod": [
+        {"method": "upsertLeads", "avg_cpu_ms": 460, "p95_cpu_ms": 1150, "avg_heap_kb": 910, "p95_soql_queries": 3, "p95_dml_statements": 1, "invocations_per_day": 21000, "exceptions_7d": 0}
+      ]
+    },
+    "ACME_LeadTriggerHandler": {
+      "uat": [
+        {"method": "afterInsert", "avg_cpu_ms": 2100, "p95_cpu_ms": 6400, "avg_heap_kb": 2900, "p95_soql_queries": 61, "p95_dml_statements": 38, "invocations_per_day": 8800, "exceptions_7d": 2,
+         "note": "Lead after-insert context is already shared with 4 managed-package triggers. p95 SOQL usage is 61/100, so any new query that runs per record in this transaction will breach the limit on a 200-record batch."}
+      ],
+      "prod": [
+        {"method": "afterInsert", "avg_cpu_ms": 2600, "p95_cpu_ms": 7900, "avg_heap_kb": 3400, "p95_soql_queries": 64, "p95_dml_statements": 41, "invocations_per_day": 36000, "exceptions_7d": 9,
+         "note": "Lead after-insert context is already shared with 4 managed-package triggers. p95 SOQL usage is 64/100 and p95 CPU is 7.9s of the 10s synchronous limit."}
+      ]
+    },
+    "ACME_SignupRestResource": {
+      "uat":  [{"method": "doPost", "avg_cpu_ms": 520, "p95_cpu_ms": 1300, "avg_heap_kb": 1100, "p95_soql_queries": 4, "p95_dml_statements": 1, "invocations_per_day": 5200, "exceptions_7d": 0}],
+      "prod": [{"method": "doPost", "avg_cpu_ms": 590, "p95_cpu_ms": 1500, "avg_heap_kb": 1200, "p95_soql_queries": 4, "p95_dml_statements": 1, "invocations_per_day": 21000, "exceptions_7d": 0}]
+    }
+  }
+}

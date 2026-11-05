@@ -1,0 +1,57 @@
+{
+  "_comment": "SIMULATED org data for the CodeRabbit POV demo. Values are fixed so every review gets the same answer. 'indexed' maps an indexed field to the fraction of rows a single equality match is expected to return (0 = unique, one row).",
+  "environments": {
+    "dev": {
+      "label": "Developer sandbox",
+      "objects": {
+        "User":           {"rows": 14},
+        "Lead":           {"rows": 230},
+        "Contact":        {"rows": 120},
+        "Account":        {"rows": 40},
+        "Signup__c":      {"rows": 85},
+        "Campaign":       {"rows": 6},
+        "CampaignMember": {"rows": 310},
+        "RecordType":     {"rows": 12}
+      }
+    },
+    "uat": {
+      "label": "UAT full-copy sandbox (refreshed from prod)",
+      "objects": {
+        "User":           {"rows": 412000},
+        "Lead":           {"rows": 1850000},
+        "Contact":        {"rows": 960000},
+        "Account":        {"rows": 210000},
+        "Signup__c":      {"rows": 640000},
+        "Campaign":       {"rows": 1200},
+        "CampaignMember": {"rows": 4200000},
+        "RecordType":     {"rows": 48}
+      }
+    },
+    "prod": {
+      "label": "Production",
+      "objects": {
+        "User":           {"rows": 1900000},
+        "Lead":           {"rows": 7400000},
+        "Contact":        {"rows": 3800000},
+        "Account":        {"rows": 820000},
+        "Signup__c":      {"rows": 2600000},
+        "Campaign":       {"rows": 4800},
+        "CampaignMember": {"rows": 16000000},
+        "RecordType":     {"rows": 48}
+      }
+    }
+  },
+  "indexed": {
+    "User":           {"Id": 0, "Username": 0, "FederationIdentifier": 0, "ProfileId": 0.02, "ContactId": 0, "CreatedDate": 0.01, "LastModifiedDate": 0.01},
+    "Lead":           {"Id": 0, "Email": 0, "OwnerId": 0.001, "RecordTypeId": 0.25, "CreatedDate": 0.01, "LastModifiedDate": 0.01, "Signup_External_Id__c": 0},
+    "Contact":        {"Id": 0, "Email": 0, "AccountId": 0.0001, "OwnerId": 0.001, "CreatedDate": 0.01},
+    "Account":        {"Id": 0, "Name": 0, "OwnerId": 0.001, "RecordTypeId": 0.25, "CreatedDate": 0.01},
+    "Signup__c":      {"Id": 0, "External_Id__c": 0, "Email__c": 0, "Lead__c": 0, "CreatedDate": 0.01},
+    "Campaign":       {"Id": 0, "Name": 0},
+    "CampaignMember": {"Id": 0, "CampaignId": 0.001, "LeadId": 0, "ContactId": 0},
+    "RecordType":     {"Id": 0, "DeveloperName": 0.05, "SobjectType": 0.1}
+  },
+  "notes": {
+    "User": "Includes Experience Cloud customer-portal users, which is why UAT and prod are orders of magnitude larger than dev."
+  }
+}
