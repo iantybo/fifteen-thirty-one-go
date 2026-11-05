@@ -28,6 +28,7 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -112,11 +113,21 @@ func newServer(s *seedData) *mcp.Server {
 	return server
 }
 
+// defaultAllowedHostSuffixes are the tunnel domains accepted when
+// APEXGURU_ALLOWED_HOSTS is unset. Loopback hosts are always accepted.
+const defaultAllowedHostSuffixes = ".ngrok-free.app,.ngrok-free.dev,.ngrok.app,.ngrok.dev"
+
 // newMux wires the authenticated /mcp endpoint and an open /healthz.
-func newMux(server *mcp.Server, apiKey string) *http.ServeMux {
-	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
+//
+// The SDK's built-in DNS-rebinding guard rejects every non-loopback Host on
+// loopback connections, which is exactly how ngrok forwards traffic. It is
+// replaced with an explicit Host allowlist (allowedHosts), checked before the
+// API key.
+func newMux(server *mcp.Server, apiKey string, allowedHosts []string) *http.ServeMux {
+	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server },
+		&mcp.StreamableHTTPOptions{DisableLocalhostProtection: true})
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", requireAPIKey(apiKey, http.MaxBytesHandler(handler, maxRequestBytes)))
+	mux.Handle("/mcp", requireHost(allowedHosts, requireAPIKey(apiKey, http.MaxBytesHandler(handler, maxRequestBytes))))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := fmt.Fprintln(w, "ok"); err != nil {
@@ -136,10 +147,16 @@ func main() {
 		log.Fatalf("apexguru: APEXGURU_MCP_API_KEY must be set (static API key for MCP auth)")
 	}
 
+	allowed := os.Getenv("APEXGURU_ALLOWED_HOSTS")
+	if allowed == "" {
+		allowed = defaultAllowedHostSuffixes
+	}
+	allowedHosts := splitList(allowed)
+
 	addr := ":" + port()
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           newMux(newServer(s), apiKey),
+		Handler:           newMux(newServer(s), apiKey, allowedHosts),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("apexguru: simulated ApexGuru MCP endpoint on %s/mcp (API key required)", addr)
@@ -167,6 +184,52 @@ func requireAPIKey(want string, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// requireHost rejects requests whose Host header is neither loopback nor
+// matched by allowed. An entry beginning with "." matches any subdomain;
+// other entries must match the host exactly. Ports are ignored.
+func requireHost(allowed []string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hostAllowed(r.Host, allowed) {
+			http.Error(w, "forbidden host", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// hostAllowed reports whether host (optionally with port) passes the allowlist.
+func hostAllowed(host string, allowed []string) bool {
+	h := strings.ToLower(host)
+	if hp, _, err := net.SplitHostPort(h); err == nil {
+		h = hp
+	}
+	h = strings.Trim(h, "[]")
+	if h == "localhost" || h == "127.0.0.1" || h == "::1" {
+		return true
+	}
+	for _, a := range allowed {
+		a = strings.ToLower(a)
+		if strings.HasPrefix(a, ".") && strings.HasSuffix(h, a) && len(h) > len(a) {
+			return true
+		}
+		if h == a {
+			return true
+		}
+	}
+	return false
+}
+
+// splitList splits a comma-separated env value, dropping blanks.
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // port returns the listen port from $PORT, defaulting to 8766.

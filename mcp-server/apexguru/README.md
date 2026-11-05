@@ -46,7 +46,10 @@ export APEXGURU_MCP_API_KEY="$(openssl rand -hex 24)"
 ```
 
 `/mcp` requires `Authorization: Bearer <key>` or `X-API-Key: <key>`.
-`/healthz` is open. Request bodies are capped at 6 MiB, and a single scan is
+`/healthz` is open. `/mcp` also checks the `Host` header against an
+allowlist: loopback, plus `APEXGURU_ALLOWED_HOSTS` (comma-separated; a leading
+`.` matches subdomains; the default is the ngrok domains). This replaces the
+SDK's localhost-only rebinding guard, which would reject ngrok traffic. Request bodies are capped at 6 MiB, and a single scan is
 capped at 100 files / 2 MiB.
 
 ## Wire into CodeRabbit (one time, admin)

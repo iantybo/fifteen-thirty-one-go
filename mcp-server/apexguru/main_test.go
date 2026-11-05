@@ -291,15 +291,50 @@ func TestRequireAPIKey(t *testing.T) {
 }
 
 func TestHealthzIsOpen(t *testing.T) {
-	mux := newMux(newServer(mustSeed(t)), "secret")
+	mux := newMux(newServer(mustSeed(t)), "secret", splitList(defaultAllowedHostSuffixes))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if w.Code != http.StatusOK {
 		t.Errorf("healthz = %d, want 200", w.Code)
 	}
+	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Host = "abc.ngrok-free.dev"
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/mcp", nil))
+	mux.ServeHTTP(w, r)
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("/mcp without key = %d, want 401", w.Code)
+	}
+
+	r = httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	r.Host = "attacker.test"
+	r.Header.Set("Authorization", "Bearer secret")
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("/mcp from disallowed host = %d, want 403", w.Code)
+	}
+}
+
+func TestHostAllowed(t *testing.T) {
+	allowed := splitList(defaultAllowedHostSuffixes + ",mcp.example.com")
+	tests := []struct {
+		host string
+		want bool
+	}{
+		{"localhost:8766", true},
+		{"127.0.0.1:8766", true},
+		{"[::1]:8766", true},
+		{"abc-123.ngrok-free.dev", true},
+		{"abc.ngrok-free.app", true},
+		{"mcp.example.com", true},
+		{"ngrok-free.dev", false},
+		{"evil.example.com", false},
+		{"abc.ngrok-free.dev.evil.com", false},
+		{"attacker.test", false},
+	}
+	for _, tt := range tests {
+		if got := hostAllowed(tt.host, allowed); got != tt.want {
+			t.Errorf("hostAllowed(%q) = %v, want %v", tt.host, got, tt.want)
+		}
 	}
 }
