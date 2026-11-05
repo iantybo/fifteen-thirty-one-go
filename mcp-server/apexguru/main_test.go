@@ -199,6 +199,25 @@ func TestVolumeOnlyNonSelectiveQuery(t *testing.T) {
 	}
 }
 
+func TestBatchStartUsesBatchContext(t *testing.T) {
+	s := mustSeed(t)
+	src := "public with sharing class ACME_PurgeBatch implements Database.Batchable<SObject> {\n" +
+		"  public Database.QueryLocator start(Database.BatchableContext c) {\n" +
+		"    return Database.getQueryLocator([SELECT Id FROM Signup__c WHERE CreatedDate < :cutoff]);\n" +
+		"  }\n" +
+		"  public void execute(Database.BatchableContext c, List<Signup__c> scope) {\n" +
+		"    List<Signup__c> again = [SELECT Id FROM Signup__c WHERE CreatedDate < :cutoff];\n" +
+		"  }\n" +
+		"  public void finish(Database.BatchableContext c) {}\n}"
+	out, err := s.scan(scanArgs{Files: []scanFile{{Path: "ACME_PurgeBatch.cls", Content: src}}, Environment: "prod"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "ACME_PurgeBatch.cls:6") || strings.Contains(out, "ACME_PurgeBatch.cls:3") {
+		t.Errorf("start() should be judged in batch context and execute() in sync context:\n%s", out)
+	}
+}
+
 func TestExplainSOQL(t *testing.T) {
 	s := mustSeed(t)
 	tests := []struct {

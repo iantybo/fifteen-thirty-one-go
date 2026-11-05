@@ -143,6 +143,7 @@ var (
 	reReturnTail  = regexp.MustCompile(`(?i)\breturn\s*$`)
 	reTestClass   = regexp.MustCompile(`(?i)@isTest(?:\s*\([^)]*\))?\s+(?:\w+\s+)*class\b`)
 	reSeeAllData  = regexp.MustCompile(`(?i)SeeAllData\s*=\s*true`)
+	reBatchable   = regexp.MustCompile(`(?i)\bimplements\b[^{]*\bDatabase\s*\.\s*Batchable\b`)
 )
 
 var nonMethodWords = map[string]bool{

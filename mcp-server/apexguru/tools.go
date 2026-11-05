@@ -105,6 +105,7 @@ func (s *seedData) volumeViolations(f *apexFile, env string) []Violation {
 	if strings.EqualFold(path.Ext(f.path), ".trigger") || strings.HasSuffix(strings.ToLower(base), "triggerhandler") {
 		ctx = "trigger"
 	}
+	batchable := reBatchable.MatchString(f.clean)
 	var out []Violation
 	for _, q := range f.soql {
 		text := f.src[q.start:q.end]
@@ -112,7 +113,11 @@ func (s *seedData) volumeViolations(f *apexFile, env string) []Violation {
 		if err != nil || parts.Where == "" {
 			continue // unbounded queries are covered by SOQL_NO_WHERE_OR_LIMIT
 		}
-		p, err := s.explainSOQL(text, env, ctx)
+		qctx := ctx
+		if batchable && strings.EqualFold(f.methodAt(q.start), "start") {
+			qctx = "batch" // Batch Apex start() may return up to 50M rows via a QueryLocator
+		}
+		p, err := s.explainSOQL(text, env, qctx)
 		if err != nil || !p.Known || p.Pass() {
 			continue
 		}
@@ -120,7 +125,7 @@ func (s *seedData) volumeViolations(f *apexFile, env string) []Violation {
 		v := Violation{
 			Rule: ruleNonSelective, Severity: ruleNonSelective.Severity, File: f.path, Line: f.lineOf(q.start),
 			Method: f.methodAt(q.start), Code: f.lineText(q.start), Query: text, Object: p.Object,
-			Detail: fmt.Sprintf("Planner: %s on %s (%s context). %s", p.Plan, p.Object, ctx, strings.Join(p.Warnings, " ")),
+			Detail: fmt.Sprintf("Planner: %s on %s (%s context). %s", p.Plan, p.Object, qctx, strings.Join(p.Warnings, " ")),
 			Insight: fmt.Sprintf("%s has %s rows in dev (passes) and %s rows in %s. %s",
 				p.Object, commas(devRows), commas(p.ObjectRows), env, strings.Join(p.Failures, " ")),
 		}
