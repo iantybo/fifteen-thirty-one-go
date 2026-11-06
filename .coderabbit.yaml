@@ -1,0 +1,252 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# CodeRabbit YAML Configuration Documentation: https://docs.coderabbit.ai/reference/configuration
+#
+# Vehicle platform review POV. Design goals, in priority order:
+#   1. Signal, not noise: comment only on what would hurt a vehicle, an owner, or a release. No style.
+#   2. One standard for every author: humans, Claude Code, Codex, and Gemini are reviewed against the same
+#      docs (vehicle-platform/docs/standards/ plus the shared AGENTS.md / CLAUDE.md / GEMINI.md).
+#   3. Fit the monthly release + human gate: CodeRabbit blocks on real risk before a human spends time,
+#      and never replaces the human approval.
+
+# This file is the complete configuration for the POV; nothing is inherited from org-level settings.
+inheritance: false
+language: en-US
+
+tone_instructions: >-
+  Terse and specific. One comment per real problem, no praise, no summaries of what the code does.
+  For each finding, state the vehicle or owner impact in one sentence (for example "BL-G1 cars reject the command").
+
+knowledge_base:
+  web_search:
+    enabled: true
+  learnings:
+    scope: local
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      # Team standards and the OEM capability matrix, applied to the platform code
+      - files: "vehicle-platform/docs/standards/*.md"
+        applyTo: "vehicle-platform/**"
+      # Shared agent instructions (AGENTS.md, CLAUDE.md, GEMINI.md are also loaded by default)
+      - vehicle-platform/AGENTS.md
+
+reviews:
+  # Noise control: 'chill' plus explicit "do not comment" rules below keep reviews to blocking issues.
+  profile: chill
+  enable_prompt_for_ai_agents: true # Claude Code / Codex / Gemini can consume and fix findings directly
+  slop_detection:
+    enabled: true
+
+  path_filters:
+    - "!**/build/**"
+    - "!**/.gradle/**"
+    - "!**/*.lock"
+
+  # Enterprise Quality Gates
+  pre_merge_checks:
+    override_requested_reviewers_only: false
+    custom_checks:
+      - mode: error
+        name: Vehicle Command Safety
+        instructions: >
+          Applies to changes under vehicle-platform/src/main/. Fail if any of the following is true:
+          - An endpoint that reads or commands a vehicle does not call VehicleOwnershipService.requireOwned with
+            the JWT subject before other work, or decides access from the VIN or any client-supplied field.
+          - A command path skips CommandLedger (recordAccepted on submit, claimForDispatch before delivery), so an
+            SQS or MQTT redelivery could unlock or start a vehicle twice.
+          - Vehicle, broker, SMS, or OEM-cloud I/O can wait without the configured command timeout (join(),
+            untimed get(), or no timeout argument).
+          - A new queue, listener, or controller bypasses RemoteCommandService or CommandQueueListener.
+          Pass otherwise. Cite file:line.
+
+      - mode: error
+        name: OEM Rollout and Field Compatibility
+        instructions: >
+          Applies to changes under vehicle-platform/. Use vehicle-platform/docs/standards/oem-capability-matrix.md.
+          Fail if any of the following is true:
+          - New vehicle-facing behavior is not gated by OemFeatureFlags.isEnabled, or a flag for it is enabled
+            in application.yml for an OEM in the same PR that introduces it.
+          - CommandPayloadV1 gains, loses, or renames a field, or a v1 payload is built with new data.
+          - An adapter returns ACCEPTED for a command or generation the matrix marks unsupported, or the API
+            accepts such a command instead of rejecting it before queueing.
+          - A BL-G1 command path does not send the SMS wake-up first.
+          - Capability is decided per OEM where the matrix differs per head-unit generation.
+          For each failure, name the affected OEM and generation and what owners would experience. Pass otherwise.
+
+      - mode: error
+        name: Vehicle and Owner Data
+        instructions: >
+          Applies to changes under vehicle-platform/. Fail if a raw VIN, email, name, phone, or location
+          is logged (VinMasker.mask is required for VINs); a DynamoDB Scan runs on a request path; or
+          vehicle items are mapped outside VehicleShadowRepository. Pass otherwise.
+
+      - mode: error
+        name: Per-OEM Test Coverage
+        instructions: >
+          Applies when OEM-facing code under vehicle-platform/src/main/ changes. Fail if a changed command or
+          adapter behavior lacks a Cucumber scenario in src/test/resources/features/ for every OEM and head-unit
+          generation it affects, including scenarios asserting rejection where the matrix says unsupported; or
+          a unit conversion or boundary lacks a unit test (including Fahrenheit input). List the missing
+          OEM and generation combinations. Pass otherwise.
+
+    # Standard Pre-merge Checks
+    title:
+      mode: warning
+      requirements: >
+        - Follow Conventional Commits with a scope naming the area (commands, climate, oem-avalon,
+          oem-brightline, oem-cascade, platform)
+    description:
+      mode: warning
+      requirements: >
+        - State which OEMs and head-unit generations the change affects and how it is rolled out
+          (which flags, which release).
+        - State whether the change was AI-assisted and which agent produced it.
+    issue_assessment:
+      mode: warning
+    docstrings:
+      mode: "off"
+
+  path_instructions:
+    - path: "vehicle-platform/**"
+      instructions: >
+        - Only comment on issues that could harm a vehicle, an owner, data, or a release: correctness,
+          security, concurrency, compatibility with vehicles already on the road, and the standards in
+          vehicle-platform/docs/standards/.
+        - Do NOT comment on style, formatting, naming, import order, Javadoc wording, magic numbers, TODOs,
+          or refactoring preferences. When unsure whether something is a real defect, do not comment.
+        - Merge duplicate findings into one comment that lists every location.
+        - The code may come from Claude Code, Codex, Gemini, or a human. Hold every author to the same
+          standards, and watch for AI-typical defects: plausible but wrong formulas, error paths that report
+          success, copied patterns that skip a safety step, and tests that assert only the happy path.
+
+    - path: "vehicle-platform/src/main/java/**/oem/**"
+      instructions: >
+        - Check every adapter change against docs/standards/oem-capability-matrix.md, row by row
+          (OEM x head-unit generation). Name the exact OEM and generation in each finding.
+        - A result of ACCEPTED must mean the vehicle or OEM cloud acknowledged the command.
+
+    - path: "vehicle-platform/src/main/java/**/messaging/payload/**"
+      instructions: >
+        - CommandPayloadV1 is a frozen wire contract with first-generation head units that cannot be updated.
+          Any change to it is a blocking finding.
+
+    - path: "vehicle-platform/src/test/**"
+      instructions: >
+        - Flag tests that would still pass if the behavior under test were broken, and missing
+          OEM/generation combinations in Cucumber examples. Do not comment on test style.
+
+  # Custom Workflows
+  post_merge_actions: []
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: true
+    custom:
+      - enabled: true
+        name: Add per-OEM Cucumber scenarios
+        instructions: |
+          - For each OEM and head-unit generation in docs/standards/oem-capability-matrix.md affected by this PR,
+            add Examples rows to the relevant feature file, including UNSUPPORTED_BY_OEM rows
+
+  # Reviewer Auto-assignment
+  suggested_reviewers: true
+  auto_assign_reviewers: false
+  suggested_reviewers_instructions: []
+
+  # Labels Automatically Applied
+  suggested_labels: true
+  auto_apply_labels: true
+  labeling_instructions:
+    - label: oem-avalon
+      instructions: Apply when the change affects Avalon vehicles
+    - label: oem-brightline
+      instructions: Apply when the change affects Brightline vehicles (BL-G1 or BL-G2)
+    - label: oem-cascade
+      instructions: Apply when the change affects Cascade vehicles
+    - label: field-compat-risk
+      instructions: Apply when the OEM Rollout and Field Compatibility check fails
+    - label: ai-assisted
+      instructions: Apply when the PR description says the change was produced with Claude Code, Codex, Gemini, or another AI agent
+  mutually_exclusive_groups: {}
+
+  # Issue Tracking
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+
+  # PR Summary
+  high_level_summary: true
+  high_level_summary_instructions: >
+    - First line: 'Risk Score:' followed by exactly one of 'Extremely Low - Auto-merge',
+      'Low - Address Requested Changes', 'Medium - Human Review Required', or 'High - Escalation Required'.
+    - Second line: 'OEMs affected:' followed by the OEM and head-unit generations, or 'none'.
+    - Third line: 'Release readiness:' followed by 'ready for monthly release', or the blocking reason.
+    - Then at most 40 words on what changed.
+
+  merge_risk_instructions: >-
+    Anything that changes what a vehicle receives (adapters, payloads, MQTT, command pipeline, flags) is high risk
+    because head units in the field cannot be patched. Ownership and idempotency changes are high risk. Test-only and
+    documentation-only changes are low risk.
+
+  # Review all branches, all draft PRs, & all stacked PRs
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: true
+    base_branches: [".*"]
+
+  # UX Settings
+  sequence_diagrams: true
+  changed_files_summary: true
+  collapse_walkthrough: true
+  estimate_code_review_effort: true
+  auto_title_placeholder: "[cr]"
+  auto_title_instructions: "Follow: https://www.conventionalcommits.org/en/v1.0.0/"
+  high_level_summary_in_walkthrough: true
+  in_progress_fortune: false
+  review_details: false
+  poem: false
+
+  # CI/CD UX Settings
+  commit_status: true
+  fail_commit_status: true
+  review_progress: true
+  review_status: true
+
+  # CodeRabbit gates the PR before the required human approval; it never replaces that approval.
+  request_changes_workflow: true
+
+  # Tools: a deliberately small set. Every linter adds comments, so only tools that find real defects are on.
+  tools:
+    pmd:
+      enabled: true
+      config_file: vehicle-platform/config/pmd-ruleset.xml
+    semgrep:
+      enabled: true
+    gitleaks:
+      enabled: true
+    actionlint:
+      enabled: true
+    checkov:
+      enabled: true
+    markdownlint:
+      enabled: false
+    languagetool:
+      enabled: false
+    yamllint:
+      enabled: false
+    eslint:
+      enabled: false
+    biome:
+      enabled: false
+    shellcheck:
+      enabled: false
+    golangci-lint:
+      enabled: false
+
+chat:
+  art: false
+  # Interactive review: anyone can ask @coderabbitai questions on the PR and get answers with the full PR context
+  auto_reply: true

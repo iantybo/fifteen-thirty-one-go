@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: vehicle-platform
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${NORTHSTAR_IDP_ISSUER}
+
+northstar:
+  dynamodb:
+    vehicle-table: ${VEHICLE_TABLE:vehicle-shadow}
+    ledger-table: ${LEDGER_TABLE:command-ledger}
+  sqs:
+    command-queue: ${COMMAND_QUEUE:remote-commands}
+    climate-queue: ${CLIMATE_QUEUE:climate-commands}
+  mqtt:
+    host: ${MQTT_HOST}
+  vehicle:
+    # Upper bound for any single round trip to a vehicle (MQTT publish ack, SMS wake, OEM cloud call).
+    command-timeout: 8s
+  # Per-OEM rollout flags. New behaviour ships dark and is enabled one OEM at a time after that OEM's
+  # certification pass; see docs/standards/platform-standards.md#rollout.
+  flags:
+    AVALON: [DOOR_LOCK, DOOR_UNLOCK, REMOTE_START, HORN_LIGHTS]
+    BRIGHTLINE: [DOOR_LOCK, DOOR_UNLOCK, REMOTE_START]
+    CASCADE: [DOOR_LOCK, DOOR_UNLOCK]
